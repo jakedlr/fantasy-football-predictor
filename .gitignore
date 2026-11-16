@@ -9,3 +9,4 @@ data/
 .env
 OUTPUT.md
 output.json
+.claude/

@@ -1,0 +1,119 @@
+"""American odds → implied probability, and vig removal → Fair Probability.
+
+This project devigs with the logit-shift (odds-ratio) model,
+p = σ(logit q − c): `calibrate_logit_shift` finds c on a Main Line and
+`apply_logit_shift` applies it to either side or to a Rung.
+`devig` keeps the methods copied from prizepicks-optimizer
+(multiplicative, additive, power, Shin) for comparison.
+"""
+
+import math
+
+DEVIG_METHODS = ("multiplicative", "additive", "power", "shin")
+
+
+def parse_american(price: str | float) -> float:
+    """American odds as a number, from an int, float or string.
+
+    Strings may use ASCII "-" or the Unicode minus "−" (U+2212) that
+    DraftKings sends, and an optional leading "+".
+    """
+    if isinstance(price, str):
+        text = price.strip().replace("−", "-")
+        try:
+            value = float(text)
+        except ValueError:
+            raise ValueError(f"invalid American odds: {price!r}") from None
+        if not math.isfinite(value):
+            raise ValueError(f"invalid American odds: {price!r}")
+        return value
+    return float(price)
+
+
+def american_to_implied(odds: str | float) -> float:
+    """Implied probability q of American odds, vig included."""
+    odds = parse_american(odds)
+    if -100 < odds < 100:
+        raise ValueError(f"invalid American odds: {odds}")
+    if odds < 0:
+        return -odds / (-odds + 100)
+    return 100 / (odds + 100)
+
+
+def _bisect(f, lo: float, hi: float, iters: int = 200) -> float:
+    """Root of a function that is decreasing on [lo, hi]."""
+    for _ in range(iters):
+        mid = (lo + hi) / 2
+        if f(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def devig(over_odds: float, under_odds: float, method: str = "multiplicative") -> tuple[float, float]:
+    """Fair Probabilities (over, under) of a Main Line by one of DEVIG_METHODS."""
+    q = (american_to_implied(over_odds), american_to_implied(under_odds))
+    total = sum(q)
+
+    if method == "multiplicative":
+        p = tuple(qi / total for qi in q)
+    elif method == "additive":
+        p = tuple(qi - (total - 1) / 2 for qi in q)
+    elif method == "power":
+        k = _bisect(lambda k: sum(qi**k for qi in q) - 1, 1e-9, 100.0)
+        p = tuple(qi**k for qi in q)
+    elif method == "shin":
+
+        def shin_probs(z):
+            return tuple(
+                (math.sqrt(z * z + 4 * (1 - z) * qi * qi / total) - z) / (2 * (1 - z)) for qi in q
+            )
+
+        z = _bisect(lambda z: sum(shin_probs(z)) - 1, 0.0, 0.999)
+        p = shin_probs(z)
+    else:
+        raise ValueError(f"unknown devig method {method!r}; choose from {DEVIG_METHODS}")
+
+    # Normalise away bisection residue so the pair sums to exactly 1.
+    s = p[0] + p[1]
+    return p[0] / s, p[1] / s
+
+
+def _logit(p: float) -> float:
+    return math.log(p / (1 - p))
+
+
+def _sigmoid(x: float) -> float:
+    if x >= 0:
+        return 1 / (1 + math.exp(-x))
+    e = math.exp(x)
+    return e / (1 + e)
+
+
+def apply_logit_shift(q: float, c: float) -> float:
+    """Fair Probability p = σ(logit q − c) under the logit-shift vig model.
+
+    q is the implied probability of one side (a Rung or a Main Line side),
+    vig included; c is the book's vig in logit units for this Prop Market.
+    """
+    return _sigmoid(_logit(q) - c)
+
+
+def calibrate_logit_shift(q_over: float, q_under: float) -> float:
+    """Vig c of a two-sided Main Line under the logit-shift model.
+
+    Solves σ(logit q_over − c) + σ(logit q_under − c) = 1 by bisection.
+    c > 0 when the implied probabilities sum above 1 (positive overround),
+    c = 0 for a fair market and c < 0 when they sum below 1.
+    """
+    lo_o, lo_u = _logit(q_over), _logit(q_under)
+    bound = abs(lo_o) + abs(lo_u) + 1
+    return _bisect(lambda c: _sigmoid(lo_o - c) + _sigmoid(lo_u - c) - 1, -bound, bound)
+
+
+def devig_main_line(over: str | float, under: str | float) -> tuple[float, float]:
+    """Fair Probabilities (p_over, p_under) of a Main Line via the logit shift."""
+    q_over, q_under = american_to_implied(over), american_to_implied(under)
+    c = calibrate_logit_shift(q_over, q_under)
+    return apply_logit_shift(q_over, c), apply_logit_shift(q_under, c)
