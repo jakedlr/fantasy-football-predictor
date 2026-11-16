@@ -1,0 +1,41 @@
+{
+  "source": "scripts/build_params.py on 2026-11-15 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG qualifying games (nflverse-data.md section 4)",
+  "fumbles_lost_per_touch": {
+    "RB": 0.0044,
+    "WR": 0.0065,
+    "TE": 0.0058
+  },
+  "qb_fumbles_lost_per_sack": 0.062,
+  "fumbles_lost_per_game": {
+    "QB": 0.205,
+    "RB": 0.063,
+    "WR": 0.026,
+    "TE": 0.019
+  },
+  "rush_rec_2pt_per_game": {
+    "QB": 0.015,
+    "RB": 0.017,
+    "WR": 0.016,
+    "TE": 0.015
+  },
+  "pass_2pt_per_game": {
+    "QB": 0.073
+  },
+  "td_rushing_share": {
+    "QB": 0.988,
+    "RB": 0.801,
+    "WR": 0.033,
+    "TE": 0.022
+  },
+  "carries_per_game": {
+    "WR": 0.206,
+    "TE": 0.062
+  },
+  "n_games": {
+    "QB": 2709,
+    "RB": 4229,
+    "WR": 7130,
+    "TE": 3172
+  },
+  "carries_per_game_note": "mean carries per qualifying game (WR/TE), for expected touches when there is no rushing market"
+}

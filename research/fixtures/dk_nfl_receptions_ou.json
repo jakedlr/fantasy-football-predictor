@@ -1,0 +1,662 @@
+{
+ "events": [
+  {
+   "id": "34118177",
+   "seoIdentifier": "LA Chargers @ BAL Ravens",
+   "sportId": "3",
+   "leagueId": "88808",
+   "name": "LA Chargers @ BAL Ravens",
+   "startEventDate": "2026-11-17T01:15:00.0000000Z",
+   "participants": [
+    {
+     "id": "18495",
+     "name": "BAL Ravens",
+     "venueRole": "Home",
+     "type": "Team",
+     "metadata": {
+      "retailRotNumber": "157",
+      "rosettaTeamId": "18495",
+      "rosettaTeamName": "Ravens",
+      "shortName": "BAL",
+      "teamColor": "#24135F",
+      "teamColorSecondary": "#000000",
+      "teamColorTertiary": "#9E7C0C"
+     },
+     "sortOrder": 2,
+     "seoIdentifier": "Ravens",
+     "isNationalTeam": false,
+     "countryCode": "US"
+    },
+    {
+     "id": "18461",
+     "name": "LA Chargers",
+     "venueRole": "Away",
+     "type": "Team",
+     "metadata": {
+      "retailRotNumber": "156",
+      "rosettaTeamId": "18461",
+      "rosettaTeamName": "Chargers",
+      "shortName": "LAC",
+      "teamColor": "#0080C6",
+      "teamColorSecondary": "#FFC20E",
+      "teamColorTertiary": "#FFFFFF"
+     },
+     "sortOrder": 1,
+     "seoIdentifier": "Chargers",
+     "isNationalTeam": false,
+     "countryCode": "US"
+    }
+   ],
+   "eventParticipantType": "TwoTeam",
+   "status": "NOT_STARTED",
+   "eventScorecard": {
+    "scorecardComponentId": 1
+   },
+   "tags": [
+    "EarlyExit",
+    "EarlyExitPlus",
+    "FeaturedSubcategory",
+    "OSB",
+    "PlayerStack",
+    "PrePack",
+    "SGP",
+    "SgpDynamicOdds",
+    "YourBetEligible"
+   ],
+   "metadata": {
+    "masterLeagueId": "40",
+    "numberOfParts": "4",
+    "secondsInOnePart": "900"
+   },
+   "sortOrder": 170981177,
+   "subscriptionKey": "league-events-88808"
+  }
+ ],
+ "markets": [
+  {
+   "id": "387706421",
+   "eventId": "34118177",
+   "sportId": "3",
+   "leagueId": "88808",
+   "name": "Zay Flowers Receptions O/U",
+   "subcategoryId": 14115,
+   "marketType": {
+    "id": "13676",
+    "betOfferTypeId": 0,
+    "name": "Receptions O/U"
+   },
+   "subscriptionKey": "league-events-88808",
+   "sortOrder": 1,
+   "tags": [
+    "SGP",
+    "PlayerStack",
+    "YourBetEligible",
+    "Cashout",
+    "EarlyExit",
+    "EarlyExitPlus",
+    "IgnoreSortOrderOnPush",
+    "MicroMarketDelayRemoval",
+    "OSB",
+    "PlayerProps"
+   ],
+   "correlatedId": "34118177|13676|2:123489",
+   "dynamicMetadata": {}
+  },
+  {
+   "id": "387705927",
+   "eventId": "34118177",
+   "sportId": "3",
+   "leagueId": "88808",
+   "name": "Tre Harris Receptions O/U",
+   "subcategoryId": 14115,
+   "marketType": {
+    "id": "13676",
+    "betOfferTypeId": 0,
+    "name": "Receptions O/U"
+   },
+   "subscriptionKey": "league-events-88808",
+   "sortOrder": 5,
+   "tags": [
+    "SGP",
+    "PlayerStack",
+    "YourBetEligible",
+    "Cashout",
+    "EarlyExit",
+    "EarlyExitPlus",
+    "IgnoreSortOrderOnPush",
+    "MicroMarketDelayRemoval",
+    "OSB",
+    "PlayerProps"
+   ],
+   "correlatedId": "34118177|13676|2:147584",
+   "dynamicMetadata": {}
+  },
+  {
+   "id": "387706297",
+   "eventId": "34118177",
+   "sportId": "3",
+   "leagueId": "88808",
+   "name": "Mark Andrews Receptions O/U",
+   "subcategoryId": 14115,
+   "marketType": {
+    "id": "13676",
+    "betOfferTypeId": 0,
+    "name": "Receptions O/U"
+   },
+   "subscriptionKey": "league-events-88808",
+   "sortOrder": 7,
+   "tags": [
+    "SGP",
+    "PlayerStack",
+    "YourBetEligible",
+    "Cashout",
+    "EarlyExit",
+    "EarlyExitPlus",
+    "IgnoreSortOrderOnPush",
+    "MicroMarketDelayRemoval",
+    "OSB",
+    "PlayerProps"
+   ],
+   "correlatedId": "34118177|13676|2:54886",
+   "dynamicMetadata": {}
+  },
+  {
+   "id": "387706252",
+   "eventId": "34118177",
+   "sportId": "3",
+   "leagueId": "88808",
+   "name": "Quentin Johnston Receptions O/U",
+   "subcategoryId": 14115,
+   "marketType": {
+    "id": "13676",
+    "betOfferTypeId": 0,
+    "name": "Receptions O/U"
+   },
+   "subscriptionKey": "league-events-88808",
+   "sortOrder": 8,
+   "tags": [
+    "SGP",
+    "PlayerStack",
+    "YourBetEligible",
+    "Cashout",
+    "EarlyExit",
+    "EarlyExitPlus",
+    "IgnoreSortOrderOnPush",
+    "MicroMarketDelayRemoval",
+    "OSB",
+    "PlayerProps"
+   ],
+   "correlatedId": "34118177|13676|2:123663",
+   "dynamicMetadata": {}
+  },
+  {
+   "id": "387705834",
+   "eventId": "34118177",
+   "sportId": "3",
+   "leagueId": "88808",
+   "name": "Matthew Hibner Receptions O/U",
+   "subcategoryId": 14115,
+   "marketType": {
+    "id": "13676",
+    "betOfferTypeId": 0,
+    "name": "Receptions O/U"
+   },
+   "subscriptionKey": "league-events-88808",
+   "sortOrder": 20,
+   "tags": [
+    "SGP",
+    "PlayerStack",
+    "YourBetEligible",
+    "Cashout",
+    "EarlyExit",
+    "EarlyExitPlus",
+    "IgnoreSortOrderOnPush",
+    "MicroMarketDelayRemoval",
+    "OSB",
+    "PlayerProps"
+   ],
+   "correlatedId": "34118177|13676|2:143367",
+   "dynamicMetadata": {}
+  }
+ ],
+ "selections": [
+  {
+   "id": "0QA387705834#2358408154_13L88808Q11748027846Q20",
+   "marketId": "387705834",
+   "label": "Over",
+   "displayOdds": {
+    "american": "−198",
+    "decimal": "1.50",
+    "fractional": "50/99",
+    "percentage": "66%",
+    "multiplier": "1.50x"
+   },
+   "trueOdds": 1.50505051,
+   "points": 0.5,
+   "outcomeType": "Over",
+   "participants": [
+    {
+     "id": "957823",
+     "name": "Matthew Hibner",
+     "type": "Player",
+     "seoIdentifier": "Matt Hibner",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 0.8,
+      "stringValue": "0.8",
+      "showRecentStats": true
+     },
+     "venueRole": "HomePlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "143367"
+     }
+    }
+   ],
+   "sortOrder": 500,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "EarlyExitPlus",
+    "EarlyExit",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387705834#2358408241_13L88808Q11828871616Q20",
+   "marketId": "387705834",
+   "label": "Under",
+   "displayOdds": {
+    "american": "+154",
+    "decimal": "2.54",
+    "fractional": "77/50",
+    "percentage": "39%",
+    "multiplier": "2.54x"
+   },
+   "trueOdds": 2.54,
+   "points": 0.5,
+   "outcomeType": "Under",
+   "participants": [
+    {
+     "id": "957823",
+     "name": "Matthew Hibner",
+     "type": "Player",
+     "seoIdentifier": "Matt Hibner",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 0.8,
+      "stringValue": "0.8",
+      "showRecentStats": true
+     },
+     "venueRole": "HomePlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "143367"
+     }
+    }
+   ],
+   "sortOrder": 502,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387706252#2358407755_13L88808Q1-2107084182Q20",
+   "marketId": "387706252",
+   "label": "Over",
+   "displayOdds": {
+    "american": "−117",
+    "decimal": "1.85",
+    "fractional": "100/117",
+    "percentage": "53%",
+    "multiplier": "1.85x"
+   },
+   "trueOdds": 1.85470086,
+   "points": 2.5,
+   "outcomeType": "Over",
+   "participants": [
+    {
+     "id": "706446",
+     "name": "Quentin Johnston",
+     "type": "Player",
+     "seoIdentifier": "Quentin Johnston",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 1.9,
+      "stringValue": "1.9",
+      "showRecentStats": true
+     },
+     "venueRole": "AwayPlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "123663"
+     }
+    }
+   ],
+   "sortOrder": 2500,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "2ndFavorite",
+    "EarlyExitPlus",
+    "EarlyExit",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387706297#2358409106_13L88808Q1-2107084182Q20",
+   "marketId": "387706297",
+   "label": "Over",
+   "displayOdds": {
+    "american": "−153",
+    "decimal": "1.65",
+    "fractional": "100/153",
+    "percentage": "60%",
+    "multiplier": "1.65x"
+   },
+   "trueOdds": 1.65359478,
+   "points": 2.5,
+   "outcomeType": "Over",
+   "participants": [
+    {
+     "id": "16963",
+     "name": "Mark Andrews",
+     "type": "Player",
+     "seoIdentifier": "Mark Andrews",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 3.4,
+      "stringValue": "3.4",
+      "showRecentStats": true
+     },
+     "venueRole": "HomePlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "54886"
+     }
+    }
+   ],
+   "sortOrder": 2500,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "2ndFavorite",
+    "EarlyExitPlus",
+    "EarlyExit",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387706252#2358407839_13L88808Q11045072483Q20",
+   "marketId": "387706252",
+   "label": "Under",
+   "displayOdds": {
+    "american": "−109",
+    "decimal": "1.91",
+    "fractional": "100/109",
+    "percentage": "52%",
+    "multiplier": "1.91x"
+   },
+   "trueOdds": 1.9174312,
+   "points": 2.5,
+   "outcomeType": "Under",
+   "participants": [
+    {
+     "id": "706446",
+     "name": "Quentin Johnston",
+     "type": "Player",
+     "seoIdentifier": "Quentin Johnston",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 1.9,
+      "stringValue": "1.9",
+      "showRecentStats": true
+     },
+     "venueRole": "AwayPlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "123663"
+     }
+    }
+   ],
+   "sortOrder": 2502,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "2ndFavorite",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387706297#2358409157_13L88808Q11045072483Q20",
+   "marketId": "387706297",
+   "label": "Under",
+   "displayOdds": {
+    "american": "+119",
+    "decimal": "2.19",
+    "fractional": "119/100",
+    "percentage": "45%",
+    "multiplier": "2.19x"
+   },
+   "trueOdds": 2.19,
+   "points": 2.5,
+   "outcomeType": "Under",
+   "participants": [
+    {
+     "id": "16963",
+     "name": "Mark Andrews",
+     "type": "Player",
+     "seoIdentifier": "Mark Andrews",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 3.4,
+      "stringValue": "3.4",
+      "showRecentStats": true
+     },
+     "venueRole": "HomePlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "54886"
+     }
+    }
+   ],
+   "sortOrder": 2502,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "2ndFavorite",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387705927#2364579262_13L88808Q1730991375Q20",
+   "marketId": "387705927",
+   "label": "Over",
+   "displayOdds": {
+    "american": "+101",
+    "decimal": "2.01",
+    "fractional": "101/100",
+    "percentage": "49%",
+    "multiplier": "2.01x"
+   },
+   "trueOdds": 2.01,
+   "points": 3.5,
+   "outcomeType": "Over",
+   "participants": [
+    {
+     "id": "886106",
+     "name": "Tre Harris",
+     "type": "Player",
+     "seoIdentifier": "Tre' Harris",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 3,
+      "stringValue": "3.0",
+      "showRecentStats": true
+     },
+     "venueRole": "AwayPlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "147584"
+     }
+    }
+   ],
+   "sortOrder": 3500,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "1stFavorite",
+    "EarlyExitPlus",
+    "EarlyExit",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387705927#2364579263_13L88808Q1-616481466Q20",
+   "marketId": "387705927",
+   "label": "Under",
+   "displayOdds": {
+    "american": "−128",
+    "decimal": "1.78",
+    "fractional": "25/32",
+    "percentage": "56%",
+    "multiplier": "1.78x"
+   },
+   "trueOdds": 1.78125,
+   "points": 3.5,
+   "outcomeType": "Under",
+   "participants": [
+    {
+     "id": "886106",
+     "name": "Tre Harris",
+     "type": "Player",
+     "seoIdentifier": "Tre' Harris",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 3,
+      "stringValue": "3.0",
+      "showRecentStats": true
+     },
+     "venueRole": "AwayPlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "147584"
+     }
+    }
+   ],
+   "sortOrder": 3502,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "1stFavorite",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387706421#2358410226_13L88808Q11193798451Q20",
+   "marketId": "387706421",
+   "label": "Over",
+   "displayOdds": {
+    "american": "−128",
+    "decimal": "1.78",
+    "fractional": "25/32",
+    "percentage": "56%",
+    "multiplier": "1.78x"
+   },
+   "trueOdds": 1.78125,
+   "points": 5.5,
+   "outcomeType": "Over",
+   "participants": [
+    {
+     "id": "706447",
+     "name": "Zay Flowers",
+     "type": "Player",
+     "seoIdentifier": "Zay Flowers",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 5.4,
+      "stringValue": "5.4",
+      "showRecentStats": true
+     },
+     "venueRole": "HomePlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "123489"
+     }
+    }
+   ],
+   "sortOrder": 5500,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "1stFavorite",
+    "EarlyExitPlus",
+    "EarlyExit",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  },
+  {
+   "id": "0QA387706421#2358410254_13L88808Q1491250762Q20",
+   "marketId": "387706421",
+   "label": "Under",
+   "displayOdds": {
+    "american": "+100",
+    "decimal": "2.00",
+    "fractional": "1/1",
+    "percentage": "50%",
+    "multiplier": "2.00x"
+   },
+   "trueOdds": 2,
+   "points": 5.5,
+   "outcomeType": "Under",
+   "participants": [
+    {
+     "id": "706447",
+     "name": "Zay Flowers",
+     "type": "Player",
+     "seoIdentifier": "Zay Flowers",
+     "statistic": {
+      "prefix": "REC/G",
+      "value": 5.4,
+      "stringValue": "5.4",
+      "showRecentStats": true
+     },
+     "venueRole": "HomePlayer",
+     "isNationalTeam": false,
+     "metadata": {
+      "sdid": "123489"
+     }
+    }
+   ],
+   "sortOrder": 5502,
+   "tags": [
+    "MainPointLine",
+    "SGP",
+    "1stFavorite",
+    "OSB"
+   ],
+   "main": true,
+   "metadata": {}
+  }
+ ]
+}
