@@ -35,3 +35,11 @@ def test_espn_league_scores_wr_line():
     rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
     assert rules.name == "espn-league"
     assert score(WR_LINE, rules) == pytest.approx(18.5)
+
+
+def test_espn_league_scores_qb_line():
+    qb_line = {"passing_yards": 275, "passing_tds": 2, "passing_interceptions": 1, "rushing_yards": 20}
+    # 275 * 0.04 = 11 pass yds; 2 * 4 = 8 pass TD; 1 * -2 = -2 INT; 20 * 0.1 = 2 rush yds
+    # 11 + 8 - 2 + 2 = 19
+    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    assert score(qb_line, rules) == pytest.approx(19)
