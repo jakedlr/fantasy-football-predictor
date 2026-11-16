@@ -10,6 +10,8 @@ import json
 import os
 import random
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -29,10 +31,32 @@ def scrapling_fetch(url: str) -> tuple[int, bytes, dict]:
     page = Fetcher.get(url, impersonate="chrome", headers={"Accept": "application/json"}, timeout=30)
     return page.status, page.body, dict(page.headers or {})
 
+RATE_LIMITED = 429
+REFUSED = 403  # blocked (bot protection, or a geo-block off a US connection); sometimes it passes
+PUSHED_BACK = (RATE_LIMITED, REFUSED)
+MAX_RETRY_AFTER = 10  # seconds; odds a minute old aren't worth waiting for
+SLOWED = 2  # a host that pushed back gets this many times the usual pause for the rest of the run
+
+
+def retry_after(headers: dict) -> float | None:
+    """Seconds a Retry-After header asks for (a number or an HTTP date), or None."""
+    value = next((v for k, v in headers.items() if k.lower() == "retry-after"), None)
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        return max(0.0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+    except (TypeError, ValueError):
+        return None
+
 
 class Http:
     """GETs JSON, reusing a cached answer for `ttl` seconds. Live requests go one at a time, and each host gets a
-    pause of `delay` (a (low, high) range of seconds) after each of its requests ends."""
+    pause of `delay` (a (low, high) range of seconds) after each of its requests ends. A host that pushes back
+    (429 or 403) is waited out (a 429's Retry-After, else one pause), slowed, and asked once more."""
 
     def __init__(
         self,
@@ -53,6 +77,7 @@ class Http:
         self.clock = clock
         self._live_requests = 0
         self._next_start: dict[str, float] = {}  # {host: earliest clock() its next request may start}
+        self._slowed: set[str] = set()  # hosts that pushed back during this run
 
     @property
     def live_requests(self) -> int:
@@ -85,7 +110,9 @@ class Http:
 
     def _fetch_live(self, url: str) -> bytes:
         """The body of a 200 answer at `url`, fetched live."""
-        status, body, *_ = self._paced_fetch(url)
+        status, body, *rest = self._paced_fetch(url)
+        if status in PUSHED_BACK:
+            status, body = self._back_off(url, status, rest[0] if rest else {})
         if status != 200:
             raise FetchError(f"HTTP {status} from {url}")
         return body if isinstance(body, bytes) else body.encode()
@@ -102,4 +129,25 @@ class Http:
         except Exception as e:
             raise FetchError(f"request to {url} failed: {e}") from e
         finally:
-            self._next_start[host] = self.clock() + random.uniform(*self.delay)
+            self._next_start[host] = self.clock() + self._pause(host)
+
+    def _pause(self, host: str) -> float:
+        return random.uniform(*self.delay) * (SLOWED if host in self._slowed else 1)
+
+    def _back_off(self, url: str, status: int, headers: dict) -> tuple[int, bytes]:
+        """The host pushed back: hold it for the wait a 429 asked for (or one pause), slow it for the rest of the
+        run, then retry this request once. Only a 429 is a rate limit."""
+        host = urlsplit(url).netloc
+        wait = retry_after(headers) if status == RATE_LIMITED else None
+        if wait is not None and wait > MAX_RETRY_AFTER:
+            self._slowed.add(host)
+            raise FetchError(f"rate-limited: HTTP {status} from {url}, asked to wait {wait:g}s")
+        hold = self.clock() + max(wait or 0.0, self._pause(host))
+        self._next_start[host] = max(self._next_start.get(host, hold), hold)
+        self._slowed.add(host)
+        retry, body, *_ = self._paced_fetch(url)
+        if retry == RATE_LIMITED:
+            raise FetchError(f"rate-limited: HTTP {retry} from {url}, again after backing off")
+        if retry == REFUSED:
+            raise FetchError(f"refused: HTTP {retry} from {url} (blocked, or off a US connection)")
+        return retry, body  # anything else is judged like a first answer

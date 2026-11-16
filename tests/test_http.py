@@ -158,3 +158,66 @@ def test_cache_hits_are_not_paced(tmp_path):
 def test_the_default_pause_is_at_least_3_5_seconds():
     low, high = Http().delay
     assert 3.5 <= low <= high
+
+
+# --- a host that pushes back ----------------------------------------------------
+
+URL = "https://dk.example/a"
+
+
+def pushes_back(status=429, retry_after=None, times=1):
+    """An answer that pushes back on the first `times` requests, then succeeds."""
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    return lambda n: (status, b"{}", headers) if n <= times else (200, b'{"ok": true}', {})
+
+
+def test_a_429_waits_out_the_retry_after_then_retries_once(tmp_path):
+    fetch = FakeFetch({URL: pushes_back(retry_after="5")})
+    http, _, slept = paced(tmp_path, fetch=fetch)
+    assert http.get_json(URL) == {"ok": True}
+    assert slept == [5] and fetch.calls == [URL, URL] and http.live_requests == 2
+
+
+def test_a_retry_after_date_is_respected(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+
+    when = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=8), usegmt=True)
+    http, _, slept = paced(tmp_path, fetch=FakeFetch({URL: pushes_back(retry_after=when)}))
+    http.get_json(URL)
+    assert len(slept) == 1 and 6 <= slept[0] <= 8
+
+
+def test_a_429_without_retry_after_backs_off_by_a_pause_and_slows_the_host(tmp_path):
+    fetch = FakeFetch({URL: pushes_back(), "https://dk.example/b": (200, b"{}")})
+    http, _, slept = paced(tmp_path, fetch=fetch, delay=(2, 2))
+    http.get_json(URL)
+    http.get_json("https://dk.example/b")
+    assert slept == [2, 4]  # one pause before the retry; the host's pause is doubled after it
+
+
+def test_a_403_is_retried_once_after_a_pause(tmp_path):
+    fetch = FakeFetch({URL: pushes_back(status=403, retry_after="5")})
+    http, _, slept = paced(tmp_path, fetch=fetch)
+    assert http.get_json(URL) == {"ok": True}
+    assert slept == [1]  # a 403 is not a rate limit: its Retry-After is not honoured
+
+
+def test_a_host_that_rate_limits_twice_fails_naming_the_rate_limit(tmp_path):
+    http, _, _ = paced(tmp_path, fetch=FakeFetch({URL: pushes_back(times=2)}))
+    with pytest.raises(FetchError, match=r"^rate-limited: HTTP 429 from \S+, again after backing off$"):
+        http.get_json(URL)
+
+
+def test_a_host_that_refuses_twice_is_blocked(tmp_path):
+    http, _, _ = paced(tmp_path, fetch=FakeFetch({URL: pushes_back(status=403, times=2)}))
+    with pytest.raises(FetchError, match=r"^refused: HTTP 403 from \S+ \(blocked, or off a US connection\)$"):
+        http.get_json(URL)
+
+
+def test_a_host_asking_for_a_long_wait_fails_at_once(tmp_path):
+    fetch = FakeFetch({URL: pushes_back(retry_after="60")})
+    http, _, slept = paced(tmp_path, fetch=fetch)
+    with pytest.raises(FetchError, match=r"^rate-limited: HTTP 429 from \S+, asked to wait 60s$"):
+        http.get_json(URL)
+    assert fetch.calls == [URL] and slept == []
