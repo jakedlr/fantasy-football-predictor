@@ -235,6 +235,22 @@ def test_one_failed_fanduel_event_keeps_the_others(nflverse, caplog):
     assert "999" in caplog.text
 
 
+def test_a_stat_that_fails_to_parse_keeps_the_others_on_its_fanduel_tab(nflverse, caplog, monkeypatch):
+    # Review finding 3: yards and receptions share a tab, and a yards parse error lost receptions too.
+    from ffp.sources import fanduel
+
+    parse = fanduel.parse_prop_markets
+
+    def broken_yards(payload, stat):
+        if stat == "receiving_yards":
+            raise KeyError("runners")
+        return parse(payload, stat)
+
+    monkeypatch.setattr(fanduel, "parse_prop_markets", broken_yards)
+    fd = next(b for b in _live(_FakeHttp(), nflverse) if b.book == "fanduel")
+    assert {m.stat for m in fd.markets} == {"receptions"}
+    assert "receiving yards" in caplog.text and "KeyError" in caplog.text
+
 
 # Sprint 3: every WR/TE Scoring Stat, correlated.
 
@@ -348,3 +364,18 @@ def test_fair_points_are_reported_per_stat(nflverse, books):
     seen = []
     run(["Zay Flowers"], nflverse, books, on_fair_points=lambda t, stat, pts: seen.append(stat))
     assert sorted(seen) == ["receiving_yards", "receptions", "rush_rec_tds"]
+
+
+def test_td_prices_are_devigged_with_the_td_prior_not_the_two_sided_one(nflverse, books):
+    # Review finding 2: anytime/2+/3+ TD prices are one-sided and carry more vig than a −115/−115 line.
+    from ffp.fair import TD_PRIOR_C
+    from ffp.odds import american_to_implied, apply_logit_shift
+
+    seen = {}
+    run(["Zay Flowers"], nflverse, _only(books, stats={"rush_rec_tds"}),
+        on_fair_points=lambda t, stat, pts: seen.update({stat: pts}))
+    anytime = {p.threshold: p for p in seen["rush_rec_tds"]}[1]
+    implied = [american_to_implied(r.odds) for b in books for m in b.markets
+               if m.player == "Zay Flowers" and m.stat == "rush_rec_tds" for r in m.ladder if r.threshold == 1]
+    expected = sum(apply_logit_shift(q, TD_PRIOR_C) for q in implied) / len(implied)
+    assert anytime.prob == pytest.approx(expected, abs=1e-9)

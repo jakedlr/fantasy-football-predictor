@@ -28,15 +28,24 @@ PROB_FLOOR = 1e-4  # Fair Probabilities are clipped into [PROB_FLOOR, 1 - PROB_F
 # Override per book with fair_points(..., prior_c={"fanduel": ...}).
 DEFAULT_PRIOR_C = math.log(1.15)
 
+# Logit-shift vig c for the one-sided anytime/2+/3+ TD prices (review finding 2). Calibrated on
+# DraftKings' "Player Not To Score a TD" No prices against the same players' anytime Yes prices
+# (LAC @ BAL, 6 players, fetched 2026-11-16): overround 6.4–7.6%, c 0.155–0.243, median 0.20.
+# Not the 20–30% hold RESEARCH.md Q1 quotes: that figure is unverified, and the measured pairs
+# don't bear it out. The longshots carry the larger c (favourite-longshot bias).
+TD_PRIOR_C = 0.20
+
 
 def fair_points(
-    markets: Sequence[PropMarket], prior_c: Mapping[str, float] | None = None
+    markets: Sequence[PropMarket],
+    prior_c: Mapping[str, float] | None = None,
+    default_c: float = DEFAULT_PRIOR_C,
 ) -> list[FairPoint]:
     """Fair Probabilities P(Y >= threshold) from one player's Prop Markets on one Scoring Stat.
 
     Each market (one per book) is devigged with the logit-shift model: c is
     calibrated on its Main Line, or taken from prior_c[book] (default
-    DEFAULT_PRIOR_C) when it has none. Every Rung becomes a point of weight 1;
+    default_c, itself DEFAULT_PRIOR_C unless given) when it has none. Every Rung becomes a point of weight 1;
     the Main Line's fair Over becomes a point at floor(line) + 1 (stats are
     integers, so Y > 69.5 means Y >= 70) of weight 3. All books' points are
     merged by threshold and made non-increasing by weighted isotonic
@@ -45,7 +54,7 @@ def fair_points(
     prior_c = prior_c or {}
     points: list[FairPoint] = []
     for market in markets:
-        points.extend(_market_points(market, prior_c.get(market.book, DEFAULT_PRIOR_C)))
+        points.extend(_market_points(market, prior_c.get(market.book, default_c)))
     return _isotonic(_merge_thresholds(points))
 
 

@@ -53,7 +53,11 @@ def correlated_uniforms(
 
     Every u lies strictly inside (0, 1).
     """
-    corr = validate(stats, corr)
+    return correlated_uniforms_unchecked(stats, validate(stats, corr), n, rng)
+
+
+def correlated_uniforms_unchecked(stats: Sequence[str], corr: np.ndarray, n: int, rng: np.random.Generator) -> dict[str, np.ndarray]:
+    """correlated_uniforms for a corr already through `validate` (or a sub-matrix of one)."""
     lower = _cholesky(corr)
     z = rng.standard_normal((n, len(stats))) @ lower.T
     u = np.clip(ndtr(z), _U_MIN, _U_MAX)

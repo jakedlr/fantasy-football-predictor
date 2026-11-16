@@ -151,3 +151,13 @@ def test_prior_c_overrides_the_default_per_book():
 
     assert points[50].prob == pytest.approx(0.7, abs=1e-9)
     assert points[80].prob == pytest.approx(0.3, abs=1e-9)
+
+
+def test_default_c_replaces_the_default_prior_for_every_book_without_a_main_line():
+    fair = {1: 0.4, 2: 0.08}
+    m = market("draftkings", fair, main=None, c=0.2)
+
+    points = by_threshold(fair_points([m], default_c=0.2))
+
+    assert points[1].prob == pytest.approx(0.4, abs=1e-9)
+    assert points[2].prob == pytest.approx(0.08, abs=1e-9)

@@ -1,8 +1,10 @@
 """Stat Distributions: one Scoring Stat for one player in one Game."""
 
+import logging
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cache
 from typing import Protocol
 
 import numpy as np
@@ -11,6 +13,8 @@ from scipy.special import expit, logit
 
 from ffp import params
 from ffp.fair import MAIN_LINE_WEIGHT, FairPoint
+
+log = logging.getLogger(__name__)
 
 
 class FitError(ValueError):
@@ -36,6 +40,16 @@ class StatDistribution(Protocol):
     @property
     def mean(self) -> float:
         """Expected value."""
+
+
+def prob_zero(dist: StatDistribution) -> float:
+    """P(Y = 0) of an integer-valued Stat Distribution."""
+    return float(dist.sf(np.array([0]))[0] - dist.sf(np.array([1]))[0])
+
+
+def prob_negative(dist: StatDistribution) -> float:
+    """P(Y < 0): only yards go negative (a loss on a catch or a run)."""
+    return float(1 - dist.sf(np.array([0]))[0])
 
 
 class HurdleShiftedGamma:
@@ -102,6 +116,7 @@ class _ReceivingYardsParams:
     shift: float  # the shifted gamma's location shift, yards
 
 
+@cache
 def _receiving_params(position: str) -> _ReceivingYardsParams:
     """The position's receiving-yards relations, from params/dispersion.json (scripts/build_params.py)."""
     table = params.load("dispersion")["receiving_yards"]
@@ -219,6 +234,13 @@ def _fit_main_line_only(point: FairPoint, position: str, pi0: float | None = Non
     return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
 
 
+def _anchor(points: Sequence[FairPoint]) -> FairPoint:
+    """The point a fit starts from and falls back on: the heaviest (the Main Line, when
+    present); among equal weights, the one nearest 50%, not an extreme Rung such as "10+"
+    at −2000."""
+    return max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+
+
 def fit_receiving_yards(
     points: Sequence[FairPoint], position: str, pi0: float | None = None
 ) -> HurdleShiftedGamma:
@@ -226,7 +248,9 @@ def fit_receiving_yards(
 
     pi0, when given, fixes P(0 yards) instead of fitting it: research Q4 takes it
     from the receptions market, pi0 = P(receptions = 0) = 1 − receptions.sf(1).
-    The fit is then over (ln mu, ln sd) only, without the δ term below.
+    The fit is then over (ln mu, ln sd) only, without the δ term below. When the
+    anchor point is out of reach with that pi0 (it asks for P(Y > 0) > 1 − pi0),
+    the markets disagree on P(0), and the fit falls back to a free pi0.
 
     Three parameters, theta = (ln mu, ln sd, δ) with logit pi0 = logit pi0_rel(mu) + δ,
     by weighted least squares in logit space plus Gaussian priors on ln sd (centred
@@ -247,11 +271,19 @@ def fit_receiving_yards(
         raise ValueError(f"invalid parameter pi0={pi0}")
     if not points:
         raise FitError("no Fair Probabilities to fit")
-    # The 1-point fit is the fallback and the starting point for the full fit. Its
-    # anchor is the heaviest point (the Main Line, when present); among equal
-    # weights, the one nearest 50%, not an extreme Rung such as "10+" at −2000.
-    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
-    start = _fit_main_line_only(anchor, position, pi0)
+    anchor = _anchor(points)
+    try:
+        start = _fit_main_line_only(anchor, position, pi0)
+    except FitError:
+        if pi0 is None:
+            raise
+        # The anchor needs P(Y > 0) above 1 − pi0: the yards and receptions markets disagree on
+        # P(0). The yards market is the one being fitted, so it wins (review finding 1).
+        log.warning(
+            "P(Y >= %s) = %s is out of reach with the receptions P(0) = %.3f; fitting P(0) freely",
+            anchor.threshold, anchor.prob, pi0,
+        )
+        return fit_receiving_yards(points, position)
     if len(points) == 1:
         return start
 
@@ -304,11 +336,25 @@ def fit_receiving_yards(
     return receiving_yards(mu, sd, position, pi0)
 
 
-class Poisson:
-    """Poisson(lam) counts: TDs from an anytime-TD price, and the Base Rate stats.
+class _Count:
+    """An integer count on 0, 1, 2, ... backed by a frozen scipy distribution `_dist`.
 
-    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x).
+    sf(x) = P(Y >= x), with a fractional x rounded up (Y >= 4.5 means Y >= 5);
+    ppf(u) = the smallest k with P(Y <= k) >= u.
     """
+
+    _dist: object
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        x = np.ceil(np.asarray(x, dtype=float))
+        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        return self._dist.ppf(np.asarray(u, dtype=float))
+
+
+class Poisson(_Count):
+    """Poisson(lam) counts: TDs from an anytime-TD price, and the Base Rate stats."""
 
     def __init__(self, lam: float):
         if not lam >= 0:
@@ -316,24 +362,20 @@ class Poisson:
         self.lam = float(lam)
         self._dist = stats.poisson(self.lam)
 
-    def sf(self, x: np.ndarray) -> np.ndarray:
-        x = np.ceil(np.asarray(x, dtype=float))
-        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
-
     def ppf(self, u: np.ndarray) -> np.ndarray:
-        if self.lam == 0:
+        if self.lam == 0:  # scipy's Poisson(0) answers -1 at u = 0
             return np.zeros_like(np.asarray(u, dtype=float))
-        return self._dist.ppf(np.asarray(u, dtype=float))
+        return super().ppf(u)
 
     @property
     def mean(self) -> float:
         return self.lam
 
 
-class NegativeBinomial:
+class NegativeBinomial(_Count):
     """Receptions: NB with mean mu and size r, so Var = mu + mu²/r (research Q1b, Q4).
 
-    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x). As r → ∞ it tends to Poisson(mu).
+    As r → ∞ it tends to Poisson(mu).
     """
 
     def __init__(self, mu: float, r: float):
@@ -341,15 +383,6 @@ class NegativeBinomial:
             raise ValueError(f"invalid negative binomial parameters mu={mu}, r={r}")
         self.mu, self.r = float(mu), float(r)
         self._dist = stats.nbinom(self.r, self.r / (self.r + self.mu))
-
-    def sf(self, x: np.ndarray) -> np.ndarray:
-        """P(Y >= x); a fractional x is rounded up (Y >= 4.5 means Y >= 5)."""
-        x = np.ceil(np.asarray(x, dtype=float))
-        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
-
-    def ppf(self, u: np.ndarray) -> np.ndarray:
-        """Smallest integer k with P(Y <= k) >= u."""
-        return self._dist.ppf(np.asarray(u, dtype=float))
 
     @property
     def mean(self) -> float:
@@ -367,13 +400,20 @@ _REC_MU_RANGE = (0.01, 40.0)  # mu the model allows, catches
 _LN_R_RANGE = (math.log(0.05), math.log(1e4))  # 1e4: Poisson for any practical purpose
 
 
-def receptions_r_relation(mu: float, position: str) -> float:
-    """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+@cache
+def _receptions_params(position: str) -> tuple[float, float]:
+    """(r_a, r_b) of the position's NB size relation, from params/dispersion.json."""
     try:
         rel = params.load("dispersion")["receptions"][position]
     except KeyError:
         raise ValueError(f"no receptions model for position {position!r}") from None
-    return rel["r_a"] * mu ** rel["r_b"]
+    return rel["r_a"], rel["r_b"]
+
+
+def receptions_r_relation(mu: float, position: str) -> float:
+    """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+    r_a, r_b = _receptions_params(position)
+    return r_a * mu**r_b
 
 
 def _receptions_on_relation(mu: float, position: str) -> NegativeBinomial:
@@ -410,8 +450,7 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
     receptions_r_relation(1.0, position)  # validate before doing any work
     if not points:
         raise FitError("no Fair Probabilities to fit")
-    # The anchor is the heaviest point (the Main Line, when present), as in fit_receiving_yards.
-    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+    anchor = _anchor(points)
     start = _fit_receptions_one_point(anchor, position)
     if len(points) == 1:
         return start
@@ -431,7 +470,7 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
         result = optimize.minimize_scalar(
             objective_mu, bounds=tuple(ln_mu_range), method="bounded", options={"xatol": 1e-10}
         )
-        return _receptions_on_relation(math.exp(result.x), position)
+        return _checked_receptions(_receptions_on_relation(math.exp(result.x), position), anchor)
 
     def objective(theta: np.ndarray) -> float:
         in_range = ln_mu_range[0] <= theta[0] <= ln_mu_range[1] and _LN_R_RANGE[0] <= theta[1] <= _LN_R_RANGE[1]
@@ -452,7 +491,26 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
     )
     if not math.isfinite(result.fun):
         raise FitError("no receptions fit within the model's range")
-    return NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1]))
+    return _checked_receptions(NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1])), anchor)
+
+
+# The most a receptions fit may miss its anchor (the Main Line) by, in logit: 1.0 is 0.50 vs 0.73.
+# A fit that misses by more is being pulled by points that contradict it, i.e. bad prices.
+RECEPTIONS_ANCHOR_TOL = 1.0
+
+
+def _checked_receptions(dist: NegativeBinomial, anchor: FairPoint) -> NegativeBinomial:
+    """dist, or FitError when it sits on the edge of the model's mu range or misses its anchor."""
+    lo, hi = _REC_MU_RANGE
+    if not lo * (1 + 1e-6) < dist.mu < hi * (1 - 1e-6):
+        raise FitError(f"receptions fit ran to the edge of mu in {_REC_MU_RANGE} (mu = {dist.mu:.3g})")
+    miss = abs(float(_residuals(dist, np.array([anchor.threshold]), logit(np.array([anchor.prob])))[0]))
+    if miss > RECEPTIONS_ANCHOR_TOL:
+        raise FitError(
+            f"receptions fit gives P(Y >= {anchor.threshold}) = {float(dist.sf(np.array([anchor.threshold]))[0]):.3f} "
+            f"against {anchor.prob:.3f}: the other points contradict it"
+        )
+    return dist
 
 
 _TD_LAMBDA_MAX = 20.0  # bracket for the root-find when there is no anytime point

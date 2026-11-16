@@ -104,6 +104,19 @@ def test_a_ladder_without_main_line_needs_three_points_to_free_r():
     assert free.r != pytest.approx(r_relation(free.mean, "WR"), rel=1e-3)
 
 
+@pytest.mark.parametrize(
+    "pts",
+    [
+        [(5, 0.6, 3.0), (30, 0.6, 1.0)],  # fixed r: runs to a degenerate mu ≈ 0.09
+        [(5, 0.6, 3.0), (30, 0.6, 1.0), (31, 0.6, 1.0), (32, 0.6, 1.0)],  # free r: runs to mu = 40
+    ],
+)
+def test_contradictory_points_are_a_fit_error_not_a_silent_fit(pts):
+    # Review finding 4: neither path checked where the optimiser stopped.
+    with pytest.raises(FitError):
+        fit_receptions([FairPoint(*p) for p in pts], "WR")
+
+
 @pytest.mark.parametrize("position, threshold, prob", [("WR", 6, 0.53), ("TE", 1, 0.64), ("WR", 3, 0.47)])
 def test_main_line_only_reproduces_the_main_line_exactly(position, threshold, prob):
     fit = fit_receptions([FairPoint(threshold, prob, 3.0)], position)
@@ -163,6 +176,18 @@ def test_receiving_yards_pi0_from_the_receptions_fit():
     p_zero_yards = yards.sf(np.array([0]))[0] - yards.sf(np.array([1]))[0]
     p_zero_catches = 1 - rec.sf(np.array([1]))[0]
     assert p_zero_yards == pytest.approx(p_zero_catches, abs=1e-12)
+
+
+@pytest.mark.parametrize("rungs", [[], [(20, 0.55), (30, 0.35), (40, 0.2)]])
+def test_receiving_yards_out_of_reach_of_the_receptions_pi0_falls_back_to_a_free_pi0(rungs):
+    # Review finding 1: P(Y >= 10) = 0.80 can't be reached with P(0) = 0.22 (S(10) <= 0.78), so the
+    # fit raised and predict dropped receiving yards. The yards market wins: pi0 is fitted freely.
+    pts = [FairPoint(10, 0.80, 3.0)] + [FairPoint(x, p, 1.0) for x, p in rungs]
+    free = fit_receiving_yards(pts, "TE")
+    fit = fit_receiving_yards(pts, "TE", pi0=0.22)
+    assert fit.pi0 < 0.20
+    assert fit.mean == pytest.approx(free.mean, rel=1e-9)
+    assert fit.sf(np.array([10]))[0] == pytest.approx(0.80, abs=0.02)
 
 
 @pytest.mark.parametrize("pi0", [-0.1, 1.0, 1.5])

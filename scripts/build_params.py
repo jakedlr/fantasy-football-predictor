@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -322,12 +323,43 @@ def fit_pi0(mu: np.ndarray, y: np.ndarray) -> tuple[float, float]:
     return float(res.x[0]), float(res.x[1])
 
 
-def _hurdle_nonzero_nll(params, m: np.ndarray, y: np.ndarray, shift: float) -> float:
-    """Negative log-likelihood of nonzero integer yards under a zero-truncated, discretized
-    gamma on y + shift with mean m + shift and sd a * m^b (params = ln a, b)."""
+def _location_for_nonzero_mean(target: np.ndarray, sd: np.ndarray, shift: float, max_iter: int = 100) -> np.ndarray:
+    """The gamma location m whose zero-truncated nonzero part has mean `target`, solved exactly as
+    ffp.distributions.receiving_yards solves it at runtime (the gamma on X + shift has mean
+    m + shift and sd `sd`; the bin X in (-1/2, 1/2) is removed): the step m <- max(m - error, m/2),
+    to the same 1e-11 relative tolerance. Vectorised, using E[G; G in A] = mean * P_{k+1}(A) for a
+    gamma G. Raises ValueError where it doesn't converge, as the runtime raises FitError.
+
+    One approximation remains: this is the continuous part's mean, the runtime takes the mean of
+    the discretised bins. They differ by ~3e-5 relative at typical targets and by up to ~0.2% for
+    tiny targets with a wide sd, where the gamma is steep at its lower end. An exact discrete mean
+    needs a sum over the integer support per row, too slow inside the NLL."""
+    target = np.asarray(target, dtype=float)
+    m = target.copy()
+    lo, hi = max(shift - 0.5, 0.0), shift + 0.5
+    for _ in range(max_iter):
+        mean = m + shift
+        k, scale = (mean / sd) ** 2, sd * sd / mean
+        zero_bin = special.gammainc(k, hi / scale) - special.gammainc(k, lo / scale)
+        mass_in_bin = mean * (special.gammainc(k + 1, hi / scale) - special.gammainc(k + 1, lo / scale))
+        err = (mean - mass_in_bin) / (1.0 - zero_bin) - shift - target
+        done = np.abs(err) < 1e-11 * target
+        if done.all():
+            return m
+        m = np.where(done, m, np.maximum(m - err, m / 2))
+    raise ValueError(f"nonzero mean did not converge for {int((~done).sum())} of {done.size} targets")
+
+
+def _hurdle_nonzero_nll(params, target: np.ndarray, y: np.ndarray, shift: float) -> float:
+    """Negative log-likelihood of nonzero integer yards under the runtime model: a zero-truncated,
+    discretized gamma on y + shift with sd a * target^b, its location solved so the truncated
+    nonzero mean is `target` = mu / (1 - pi0) (params = ln a, b)."""
     a, b = np.exp(params[0]), params[1]
-    sd = a * m ** b
-    mean = m + shift
+    sd = a * target ** b
+    try:
+        mean = _location_for_nonzero_mean(target, sd, shift) + shift
+    except ValueError:  # no runtime distribution exists here either: steer the optimiser away
+        return math.inf
     k, scale = (mean / sd) ** 2, sd * sd / mean
     cdf = lambda v: special.gammainc(k, np.maximum(v, 0.0) / scale)  # noqa: E731
     p = cdf(y + shift + 0.5) - cdf(y + shift - 0.5)
@@ -336,7 +368,8 @@ def _hurdle_nonzero_nll(params, m: np.ndarray, y: np.ndarray, shift: float) -> f
 
 
 def fit_sd_relation(mu: np.ndarray, y: np.ndarray, c0: float, c1: float, shift: float) -> tuple[float, float]:
-    """MLE of (a, b) in sd_nz = a * m^b for the nonzero part, with m = mu / (1 - pi0(mu))."""
+    """MLE of (a, b) in sd_nz = a * m^b for the nonzero part, m = mu / (1 - pi0(mu)) its mean,
+    with the gamma located as at runtime (see _hurdle_nonzero_nll)."""
     nz = y != 0
     m = mu[nz] / (1.0 - special.expit(c0 + c1 * np.log(mu[nz])))
     res = optimize.minimize(_hurdle_nonzero_nll, x0=[np.log(3.0), 0.6], args=(m, y[nz], shift), method="Nelder-Mead",
