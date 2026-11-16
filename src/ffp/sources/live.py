@@ -35,12 +35,17 @@ class DkStat(NamedTuple):
     slug: str  # short name used in payload keys: dk_<slug>_ladder, dk_<slug>_ou
     category: str
     ladder: str
-    main_line: str
+    main_line: str | None  # None: the stat has no O/U, and there's no dk_<slug>_ou payload
+    # More subcategories merged into dk_<slug>_ladder when the league lists them; never an error when it doesn't.
+    extra_ladders: tuple[str, ...] = ()
 
 
 DK_STATS = {
     "receiving_yards": DkStat("rec_yds", "Receiving Props", "Receiving Yards", "Rec Yards O/U"),
     "receptions": DkStat("receptions", "Receiving Props", "Receptions", "Receptions O/U"),
+    # Anytime, 1st TD and 2+ are in "TD Scorer"; 3+ has its own subcategory. Only the anytime price is
+    # needed to fit TDs, so a missing "3+ TDs" just means no 3+ Rungs.
+    "rush_rec_tds": DkStat("tds", "TD Scorers", "TD Scorer", None, extra_ladders=("3+ TDs",)),
 }
 
 
@@ -67,7 +72,9 @@ def dk_subcategory_ids(league: dict, category: str, subcategory: str) -> list[tu
 def fetch_draftkings(http: Http, stats: Iterable[str], on_response: OnResponse | None = None) -> dict[str, dict]:
     """The league response, then each stat's Ladder and Main Line (O/U) subcategory responses, as
     {"dk_league": ..., "dk_<slug>_ladder": ..., "dk_<slug>_ou": ...} in request order. A name the league lists
-    under several subcategory ids is fetched from each, merged into one payload."""
+    under several subcategory ids is fetched from each, merged into one payload, and so are a stat's
+    extra_ladders. A stat without an O/U (rush_rec_tds) has no "dk_<slug>_ou": parse it with
+    main_line_json None."""
     wanted = list(stats)
     unknown = [s for s in wanted if s not in DK_STATS]
     if unknown:
@@ -78,8 +85,15 @@ def fetch_draftkings(http: Http, stats: Iterable[str], on_response: OnResponse |
     plan = []
     for stat in wanted:
         dk = DK_STATS[stat]
-        plan.append((f"dk_{dk.slug}_ladder", dk_subcategory_ids(league, dk.category, dk.ladder)))
-        plan.append((f"dk_{dk.slug}_ou", dk_subcategory_ids(league, dk.category, dk.main_line)))
+        ladder_ids = dk_subcategory_ids(league, dk.category, dk.ladder)
+        for extra in dk.extra_ladders:
+            try:
+                ladder_ids += dk_subcategory_ids(league, dk.category, extra)
+            except SubcategoryNotFound:
+                pass
+        plan.append((f"dk_{dk.slug}_ladder", ladder_ids))
+        if dk.main_line is not None:
+            plan.append((f"dk_{dk.slug}_ou", dk_subcategory_ids(league, dk.category, dk.main_line)))
 
     payloads = {"dk_league": league}
     for name, ids in plan:
