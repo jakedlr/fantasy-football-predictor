@@ -1,6 +1,7 @@
 """Report: Score Percentiles per player -> OUTPUT.md and output.json."""
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
@@ -82,3 +83,34 @@ def write_markdown(
     lines += ["", "## Skipped", ""]
     lines += [f"- {s.name}: {s.reason}" for s in skipped] or ["None."]
     Path(path).write_text("\n".join(lines) + "\n")
+
+
+def write_json(
+    results: Sequence[PlayerResult],
+    skipped: Sequence[SkippedPlayer],
+    rules_name: str,
+    generated_at: datetime,
+    path: Path,
+    assumptions: Sequence[str] = (),
+) -> None:
+    data = {
+        "generated_at": generated_at.isoformat(),
+        "scoring_rules": rules_name,
+        "assumptions": list(assumptions),
+        "players": [
+            {
+                "player": r.player,
+                "team": r.team,
+                "game": r.game,
+                "kickoff": r.kickoff,
+                "position": r.position,
+                "percentiles": {f"P{k}": v for k, v in r.percentiles.items()},
+                "chance_of_at_least": {str(t): p for t, p in r.chances.items()},
+                "flags": list(r.flags),
+                "stats": {stat: asdict(detail) for stat, detail in r.stats.items()},
+            }
+            for r in results
+        ],
+        "skipped": [{"player": s.name, "reason": s.reason} for s in skipped],
+    }
+    Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")

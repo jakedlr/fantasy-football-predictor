@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ffp.report import PlayerResult, SkippedPlayer, StatDetail, write_markdown
+from ffp.report import PlayerResult, SkippedPlayer, StatDetail, write_json, write_markdown
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 
@@ -43,3 +43,9 @@ def test_markdown_matches_golden_file(tmp_path):
     out = tmp_path / "OUTPUT.md"
     write_markdown(RESULTS, SKIPPED, "espn-league", GENERATED_AT, out, assumptions=ASSUMPTIONS)
     assert out.read_text() == (GOLDEN / "OUTPUT.md").read_text()
+
+
+def test_json_matches_golden_file(tmp_path):
+    out = tmp_path / "output.json"
+    write_json(RESULTS, SKIPPED, "espn-league", GENERATED_AT, out, assumptions=ASSUMPTIONS)
+    assert out.read_text() == (GOLDEN / "output.json").read_text()
