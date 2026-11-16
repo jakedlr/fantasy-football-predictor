@@ -132,7 +132,7 @@ FD_EVENT_URL = FD_HOST + "/api/event-page?_ak=" + FD_APP_KEY + "&eventId={event_
 FD_PASSING_TAB = "passing-props"
 FD_RECEIVING_TAB = fanduel.TABS["receiving_yards"]  # tabs the parser reads live in fanduel.TABS
 FD_RUSHING_TAB = "rushing-props"
-FD_TD_SCORER_TAB = "td-scorer-props"
+FD_TD_SCORER_TAB = fanduel.TABS[fanduel.TD_STAT]
 
 
 def fd_tabs(stats: Iterable[str]) -> list[str]:
