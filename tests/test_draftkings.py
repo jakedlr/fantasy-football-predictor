@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from ffp.markets import Game
-from ffp.sources.draftkings import parse_games
+from ffp.markets import Game, MainLine, PropMarket, Rung
+from ffp.sources.draftkings import parse_games, parse_prop_markets
 
 FIXTURES = Path(__file__).resolve().parents[1] / "research" / "fixtures"
 
@@ -51,3 +51,25 @@ def test_parse_games_marks_in_progress_game_started():
     [game] = parse_games({"events": [started_event()]})
     assert game.started is True
     assert (game.away, game.home, game.kickoff) == ("KC Chiefs", "DEN Broncos", "2026-11-16T21:25:00Z")
+
+
+def rec_yds_markets() -> dict[str, PropMarket]:
+    markets = parse_prop_markets(
+        load("dk_nfl_rec_yds_ladder.json"), load("dk_nfl_rec_yds_ou.json"), "receiving_yards"
+    )
+    return {m.player: m for m in markets}
+
+
+def test_ladder_rungs_for_named_player_mean_threshold_or_more():
+    zay = rec_yds_markets()["Zay Flowers"]
+    assert (zay.stat, zay.game_id, zay.book) == ("receiving_yards", "34118177", "draftkings")
+    rungs = {r.threshold: r.odds for r in zay.ladder}
+    # "70+" (milestoneValue 70) at −124 means P(Y >= 70); the Unicode minus is parsed.
+    assert rungs[70] == -124.0
+    assert rungs[20] == -2700.0
+    assert rungs[80] == 122.0
+    assert rungs[180] == 3500.0
+    assert all(r.book == "draftkings" for r in zay.ladder)
+    thresholds = [r.threshold for r in zay.ladder]
+    assert thresholds == sorted(thresholds)
+    assert len(rec_yds_markets()) == 13
