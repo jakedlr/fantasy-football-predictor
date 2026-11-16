@@ -168,6 +168,38 @@ def test_correlation_entry_keeps_the_params_schema():
     assert entry["n_games"] == 80 and entry["n_players"] == 10
 
 
+def test_trailing_carry_share_uses_earlier_games_of_the_season():
+    # Team carries come from every player on the team (an FB or WR carry counts too).
+    rows = [{"player_id": "R", "position": "RB", "season": 2023, "week": w, "game_id": f"g{w}", "carries": c}
+            for w, c in ((1, 10.0), (2, 20.0), (3, 15.0), (4, 5.0))]
+    rows += [{"player_id": "F", "position": "FB", "season": 2023, "week": w, "game_id": f"g{w}", "carries": 20.0 - c}
+             for w, c in ((1, 10.0), (2, 20.0), (3, 15.0), (4, 5.0))]
+    rows.append({"player_id": "R", "position": "RB", "season": 2024, "week": 1, "game_id": "n1", "carries": 9.0})
+    rows.append({"player_id": "F", "position": "FB", "season": 2024, "week": 1, "game_id": "n1", "carries": 1.0})
+    ps = stat_rows(rows)
+    out = bp.with_trailing_carry_share(ps.filter(pl.col("position") == "RB"), ps)
+    share = dict(zip(zip(out["season"], out["week"]), out["trail_carry_share"]))
+    # Shares 0.5, 1.0, 0.75, 0.25: mean of the previous 2-4 games, none before 2, reset each season.
+    assert share[(2023, 1)] is None and share[(2023, 2)] is None
+    assert share[(2023, 3)] == pytest.approx(0.75) and share[(2023, 4)] == pytest.approx(0.75)
+    assert share[(2024, 1)] is None
+
+
+def test_workhorse_override_entry():
+    rng = np.random.default_rng(13)
+    rows = []
+    for k in range(4):
+        for w in range(1, 18):
+            rows.append({"player_id": f"R{k}", "season": 2023, "week": w,
+                         "trail_carry_share": 0.7 if k < 3 else 0.3, "rushing_yards": float(rng.gamma(4, 20)),
+                         "rushing_tds": float(rng.poisson(0.5)), "receptions": float(rng.poisson(3)),
+                         "receiving_yards": float(rng.gamma(2, 10)), "receiving_tds": float(rng.poisson(0.1))})
+    entry = bp.workhorse_override(pl.DataFrame(rows), draws=5_000)
+    assert entry["rule"].startswith("RB games with trailing carry share >= 0.55")
+    assert entry["within"]["stats"] == bp.CORRELATION_STATS["RB"]
+    assert entry["within"]["n_players"] == 3 and entry["pooled"]["n_games"] == 51
+
+
 # ---------------------------------------------------------------- base rates
 
 
