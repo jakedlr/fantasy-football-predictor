@@ -41,8 +41,9 @@ def run(names, nflverse, books, now=BEFORE_MNF, **kwargs):
 
 def test_fixture_books_are_draftkings_and_fanduel(books):
     assert [b.book for b in books] == ["draftkings", "fanduel"]
+    sprint_3 = {"receiving_yards", "receptions", "rush_rec_tds"}
     for book in books:
-        assert {m.stat for m in book.markets} == {"receiving_yards", "receptions", "rush_rec_tds"}, book.book
+        assert {m.stat for m in book.markets} >= sprint_3, book.book
 
 
 def test_a_wr_is_resolved_to_his_team_position_and_next_game(nflverse, books):
@@ -73,12 +74,10 @@ def test_both_books_fit_one_stat_distribution(nflverse, books):
     assert by_threshold[72] >= 3 and by_threshold[70] >= 3
 
 
-def test_an_rb_is_skipped_until_rb_models_arrive(nflverse, books):
-    results, skipped = run(["Derrick Henry"], nflverse, books)
-    assert results == []
-    [henry] = skipped
-    assert henry.name == "Derrick Henry"
-    assert "RB" in henry.reason and "not supported yet" in henry.reason
+def test_a_kicker_is_still_skipped_as_unsupported(nflverse, books):
+    from ffp.predict import MODELED_POSITIONS
+
+    assert set(MODELED_POSITIONS) == {"QB", "RB", "WR", "TE"}
 
 
 def test_an_unknown_name_is_skipped_with_the_resolution_error(nflverse, books):
@@ -142,8 +141,8 @@ def test_a_book_name_spelled_differently_still_matches(nflverse):
 
 
 def test_skips_keep_input_order(nflverse, books):
-    _, skipped = run(["Not A Player", "Derrick Henry", "Zay Flowers", "Nobody Else"], nflverse, books)
-    assert [s.name for s in skipped] == ["Not A Player", "Derrick Henry", "Nobody Else"]
+    _, skipped = run(["Not A Player", "Harrison Butker", "Zay Flowers", "Nobody Else"], nflverse, books)
+    assert [s.name for s in skipped] == ["Not A Player", "Harrison Butker", "Nobody Else"]
 
 
 def test_next_game_is_the_schedule_game(nflverse):
@@ -276,7 +275,7 @@ def test_a_wr_with_every_market_gets_every_scoring_stat(nflverse, books, monkeyp
     calls = _capture_simulation(monkeypatch)
     [zay], [] = run(["Zay Flowers"], nflverse, books)
     [(dists, kwargs)] = calls
-    assert set(dists) == SPRINT_3_STATS
+    assert set(dists) == SPRINT_3_STATS | {"rushing_yards"}  # DK prices him at 2.5 rushing yards
     assert {"receptions", "receiving_yards", "receiving_tds", "rushing_tds"} <= set(zay.stats)
     assert not any(f.startswith("incomplete") for f in zay.flags)
     assert not any("receiving yards only" in f for f in zay.flags)
@@ -286,7 +285,7 @@ def test_a_wr_with_every_market_gets_every_scoring_stat(nflverse, books, monkeyp
     # TDs are split by the WR's rushing share; together they keep the anytime price's rate.
     from ffp import params
 
-    share = params.load("base_rates")["td_rushing_share"]["WR"]
+    share = params.load("base_rates")["td_rushing_share"]["WR"]  # no td_history: the position share
     total = dists["rushing_tds"].mean + dists["receiving_tds"].mean
     assert dists["rushing_tds"].mean == pytest.approx(share * total)
 
@@ -353,7 +352,7 @@ def test_a_player_whose_every_fit_fails_is_skipped(nflverse, books, monkeypatch)
     def fail(*args, **kwargs):
         raise FitError("out of reach")
 
-    for name in ("fit_receptions", "fit_receiving_yards", "fit_touchdowns"):
+    for name in ("fit_receptions", "fit_receiving_yards", "fit_rushing_yards", "fit_carries", "fit_touchdowns"):
         monkeypatch.setattr(ffp.predict, name, fail)
     results, [skip] = run(["Zay Flowers"], nflverse, books)
     assert results == []
@@ -363,7 +362,7 @@ def test_a_player_whose_every_fit_fails_is_skipped(nflverse, books, monkeypatch)
 def test_fair_points_are_reported_per_stat(nflverse, books):
     seen = []
     run(["Zay Flowers"], nflverse, books, on_fair_points=lambda t, stat, pts: seen.append(stat))
-    assert sorted(seen) == ["receiving_yards", "receptions", "rush_rec_tds"]
+    assert sorted(seen) == ["receiving_yards", "receptions", "rush_rec_tds", "rushing_yards"]
 
 
 def test_td_prices_are_devigged_with_the_td_prior_not_the_two_sided_one(nflverse, books):
@@ -379,3 +378,105 @@ def test_td_prices_are_devigged_with_the_td_prior_not_the_two_sided_one(nflverse
                if m.player == "Zay Flowers" and m.stat == "rush_rec_tds" for r in m.ladder if r.threshold == 1]
     expected = sum(apply_logit_shift(q, TD_PRIOR_C) for q in implied) / len(implied)
     assert anytime.prob == pytest.approx(expected, abs=1e-9)
+
+
+# Sprint 4: QB and RB.
+
+
+def test_fixture_books_carry_the_qb_and_rb_markets(books):
+    dk, fd = books
+    assert {m.stat for m in dk.markets} >= {
+        "passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "carries",
+    }
+    # FanDuel offers no interceptions-thrown or carries market.
+    assert {m.stat for m in fd.markets} >= {"passing_yards", "passing_tds", "rushing_yards"}
+    assert not {m.stat for m in fd.markets} & {"passing_interceptions", "carries"}
+
+
+def test_an_rb_gets_rushing_and_receiving_stats(nflverse, books, monkeypatch):
+    calls = _capture_simulation(monkeypatch)
+    [henry], [] = run(["Derrick Henry"], nflverse, books)
+    assert henry.position == "RB"
+    [(dists, kwargs)] = calls
+    assert {"rushing_yards", "rushing_tds", "receiving_tds", "fumbles_lost"} <= set(dists)
+    assert "carries" not in dists  # a Usage Stat: fitted for its mean, never simulated
+    assert dists["rushing_yards"].mean == pytest.approx(85, abs=10)  # Main Line 81.5
+    assert kwargs["corr"][0][0] == "rushing_yards"  # the RB matrix
+    assert henry.percentiles[50] > 0
+    assert not any("missing rushing yards" in f for f in henry.flags)
+
+
+def test_rb_fumbles_use_fitted_carries_plus_receptions(nflverse, books, monkeypatch):
+    from ffp import params
+    from ffp.distributions import fit_carries
+
+    calls, seen = _capture_simulation(monkeypatch), {}
+    run(["Derrick Henry"], nflverse, books, on_fair_points=lambda t, stat, pts: seen.update({stat: pts}))
+    [(dists, _)] = calls
+    carries = fit_carries(seen["carries"], "RB").mean
+    assert carries == pytest.approx(19.5, abs=2)  # Main Line 19.5
+    touches = carries + dists["receptions"].mean
+    rate = params.load("base_rates")["fumbles_lost_per_touch"]["RB"]
+    assert dists["fumbles_lost"].mean == pytest.approx(rate * touches, rel=1e-9)
+
+
+def test_an_rb_without_a_carries_market_gets_the_per_game_fumble_rate(nflverse, books, monkeypatch):
+    from ffp import params
+
+    calls = _capture_simulation(monkeypatch)
+    no_carries = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat != "carries"]) for b in books]
+    [henry], [] = run(["Derrick Henry"], nflverse, no_carries)
+    [(dists, _)] = calls
+    assert dists["fumbles_lost"].mean == pytest.approx(params.load("base_rates")["fumbles_lost_per_game"]["RB"])
+    assert not any("carries" in f for f in henry.flags)  # a Usage Stat is never flagged
+
+
+def test_a_qb_gets_passing_and_rushing_stats(nflverse, books, monkeypatch):
+    from ffp import params
+
+    calls = _capture_simulation(monkeypatch)
+    [herbert], [] = run(["Justin Herbert"], nflverse, books)
+    assert herbert.position == "QB"
+    [(dists, kwargs)] = calls
+    assert {"passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds"} <= set(dists)
+    assert dists["passing_yards"].mean == pytest.approx(200, abs=15)  # Main Line 200.5
+    assert dists["passing_yards"].pi0 < 0.05
+    assert dists["fumbles_lost"].mean == pytest.approx(params.load("base_rates")["fumbles_lost_per_game"]["QB"])
+    assert kwargs["corr"][0][0] == "passing_yards"  # the QB matrix
+    assert herbert.stats["passing_interceptions"].books == ["draftkings"]
+    assert not any(f.startswith("incomplete") for f in herbert.flags), herbert.flags
+
+
+def test_a_qb_without_a_passing_yards_market_is_flagged(nflverse, books):
+    no_pass = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat != "passing_yards"]) for b in books]
+    [herbert], [] = run(["Justin Herbert"], nflverse, no_pass)
+    assert "incomplete: missing passing yards" in herbert.flags
+
+
+def test_a_wr_with_a_rushing_market_gets_rushing_yards(nflverse, books, monkeypatch):
+    calls = _capture_simulation(monkeypatch)
+    run(["Zay Flowers"], nflverse, books)  # DK lists him at 2.5 rushing yards
+    [(dists, _)] = calls
+    assert "rushing_yards" in dists
+
+
+def test_a_wr_without_a_rushing_market_is_not_flagged_for_it(nflverse, books):
+    no_rush = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat != "rushing_yards"]) for b in books]
+    [zay], [] = run(["Zay Flowers"], nflverse, no_rush)
+    assert not any("rushing" in f for f in zay.flags)
+
+
+def test_the_td_split_uses_the_players_own_history(nflverse, books, monkeypatch):
+    from ffp.td_share import TdHistory, rushing_td_share
+
+    calls = _capture_simulation(monkeypatch)
+    pass_catcher = TdHistory(carries=300, targets=250, rushing_tds=6, receiving_tds=8)
+    run(["Derrick Henry"], nflverse, books, td_history={"00-0032764": pass_catcher})
+    [(dists, _)] = calls
+    share = rushing_td_share("RB", pass_catcher)
+    total = dists["rushing_tds"].mean + dists["receiving_tds"].mean
+    assert dists["rushing_tds"].mean / total == pytest.approx(share, rel=1e-9)
+    assert share < 0.7  # well off the RB position share (≈0.80)
+    # The 2-pt Base Rate is split the same way.
+    two = dists["rushing_2pt"].mean / (dists["rushing_2pt"].mean + dists["receiving_2pt"].mean)
+    assert two == pytest.approx(share, rel=1e-9)

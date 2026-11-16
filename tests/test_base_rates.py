@@ -195,3 +195,12 @@ def test_no_share_override_keeps_the_position_share():
 def test_share_override_out_of_range_is_rejected(share):
     with pytest.raises(ValueError, match="share"):
         base_rates.two_point_conversions("RB", fake_params(), rushing_share=share)
+
+
+def test_an_rb_without_carries_gets_the_per_game_fumble_rate():
+    # Sprint 4: RBs have no carries Base Rate; with no carries market, touches are unknown.
+    p = fake_params()
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(p["fumbles_lost_per_game"]["RB"])
+    with_carries = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p)
+    assert with_carries["fumbles_lost"].mean == pytest.approx(0.01 * 18.0)
