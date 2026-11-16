@@ -42,6 +42,28 @@ def test_run_writes_raw_responses_and_fair_probabilities_under_date(tmp_path):
     ]
 
 
+def test_fair_points_are_keyed_by_player_and_stat(tmp_path):
+    snap = Snapshot(RUN_AT, root=tmp_path)
+    snap.save_fair_points("A", "receptions", [FairPoint(5, 0.4, 3.0)])
+    snap.save_fair_points("A", "receiving_yards", [FairPoint(60, 0.5, 3.0)])
+    path = snap.save_fair_points("A", "receptions", [FairPoint(5, 0.45, 3.0)], game_id="9")
+
+    saved = _load(path)["fair_points"]
+    assert [(e["player"], e["stat"]) for e in saved] == [
+        ("A", "receptions"),
+        ("A", "receiving_yards"),
+    ]
+    assert saved[0]["points"] == [{"threshold": 5, "prob": 0.45, "weight": 3.0}]
+    assert saved[0]["game_id"] == "9"
+
+
+def test_snapshots_dir_is_gitignored():
+    from pathlib import Path
+
+    gitignore = Path(__file__).resolve().parents[1] / ".gitignore"
+    assert "snapshots/" in gitignore.read_text().splitlines()
+
+
 def test_manifest_lists_every_saved_response(tmp_path):
     snap = Snapshot(RUN_AT, root=tmp_path)
     fetched = datetime(2026, 11, 15, 17, 4, 9, tzinfo=timezone.utc)

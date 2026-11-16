@@ -130,7 +130,15 @@ class Snapshot:
             "game_id": game_id,
             "points": [asdict(p) for p in points],
         }
-        fair_points = [*self._fair_points, entry]
+        # One entry per (player, stat): a later save replaces the earlier one in place.
+        fair_points = [
+            e for e in self._fair_points if (e["player"], e["stat"]) != (player, stat)
+        ]
+        index = next(
+            (i for i, e in enumerate(self._fair_points) if (e["player"], e["stat"]) == (player, stat)),
+            len(fair_points),
+        )
+        fair_points.insert(index, entry)
         path = self._write_run_file("fair_points.json", "fair_points", fair_points)
         self._fair_points = fair_points
         return path
