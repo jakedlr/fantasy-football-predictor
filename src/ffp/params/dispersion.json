@@ -6,24 +6,24 @@
       "shift": 5.0,
       "pi0_c0": 7.421,
       "pi0_c1": -2.645,
-      "sd_a": 3.233,
-      "sd_b": 0.603
+      "sd_a": 3.109,
+      "sd_b": 0.612
     },
     "TE": {
       "family": "hurdle_shifted_gamma",
       "shift": 5.0,
       "pi0_c0": 7.268,
       "pi0_c1": -2.785,
-      "sd_a": 1.975,
-      "sd_b": 0.716
+      "sd_a": 1.898,
+      "sd_b": 0.726
     },
     "RB": {
       "family": "hurdle_shifted_gamma",
       "shift": 10.0,
       "pi0_c0": 4.498,
       "pi0_c1": -2.1,
-      "sd_a": 1.772,
-      "sd_b": 0.75
+      "sd_a": 1.693,
+      "sd_b": 0.761
     }
   },
   "receptions": {

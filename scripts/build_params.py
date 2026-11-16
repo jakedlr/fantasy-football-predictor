@@ -322,12 +322,31 @@ def fit_pi0(mu: np.ndarray, y: np.ndarray) -> tuple[float, float]:
     return float(res.x[0]), float(res.x[1])
 
 
-def _hurdle_nonzero_nll(params, m: np.ndarray, y: np.ndarray, shift: float) -> float:
-    """Negative log-likelihood of nonzero integer yards under a zero-truncated, discretized
-    gamma on y + shift with mean m + shift and sd a * m^b (params = ln a, b)."""
+def _location_for_nonzero_mean(target: np.ndarray, sd: np.ndarray, shift: float, iters: int = 6) -> np.ndarray:
+    """The gamma location m whose zero-truncated nonzero part has mean `target` (it settles
+    within ~5 iterations), as
+    ffp.distributions.receiving_yards solves it at runtime (the gamma on X + shift has mean
+    m + shift and sd `sd`; the bin X in (-1/2, 1/2) is removed). Vectorised fixed-point
+    iteration m <- m - error, using E[G; G in A] = mean * P_{k+1}(A) for a gamma G."""
+    m = np.array(target, dtype=float)
+    lo, hi = shift - 0.5, shift + 0.5
+    for _ in range(iters):
+        mean = m + shift
+        k, scale = (mean / sd) ** 2, sd * sd / mean
+        zero_bin = special.gammainc(k, hi / scale) - special.gammainc(k, max(lo, 0.0) / scale)
+        mass_in_bin = mean * (special.gammainc(k + 1, hi / scale) - special.gammainc(k + 1, max(lo, 0.0) / scale))
+        nonzero_mean = (mean - mass_in_bin) / (1.0 - zero_bin) - shift
+        m = np.maximum(m - (nonzero_mean - target), 0.5)
+    return m
+
+
+def _hurdle_nonzero_nll(params, target: np.ndarray, y: np.ndarray, shift: float) -> float:
+    """Negative log-likelihood of nonzero integer yards under the runtime model: a zero-truncated,
+    discretized gamma on y + shift with sd a * target^b, its location solved so the truncated
+    nonzero mean is `target` = mu / (1 - pi0) (params = ln a, b)."""
     a, b = np.exp(params[0]), params[1]
-    sd = a * m ** b
-    mean = m + shift
+    sd = a * target ** b
+    mean = _location_for_nonzero_mean(target, sd, shift) + shift
     k, scale = (mean / sd) ** 2, sd * sd / mean
     cdf = lambda v: special.gammainc(k, np.maximum(v, 0.0) / scale)  # noqa: E731
     p = cdf(y + shift + 0.5) - cdf(y + shift - 0.5)
@@ -336,7 +355,8 @@ def _hurdle_nonzero_nll(params, m: np.ndarray, y: np.ndarray, shift: float) -> f
 
 
 def fit_sd_relation(mu: np.ndarray, y: np.ndarray, c0: float, c1: float, shift: float) -> tuple[float, float]:
-    """MLE of (a, b) in sd_nz = a * m^b for the nonzero part, with m = mu / (1 - pi0(mu))."""
+    """MLE of (a, b) in sd_nz = a * m^b for the nonzero part, m = mu / (1 - pi0(mu)) its mean,
+    with the gamma located as at runtime (see _hurdle_nonzero_nll)."""
     nz = y != 0
     m = mu[nz] / (1.0 - special.expit(c0 + c1 * np.log(mu[nz])))
     res = optimize.minimize(_hurdle_nonzero_nll, x0=[np.log(3.0), 0.6], args=(m, y[nz], shift), method="Nelder-Mead",

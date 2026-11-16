@@ -291,3 +291,34 @@ def test_build_from_nflverse_keeps_every_committed_key(tmp_path):
         committed = json.loads((ROOT / "src/ffp/params" / f"{name}.json").read_text())
         built = json.loads((tmp_path / f"{name}.json").read_text())
         assert _keys(committed) <= _keys(built)
+
+
+def test_fit_sd_relation_recovers_the_runtime_models_power_law():
+    # Sprint 3 review finding 5: the fit put the gamma's location at m = mu / (1 - pi0), but
+    # ffp.distributions.receiving_yards solves the location so the *zero-truncated* nonzero
+    # mean is mu / (1 - pi0). Samples from the runtime model must give back its (a, b).
+    # Before the fix a TE's sd came out ~6% too wide at m = 10 and ~3% at m = 20.
+    from ffp.distributions import receiving_yards
+
+    rng = np.random.default_rng(10)
+    c0, c1, a, b, shift = 7.27, -2.79, 1.975, 0.716, 5.0  # TE, regenerated params
+    mus, ys = [], []
+    for mu in np.linspace(10, 50, 25):  # low mu, where the truncated zero bin is biggest
+        target = mu / (1 - special.expit(c0 + c1 * np.log(mu)))
+        nonzero = receiving_yards(target, a * target**b, "TE", pi0=0.0)  # the runtime nonzero part
+        y = nonzero.ppf(rng.uniform(size=1600))
+        mus.append(np.full(y.size, mu))
+        ys.append(y)
+    fa, fb = bp.fit_sd_relation(np.concatenate(mus), np.concatenate(ys), c0, c1, shift)
+    for m in (10.0, 20.0, 40.0):
+        assert fa * m**fb == pytest.approx(a * m**b, rel=0.01), m
+
+
+def test_the_location_solver_matches_the_runtime_model():
+    from ffp.distributions import receiving_yards
+
+    target = np.array([8.0, 15.0, 30.0, 70.0])
+    sd = 1.975 * target**0.716
+    m = bp._location_for_nonzero_mean(target, sd, 5.0)
+    for t, s_, loc in zip(target, sd, m):
+        assert loc == pytest.approx(receiving_yards(t, s_, "TE", pi0=0.0).m, rel=0.01)
