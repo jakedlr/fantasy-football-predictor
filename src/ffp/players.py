@@ -12,6 +12,8 @@ from ffp.names import normalize_name
 Row = Mapping[str, object]
 Fetch = Callable[[int], Iterable[Row]]
 
+SUPPORTED_POSITIONS = frozenset({"QB", "RB", "WR", "TE"})
+
 
 @dataclass(frozen=True)
 class Player:
@@ -57,6 +59,6 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     """The Player an INPUT.md line names."""
     key = normalize_name(text)
     for entry in roster:
-        if normalize_name(entry.name) == key:
+        if entry.position in SUPPORTED_POSITIONS and normalize_name(entry.name) == key:
             return Player(entry.gsis_id, entry.name, entry.position, entry.team)
     raise ValueError(text)
