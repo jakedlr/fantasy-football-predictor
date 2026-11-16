@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from ffp.scoring import load_rules
-from ffp.simulate import simulate_scores
+from ffp.simulate import sample_stats, simulate_scores
 
 
 class DiscreteDist:
@@ -40,3 +40,18 @@ def test_same_seed_gives_identical_percentiles():
     a = simulate_scores(dists, ESPN, n=5_000, seed=123)
     b = simulate_scores(dists, ESPN, n=5_000, seed=123)
     assert a.percentiles() == b.percentiles()
+
+
+def test_percentiles_are_ordered():
+    dists = {"receiving_yards": REC_YDS, "receptions": RECEPTIONS}
+    p = simulate_scores(dists, ESPN, n=5_000, seed=7).percentiles()
+    assert list(p) == [5, 25, 50, 75, 95]
+    assert p[5] <= p[25] <= p[50] <= p[75] <= p[95]
+    assert p[5] < p[95]
+
+
+def test_receiving_yards_only_scores_a_tenth_of_a_point_per_yard_under_espn():
+    dists = {"receiving_yards": REC_YDS}
+    samples = sample_stats(dists, 2_000, np.random.default_rng(99))
+    result = simulate_scores(dists, ESPN, n=2_000, seed=99)
+    np.testing.assert_allclose(result.points, 0.1 * samples["receiving_yards"])
