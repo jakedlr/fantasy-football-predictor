@@ -8,6 +8,7 @@ from ffp.odds import (
     apply_logit_shift,
     calibrate_logit_shift,
     devig,
+    devig_main_line,
 )
 
 
@@ -146,3 +147,46 @@ def test_calibrate_logit_shift_recovers_known_vig(p_over, c):
 def test_calibrate_logit_shift_negative_when_underround():
     # A market summing below 1 (e.g. a promo) gives c < 0.
     assert calibrate_logit_shift(0.45, 0.45) < 0
+
+
+@pytest.mark.parametrize(
+    "over, under",
+    [("−110", "−110"), ("−140", "+110"), (-140, 110), ("−800", "+500"), ("+150", "−190")],
+)
+def test_devig_main_line_sums_to_one(over, under):
+    p_over, p_under = devig_main_line(over, under)
+    assert abs(p_over + p_under - 1) < 1e-9
+
+
+def test_devig_main_line_matches_calibrated_shift():
+    q_over, q_under = american_to_implied(-140), american_to_implied(110)
+    c = calibrate_logit_shift(q_over, q_under)
+    p_over, p_under = devig_main_line(-140, 110)
+    assert p_over == pytest.approx(apply_logit_shift(q_over, c))
+    assert p_under == pytest.approx(apply_logit_shift(q_under, c))
+
+
+def test_devig_main_line_recovers_synthetic_fair_values():
+    # Fair 0.62 / 0.38, vig added with known c, then priced as the book would.
+    p_over, c = 0.62, 0.09
+    q_over, q_under = _add_vig(p_over, c), _add_vig(1 - p_over, c)
+    over = -100 * q_over / (1 - q_over)  # q > 0.5 -> negative American odds
+    under = 100 * (1 - q_under) / q_under  # q < 0.5 -> positive American odds
+    got_over, got_under = devig_main_line(over, under)
+    assert got_over == pytest.approx(p_over, abs=1e-9)
+    assert got_under == pytest.approx(1 - p_over, abs=1e-9)
+
+
+def test_devig_main_line_heavily_one_sided():
+    p_over, p_under = devig_main_line("−800", "+500")
+    assert abs(p_over + p_under - 1) < 1e-9
+    assert american_to_implied("+500") > p_under > 0
+    assert american_to_implied("−800") > p_over > 0.85
+
+
+def test_calibrated_c_lowers_a_rung():
+    # c from the Main Line, applied to a one-sided "X+" Rung at −260.
+    q_over, q_under = american_to_implied("−115"), american_to_implied("−105")
+    c = calibrate_logit_shift(q_over, q_under)
+    q_rung = american_to_implied("−260")
+    assert apply_logit_shift(q_rung, c) < q_rung

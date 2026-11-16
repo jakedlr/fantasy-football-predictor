@@ -100,3 +100,10 @@ def calibrate_logit_shift(q_over: float, q_under: float) -> float:
     lo_o, lo_u = _logit(q_over), _logit(q_under)
     bound = abs(lo_o) + abs(lo_u) + 1
     return _bisect(lambda c: _sigmoid(lo_o - c) + _sigmoid(lo_u - c) - 1, -bound, bound)
+
+
+def devig_main_line(over: str | float, under: str | float) -> tuple[float, float]:
+    """Fair Probabilities (p_over, p_under) of a Main Line via the logit shift."""
+    q_over, q_under = american_to_implied(over), american_to_implied(under)
+    c = calibrate_logit_shift(q_over, q_under)
+    return apply_logit_shift(q_over, c), apply_logit_shift(q_under, c)
