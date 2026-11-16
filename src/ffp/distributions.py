@@ -2,11 +2,14 @@
 
 import math
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Protocol
 
 import numpy as np
-from scipy import stats
-from scipy.special import expit
+from scipy import optimize, stats
+from scipy.special import expit, logit
+
+from ffp.fair import FairPoint
 
 
 class StatDistribution(Protocol):
@@ -135,3 +138,77 @@ def receiving_yards(mu: float, sd: float, position: str) -> HurdleShiftedGamma:
             return HurdleShiftedGamma(m, sd, pi0, RECEIVING_YARDS_SHIFT)
         m = max(m - err, m / 2)
     raise ValueError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
+
+
+# Fit settings, research/stat-distributions.md Q3.
+FIT_TAU = 0.10  # logit noise of a devigged Rung
+FIT_SIGMA_P = 0.15  # prior sd of ln sd around the dispersion relation
+FIT_LAMBDA = FIT_TAU**2 / FIT_SIGMA_P**2  # ≈ 0.44, weight of the prior against Σ wᵢ rᵢ²
+MAIN_LINE_ONLY_KAPPA = 0.93  # book-implied sd ≈ 0.93 × the nflverse-proxy relation
+_SF_CLIP = 1e-12
+
+
+def receiving_yards_sd_relation(mu: float, position: str) -> float:
+    """sd of the nonzero part from the dispersion relation: a·m^b, m = mu / (1 − pi0(mu))."""
+    p = _receiving_params(position)
+    m = mu / (1 - expit(p.c0 + p.c1 * math.log(mu)))
+    return p.a * m**p.b
+
+
+def _logit_sf(dist: HurdleShiftedGamma, x: np.ndarray) -> np.ndarray:
+    return logit(np.clip(dist.sf(x), _SF_CLIP, 1 - _SF_CLIP))
+
+
+def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
+    """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu)."""
+    x, target = np.array([point.threshold]), logit(point.prob)
+
+    def dist(ln_mu: float) -> HurdleShiftedGamma:
+        mu = math.exp(ln_mu)
+        sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position)
+        return receiving_yards(mu, sd, position)
+
+    ln_mu = optimize.brentq(
+        lambda ln_mu: _logit_sf(dist(ln_mu), x)[0] - target, math.log(1.0), math.log(500.0), xtol=1e-12
+    )
+    return dist(ln_mu)
+
+
+def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
+    """Fit a WR/TE receiving-yards Stat Distribution to Fair Probabilities.
+
+    Two parameters, (ln mu, ln sd), by weighted least squares in logit space plus
+    a Gaussian prior on ln sd centred on the dispersion relation:
+
+        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ (ln sd − ln sd_rel(mu))²,  λ = τ²/σ_p²
+
+    S(x) = P(Y >= x) of the discretised distribution, which already evaluates the
+    continuous part at x − ½ (the 0.5 continuity correction). pi0 is not fitted:
+    it follows from mu (see `receiving_yards`). With a single point (a Main Line
+    only), sd is fixed at 0.93·sd_rel(mu) and mu is root-found to reproduce it.
+    """
+    _receiving_params(position)  # validate before doing any work
+    if not points:
+        raise ValueError("no Fair Probabilities to fit")
+    # The 1-point fit on the heaviest point (the Main Line, when present) is the
+    # fallback and the starting point for the full fit.
+    start = _fit_main_line_only(max(points, key=lambda p: p.weight), position)
+    if len(points) == 1:
+        return start
+
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+
+    def objective(theta: np.ndarray) -> float:
+        mu, sd = np.exp(theta)
+        resid = target - _logit_sf(receiving_yards(mu, sd, position), x)
+        prior = theta[1] - math.log(receiving_yards_sd_relation(mu, position))
+        return float(np.sum(w * resid**2) + FIT_LAMBDA * prior**2)
+
+    theta0 = np.log([start.mean, receiving_yards_sd_relation(start.mean, position)])
+    result = optimize.minimize(
+        objective, theta0, method="Nelder-Mead", options={"xatol": 1e-7, "fatol": 1e-12}
+    )
+    mu, sd = np.exp(result.x)
+    return receiving_yards(float(mu), float(sd), position)

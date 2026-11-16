@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 from scipy.special import expit
 
-from ffp.distributions import receiving_yards
+from ffp.distributions import fit_receiving_yards, receiving_yards
+from ffp.fair import FairPoint
 
 GRID = np.arange(-10, 1500)
 
@@ -80,3 +81,75 @@ def test_ppf_of_mid_quantile_is_zero_inside_the_point_mass():
 def test_other_positions_are_rejected():
     with pytest.raises(ValueError):
         receiving_yards(30.0, 20.0, "RB")
+
+
+# --- fitting -----------------------------------------------------------------
+
+RELATION = {"WR": (6.75, -2.48, 3.00, 0.622), "TE": (6.99, -2.71, 2.33, 0.678)}
+
+
+def sd_relation(mu, position):
+    """research Q2/Q4: sd_nz = a * m**b with m = mu / (1 - pi0(mu))."""
+    c0, c1, a, b = RELATION[position]
+    m = mu / (1 - expit(c0 + c1 * math.log(mu)))
+    return a * m**b
+
+
+def points_from(dist, rungs, main_threshold):
+    pts = [FairPoint(t, float(dist.sf(np.array([t]))[0]), 1.0) for t in rungs]
+    pts.append(FairPoint(main_threshold, float(dist.sf(np.array([main_threshold]))[0]), 3.0))
+    return sorted(pts, key=lambda p: p.threshold)
+
+
+@pytest.mark.parametrize("position, mu", [("WR", 60.0), ("TE", 40.0)])
+def test_fit_recovers_a_distribution_on_the_relation(position, mu):
+    # Noise-free points from a player who follows the dispersion relation: the
+    # residuals and the prior are both zero at the truth, so it is the exact
+    # optimum and only optimiser tolerance separates the fit from it.
+    sd = sd_relation(mu, position)
+    truth = receiving_yards(mu, sd, position)
+    pts = points_from(truth, [25, 40, 60, 80, 100, 125], main_threshold=round(mu) - 6)
+
+    fit = fit_receiving_yards(pts, position)
+
+    assert fit.mean == pytest.approx(mu, rel=1e-3)
+    assert fit.sd == pytest.approx(sd, rel=1e-3)
+
+
+def test_fit_recovers_a_player_wider_than_the_relation_within_prior_bias():
+    # Truth sd is 1.2x the relation (a ~2-sigma departure per research Q2). The
+    # prior lambda (ln sd - ln sd_rel)^2 pulls ln sd toward the relation by about
+    # lambda / (lambda + H) * ln 1.2, where H = sum w_i (d logit S_i / d ln sd)^2.
+    # With 6 Rungs + Main Line H is ~5-10 against lambda = 0.44, so the expected
+    # shrinkage is ~1.5-3% of ln 1.2, i.e. ~1% of sd (measured: 0.9%, mean off by
+    # 0.07 yd). A 3% tolerance on sd and 1 yd on the mean allow for that bias
+    # and nothing more (the free fit would recover the truth exactly).
+    mu, position = 60.0, "WR"
+    sd = 1.2 * sd_relation(mu, position)
+    truth = receiving_yards(mu, sd, position)
+    pts = points_from(truth, [25, 40, 60, 80, 100, 125], main_threshold=53)
+
+    fit = fit_receiving_yards(pts, position)
+
+    assert fit.mean == pytest.approx(mu, abs=1.0)
+    assert fit.sd == pytest.approx(sd, rel=0.03)
+    assert fit.sd < sd  # shrunk toward the relation, not away from it
+
+
+def test_main_line_only_reproduces_the_main_line_probability_exactly():
+    pts = [FairPoint(53, 0.47, 3.0)]  # e.g. Over 52.5 devigged to 0.47
+
+    fit = fit_receiving_yards(pts, "WR")
+
+    assert fit.sf(np.array([53]))[0] == pytest.approx(0.47, abs=1e-9)
+    assert fit.sd == pytest.approx(0.93 * sd_relation(fit.mean, "WR"), rel=1e-9)
+
+
+def test_fit_rejects_other_positions():
+    with pytest.raises(ValueError):
+        fit_receiving_yards([FairPoint(30, 0.5, 3.0)], "RB")
+
+
+def test_fit_rejects_no_points():
+    with pytest.raises(ValueError):
+        fit_receiving_yards([], "WR")
