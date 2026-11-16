@@ -164,3 +164,34 @@ def test_committed_values_match_the_research_doc(br):
     assert br["rush_rec_2pt_per_game"]["WR"] == pytest.approx(0.016, abs=0.01)
     assert br["pass_2pt_per_game"]["QB"] == pytest.approx(0.074, abs=0.02)
     assert br["td_rushing_share"]["WR"] == pytest.approx(0.033, abs=0.02)
+
+
+# --- per-player TD share override (S4.3) ---------------------------------------
+
+
+@pytest.mark.parametrize("position", ["QB", "RB", "WR", "TE"])
+def test_two_point_split_by_a_players_own_share(position):
+    p = fake_params()
+    rate = p["rush_rec_2pt_per_game"][position]
+    two = base_rates.two_point_conversions(position, p, rushing_share=0.4)
+    assert two["rushing_2pt"].mean == pytest.approx(rate * 0.4)
+    assert two["receiving_2pt"].mean == pytest.approx(rate * 0.6)
+
+
+def test_base_rate_stats_passes_the_share_through():
+    p = fake_params()
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p, rushing_share=0.9)
+    assert stats["rushing_2pt"].mean == pytest.approx(0.04 * 0.9)
+    assert stats["receiving_2pt"].mean == pytest.approx(0.04 * 0.1)
+
+
+def test_no_share_override_keeps_the_position_share():
+    p = fake_params()
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p, rushing_share=None)
+    assert stats["rushing_2pt"].mean == pytest.approx(0.04 * 0.75)
+
+
+@pytest.mark.parametrize("share", [-0.1, 1.1, float("nan")])
+def test_share_override_out_of_range_is_rejected(share):
+    with pytest.raises(ValueError, match="share"):
+        base_rates.two_point_conversions("RB", fake_params(), rushing_share=share)

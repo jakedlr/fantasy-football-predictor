@@ -13,8 +13,9 @@ Assumptions:
   per-carry rate, neither of which exists yet; QB FL barely varies by usage tier,
   so the flat rate is the doc's stated alternative. S4.4 replaces it.
 - 2-pt conversions: a flat per-game rush+rec rate per position, split into
-  rushing_2pt and receiving_2pt by the position's TD rushing share (a 2-pt is
-  scored the way a TD of that kind is). Thinning a Poisson gives independent
+  rushing_2pt and receiving_2pt by the player's rushing TD share (ffp.td_share;
+  the position's share when the caller passes none), since a 2-pt is scored the
+  way a TD of that kind is. Thinning a Poisson gives independent
   Poissons whose rates sum to the original, so the split is exact. QBs also get
   passing_2pt at the per-game passing rate.
 - Fumbles lost with no usage market at all (neither receptions nor carries):
@@ -80,12 +81,23 @@ def td_rushing_share(position: str, params: Mapping | None = None) -> float:
     return float(_load(params)["td_rushing_share"][position])
 
 
-def two_point_conversions(position: str, params: Mapping | None = None) -> dict[str, Poisson]:
-    """2-pt conversions keyed by Scoring Stat; QBs also get passing_2pt."""
+def two_point_conversions(
+    position: str, params: Mapping | None = None, *, rushing_share: float | None = None
+) -> dict[str, Poisson]:
+    """2-pt conversions keyed by Scoring Stat; QBs also get passing_2pt.
+
+    `rushing_share` is the player's own rushing TD share (ffp.td_share); None uses the
+    position share.
+    """
     _check(position)
     p = _load(params)
     rate = p["rush_rec_2pt_per_game"][position]
-    share = td_rushing_share(position, p)
+    if rushing_share is None:
+        share = td_rushing_share(position, p)
+    elif 0.0 <= rushing_share <= 1.0:
+        share = float(rushing_share)
+    else:
+        raise ValueError(f"invalid rushing TD share {rushing_share} (must be in [0, 1])")
     out = {"rushing_2pt": Poisson(rate * share), "receiving_2pt": Poisson(rate * (1 - share))}
     if position == "QB":
         out["passing_2pt"] = Poisson(p["pass_2pt_per_game"]["QB"])
@@ -98,8 +110,12 @@ def base_rate_stats(
     receptions_mean: float | None,
     carries_mean: float | None = None,
     params: Mapping | None = None,
+    rushing_share: float | None = None,
 ) -> dict[str, Poisson]:
-    """All Base Rate Stat Distributions for one player, keyed by Scoring Stat."""
+    """All Base Rate Stat Distributions for one player, keyed by Scoring Stat.
+
+    `rushing_share` splits the 2-pt rate as in `two_point_conversions`.
+    """
     _check(position)
     p = _load(params)
     if position == "QB" or (receptions_mean is None and carries_mean is None):
@@ -108,4 +124,4 @@ def base_rate_stats(
     else:
         touches = expected_touches(position, receptions_mean=receptions_mean, carries_mean=carries_mean, params=p)
         fumbles = fumbles_lost(position, touches, p)
-    return {"fumbles_lost": fumbles, **two_point_conversions(position, p)}
+    return {"fumbles_lost": fumbles, **two_point_conversions(position, p, rushing_share=rushing_share)}
