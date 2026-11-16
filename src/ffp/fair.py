@@ -19,6 +19,7 @@ class FairPoint:
 
 MAIN_LINE_WEIGHT = 3.0
 RUNG_WEIGHT = 1.0
+PROB_FLOOR = 1e-4  # Fair Probabilities are clipped into [PROB_FLOOR, 1 - PROB_FLOOR]
 
 # Logit-shift vig c assumed for a book's Prop Market that has no Main Line to
 # calibrate on. Derived from a typical −115/−115 prop Main Line:
@@ -31,30 +32,39 @@ DEFAULT_PRIOR_C = math.log(1.15)
 def fair_points(
     markets: Sequence[PropMarket], prior_c: Mapping[str, float] | None = None
 ) -> list[FairPoint]:
+    """Fair Probabilities P(Y >= threshold) from one player's Prop Markets on one Scoring Stat.
+
+    Each market (one per book) is devigged with the logit-shift model: c is
+    calibrated on its Main Line, or taken from prior_c[book] (default
+    DEFAULT_PRIOR_C) when it has none. Every Rung becomes a point of weight 1;
+    the Main Line's fair Over becomes a point at floor(line) + 1 (stats are
+    integers, so Y > 69.5 means Y >= 70) of weight 3. All books' points are
+    merged by threshold and made non-increasing by weighted isotonic
+    regression. Returned sorted by threshold.
+    """
     prior_c = prior_c or {}
     points: list[FairPoint] = []
     for market in markets:
-        ml = market.main_line
-        if ml is None:
-            c = prior_c.get(market.book, DEFAULT_PRIOR_C)
-        else:
-            q_over = american_to_implied(ml.over_odds)
-            c = calibrate_logit_shift(q_over, american_to_implied(ml.under_odds))
-        for rung in market.ladder:
-            p = apply_logit_shift(american_to_implied(rung.odds), c)
-            points.append(FairPoint(threshold=rung.threshold, prob=p, weight=RUNG_WEIGHT))
-        if ml is not None:
-            points.append(
-                FairPoint(
-                    threshold=math.floor(ml.line) + 1,
-                    prob=apply_logit_shift(q_over, c),
-                    weight=MAIN_LINE_WEIGHT,
-                )
-            )
+        points.extend(_market_points(market, prior_c.get(market.book, DEFAULT_PRIOR_C)))
     return _isotonic(_merge_thresholds(points))
 
 
-PROB_FLOOR = 1e-4
+def _market_points(market: PropMarket, prior_c: float) -> list[FairPoint]:
+    """One book's devigged Rungs and Main Line, before merging and isotonic."""
+    ml = market.main_line
+    c = prior_c
+    if ml is not None:
+        q_over = american_to_implied(ml.over_odds)
+        c = calibrate_logit_shift(q_over, american_to_implied(ml.under_odds))
+    points = [
+        FairPoint(rung.threshold, apply_logit_shift(american_to_implied(rung.odds), c), RUNG_WEIGHT)
+        for rung in market.ladder
+    ]
+    if ml is not None:
+        points.append(
+            FairPoint(math.floor(ml.line) + 1, apply_logit_shift(q_over, c), MAIN_LINE_WEIGHT)
+        )
+    return points
 
 
 def _merge_thresholds(points: list[FairPoint]) -> list[FairPoint]:
