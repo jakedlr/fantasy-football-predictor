@@ -43,8 +43,15 @@ _STANDARD = ScoringRules(
 )
 
 
+PRESETS = {
+    "standard": _STANDARD,
+    "half-ppr": ScoringRules(name="half-ppr", offense={**_STANDARD.offense, "receptions": 0.5}),
+    "ppr": ScoringRules(name="ppr", offense={**_STANDARD.offense, "receptions": 1}),
+}
+
+
 def load_rules(name_or_path):
-    return _STANDARD
+    return PRESETS[name_or_path]
 
 
 def score(stat_line, rules):

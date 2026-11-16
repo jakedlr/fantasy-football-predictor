@@ -10,3 +10,16 @@ def test_standard_preset_scores_wr_line():
     # 85 * 0.1 = 8.5 rec yds; 1 * 6 = 6 rec TD; 6 * 0 = 0 receptions; 1 * -2 = -2 fumble
     # 8.5 + 6 + 0 - 2 = 12.5
     assert score(WR_LINE, load_rules("standard")) == pytest.approx(12.5)
+
+
+@pytest.mark.parametrize(
+    "preset, expected",
+    [
+        # 12.5 (standard total) + 6 * 0.5 receptions = 15.5
+        ("half-ppr", 15.5),
+        # 12.5 (standard total) + 6 * 1 receptions = 18.5
+        ("ppr", 18.5),
+    ],
+)
+def test_reception_presets_score_wr_line(preset, expected):
+    assert score(WR_LINE, load_rules(preset)) == pytest.approx(expected)
