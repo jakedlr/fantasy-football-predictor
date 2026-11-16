@@ -1,5 +1,5 @@
 {
-  "source": "scripts/build_params.py on 2026-11-15 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG, nflverse-data.md section 3 filters",
+  "source": "scripts/build_params.py on 2026-11-16 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG, nflverse-data.md section 3 filters",
   "note": "matrix = latent Gaussian-copula rho found by bisection so that simulating with the sample's pooled empirical margins reproduces the observed Spearman (spearman): within-player-season centred ranks (player-seasons with >= 6 qualifying games) for 'within', pooled player-games for 'pooled'; eigenvalues clipped and rescaled if not positive definite",
   "default": "within",
   "within": {
@@ -608,6 +608,183 @@
       "n_players": 165,
       "n_player_seasons": 425,
       "min_eigenvalue": 0.121
+    }
+  },
+  "rb_workhorse": {
+    "rule": "RB games with trailing carry share >= 0.55 (mean share of team carries over the player's previous 2-4 games of the season); same methods as the position matrices",
+    "within": {
+      "stats": [
+        "rushing_yards",
+        "rushing_tds",
+        "receptions",
+        "receiving_yards",
+        "receiving_tds"
+      ],
+      "matrix": [
+        [
+          1.0,
+          0.431,
+          -0.088,
+          -0.022,
+          0.182
+        ],
+        [
+          0.431,
+          1.0,
+          -0.063,
+          -0.002,
+          -0.047
+        ],
+        [
+          -0.088,
+          -0.063,
+          1.0,
+          0.707,
+          0.173
+        ],
+        [
+          -0.022,
+          -0.002,
+          0.707,
+          1.0,
+          0.392
+        ],
+        [
+          0.182,
+          -0.047,
+          0.173,
+          0.392,
+          1.0
+        ]
+      ],
+      "spearman": [
+        [
+          1.0,
+          0.358,
+          -0.086,
+          -0.025,
+          0.106
+        ],
+        [
+          0.358,
+          1.0,
+          -0.049,
+          0.0,
+          -0.022
+        ],
+        [
+          -0.086,
+          -0.049,
+          1.0,
+          0.677,
+          0.1
+        ],
+        [
+          -0.025,
+          0.0,
+          0.677,
+          1.0,
+          0.238
+        ],
+        [
+          0.106,
+          -0.022,
+          0.1,
+          0.238,
+          1.0
+        ]
+      ],
+      "n_games": 799,
+      "n_players": 44,
+      "n_player_seasons": 79,
+      "min_eigenvalue": 0.25
+    },
+    "pooled": {
+      "stats": [
+        "rushing_yards",
+        "rushing_tds",
+        "receptions",
+        "receiving_yards",
+        "receiving_tds"
+      ],
+      "matrix": [
+        [
+          1.0,
+          0.49,
+          -0.122,
+          -0.074,
+          0.072
+        ],
+        [
+          0.49,
+          1.0,
+          -0.023,
+          0.025,
+          -0.081
+        ],
+        [
+          -0.122,
+          -0.023,
+          1.0,
+          0.802,
+          0.382
+        ],
+        [
+          -0.074,
+          0.025,
+          0.802,
+          1.0,
+          0.503
+        ],
+        [
+          0.072,
+          -0.081,
+          0.382,
+          0.503,
+          1.0
+        ]
+      ],
+      "spearman": [
+        [
+          1.0,
+          0.405,
+          -0.119,
+          -0.075,
+          0.038
+        ],
+        [
+          0.405,
+          1.0,
+          -0.017,
+          0.021,
+          -0.045
+        ],
+        [
+          -0.119,
+          -0.017,
+          1.0,
+          0.775,
+          0.224
+        ],
+        [
+          -0.075,
+          0.021,
+          0.775,
+          1.0,
+          0.298
+        ],
+        [
+          0.038,
+          -0.045,
+          0.224,
+          0.298,
+          1.0
+        ]
+      ],
+      "n_games": 1061,
+      "n_players": 82,
+      "n_player_seasons": 174,
+      "min_eigenvalue": 0.183
     }
   }
 }
