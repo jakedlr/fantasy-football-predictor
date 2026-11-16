@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ffp.distributions import FitError, StatDistribution, fit_receiving_yards
 from ffp.fair import FairPoint, fair_points
-from ffp.markets import Game, PropMarket
+from ffp.markets import Game, PropMarket, parse_utc
 from ffp.players import (
     PROPS_NOT_POSTED,
     Player,
@@ -248,11 +248,7 @@ def _same_game(book_game: Game, game: ScheduledGame) -> bool:
         return False
     if teams != {game.home, game.away}:
         return False
-    return abs(_parse_utc(book_game.kickoff) - _parse_utc(game.kickoff)) <= KICKOFF_TOLERANCE
-
-
-def _parse_utc(iso: str) -> datetime:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    return abs(parse_utc(book_game.kickoff) - parse_utc(game.kickoff)) <= KICKOFF_TOLERANCE
 
 
 # --- Fit and simulate --------------------------------------------------------------

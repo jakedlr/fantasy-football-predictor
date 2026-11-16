@@ -18,22 +18,12 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
 from ffp.fair import FairPoint
-from ffp.sources.http import SECRET_QUERY_PARAMS
+from ffp.sources.http import redact_url
 
 
 
-def redact_url(url: str) -> str:
-    """url without its secret query parameters; everything else is kept as written."""
-    parts = urlsplit(url)
-    kept = [
-        pair
-        for pair in parts.query.split("&")
-        if pair and unquote_plus(pair.partition("=")[0]).lower() not in SECRET_QUERY_PARAMS
-    ]
-    return urlunsplit(parts._replace(query="&".join(kept)))
 
 
 class Snapshot:

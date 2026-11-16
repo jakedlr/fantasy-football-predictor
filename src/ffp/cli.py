@@ -5,17 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ffp import predict as pipeline
+from ffp.markets import parse_utc
 from ffp.players import load_roster, load_schedule
 from ffp.report import write_json, write_markdown
 from ffp.scoring import DEFAULT_RULES, load_rules
 
 log = logging.getLogger("ffp")
-
-
-def _utc_datetime(text: str) -> datetime:
-    """An ISO 8601 time; one without an offset is taken as UTC."""
-    moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     predict.add_argument(
         "--now",
-        type=_utc_datetime,
+        type=parse_utc,
         help="predict as if it were this time (ISO 8601, UTC unless an offset is given); default: now",
     )
     predict.add_argument(

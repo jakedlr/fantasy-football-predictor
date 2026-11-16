@@ -7,22 +7,14 @@ research/sportsbook-markets.md, DraftKings section.
 """
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
 
-from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line_copy
+from ..markets import Game, MainLine, PropMarket, Rung, format_utc, ladder_without_main_line_copy, parse_utc
 from ..odds import parse_american
 
 BOOK = "draftkings"
 
 # (player name as DK spells it, DK event id)
 Key = tuple[str, str]
-
-
-def _kickoff(start_event_date: str) -> str:
-    """DK's "2026-11-17T01:15:00.0000000Z" (7-digit fraction) as "2026-11-17T01:15:00Z"."""
-    whole_seconds = start_event_date.rstrip("Z").split(".")[0]
-    moment = datetime.fromisoformat(whole_seconds).replace(tzinfo=timezone.utc)
-    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def parse_games(subcategory_json: dict) -> list[Game]:
@@ -35,7 +27,7 @@ def parse_games(subcategory_json: dict) -> list[Game]:
                 game_id=event["id"],
                 away=teams["Away"],
                 home=teams["Home"],
-                kickoff=_kickoff(event["startEventDate"]),
+                kickoff=format_utc(parse_utc(event["startEventDate"])),  # DK sends a 7-digit fraction
                 book=BOOK,
                 # Anything but NOT_STARTED (STARTED, or a finished/suspended state) is not priced.
                 started=event.get("status") != "NOT_STARTED",

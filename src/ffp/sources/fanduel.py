@@ -8,9 +8,9 @@ research/sportsbook-markets.md, FanDuel section.
 
 import re
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime
 
-from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line_copy
+from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line_copy, parse_utc
 
 BOOK = "fanduel"
 
@@ -30,12 +30,6 @@ _OVER_UNDER = re.compile(r"^(?P<player>.+) (?P<side>Over|Under)$")
 _RUNG = re.compile(r"^(?P<player>.+) (?P<threshold>\d+)\+(?: .*)?$")
 
 
-def _kickoff(open_date: str) -> datetime:
-    """FD's "2026-11-17T01:21:00.000Z" as a UTC datetime, to the second."""
-    whole_seconds = open_date.rstrip("Z").split(".")[0]
-    return datetime.fromisoformat(whole_seconds).replace(tzinfo=timezone.utc)
-
-
 def parse_games(page_json: dict, now: datetime | None = None) -> list[Game]:
     """The Games listed in a FanDuel league page or event-page tab.
 
@@ -49,7 +43,7 @@ def parse_games(page_json: dict, now: datetime | None = None) -> list[Game]:
         if len(teams) != 2:
             continue
         away, home = teams
-        kickoff = _kickoff(event["openDate"])
+        kickoff = parse_utc(event["openDate"])
         games.append(
             Game(
                 game_id=str(event["eventId"]),

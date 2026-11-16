@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
 DEFAULT_CACHE_DIR = Path(".cache") / "http"  # gitignored
 REUSE_SECONDS = 60  # how long a response is reused: lines move fast
@@ -23,7 +23,6 @@ DELAY = (3.5, 5.0)  # seconds paused after each live request to a host (research
 
 log = logging.getLogger(__name__)
 
-# Query parameters that carry app keys (FanDuel's _ak): their values never reach a log or an error (PLAN S2.1).
 # Query parameters that carry app keys or credentials (e.g. FanDuel's _ak, PLAN S2.1).
 SECRET_QUERY_PARAMS = frozenset({"_ak", "ak", "apikey", "api_key", "key", "token"})
 _SECRET = re.compile(
@@ -35,6 +34,19 @@ def redact(text: str) -> str:
     """`text` with the value of every secret query parameter in it replaced by REDACTED."""
     return _SECRET.sub(r"\1REDACTED", text)
 
+
+def redact_url(url: str) -> str:
+    """url without its secret query parameters; everything else is kept as written.
+
+    For stored URLs (snapshots). `redact` is for free text such as log lines and errors.
+    """
+    parts = urlsplit(url)
+    kept = [
+        pair
+        for pair in parts.query.split("&")
+        if pair and unquote_plus(pair.partition("=")[0]).lower() not in SECRET_QUERY_PARAMS
+    ]
+    return urlunsplit(parts._replace(query="&".join(kept)))
 
 class _Redacting(logging.Filter):
     """Rewrites a log record whose message carries a secret query parameter."""

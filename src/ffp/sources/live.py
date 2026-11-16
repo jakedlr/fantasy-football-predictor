@@ -15,13 +15,14 @@ module strips it).
 from collections.abc import Callable, Iterable
 from typing import NamedTuple
 
+from . import draftkings, fanduel
 from .http import Http
 
 OnResponse = Callable[[str, str, str, dict], None]
 
 # --- DraftKings ----------------------------------------------------------------------
 
-DK_BOOK = "draftkings"
+DK_BOOK = draftkings.BOOK
 DK_LEAGUE_ID = 88808  # NFL
 DK_STATE = "dkusnj"  # New Jersey
 DK_LEAGUE_URL = f"https://sportsbook-nash.draftkings.com/api/sportscontent/{DK_STATE}/v1/leagues/{DK_LEAGUE_ID}"
@@ -106,7 +107,7 @@ def _merge(responses: list[dict]) -> dict:
 
 # --- FanDuel -------------------------------------------------------------------------
 
-FD_BOOK = "fanduel"
+FD_BOOK = fanduel.BOOK
 FD_APP_KEY = "FhMFpcPWXMeyZxOx"  # the website's public app key (research/sportsbook-markets.md)
 FD_HOST = "https://sbapi.nj.sportsbook.fanduel.com"
 FD_LEAGUE_URL = (f"{FD_HOST}/api/content-managed-page?page=CUSTOM&customPageId=nfl&_ak={FD_APP_KEY}"
@@ -114,7 +115,7 @@ FD_LEAGUE_URL = (f"{FD_HOST}/api/content-managed-page?page=CUSTOM&customPageId=n
 FD_EVENT_URL = FD_HOST + "/api/event-page?_ak=" + FD_APP_KEY + "&eventId={event_id}&tab={tab}"
 
 FD_PASSING_TAB = "passing-props"
-FD_RECEIVING_TAB = "receiving-props"
+FD_RECEIVING_TAB = fanduel.TABS["receiving_yards"]  # tabs the parser reads live in fanduel.TABS
 FD_RUSHING_TAB = "rushing-props"
 FD_TD_SCORER_TAB = "td-scorer-props"
 
