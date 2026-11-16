@@ -1,6 +1,10 @@
 """Scoring Rules: presets, Custom Scoring Rules from JSON, and stat line -> points."""
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
+
+DEFAULT_RULES = "espn-league"
 
 SCORING_STATS = (
     "passing_yards",
@@ -50,8 +54,11 @@ PRESETS = {
 }
 
 
-def load_rules(name_or_path):
-    return PRESETS[name_or_path]
+def load_rules(name_or_path, scoring_dir=Path("scoring")):
+    if name_or_path in PRESETS:
+        return PRESETS[name_or_path]
+    data = json.loads((Path(scoring_dir) / f"{name_or_path}.json").read_text())
+    return ScoringRules(name=data["name"], offense=data["offense"])
 
 
 def score(stat_line, rules):
