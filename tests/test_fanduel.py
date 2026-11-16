@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ffp.markets import Game
-from ffp.sources.fanduel import parse_games
+from ffp.sources.fanduel import parse_games, props_posted
 
 FIXTURES = Path(__file__).resolve().parents[1] / "research" / "fixtures"
 
@@ -71,3 +71,13 @@ def test_parse_games_marks_game_past_kickoff_started_when_now_given():
     at_kickoff = datetime(2026, 11, 16, 21, 25, tzinfo=timezone.utc)
     assert parse_games(page(fd_event()), now=before)[0].started is False
     assert parse_games(page(fd_event()), now=at_kickoff)[0].started is True
+
+
+def test_tab_with_only_game_lines_has_no_props_posted():
+    # Thursday's receiving tab four days out: moneyline, spread and total only.
+    assert props_posted(load("fd_nfl_event_receiving_tab_not_posted.json")) is False
+
+
+def test_tab_with_player_markets_has_props_posted():
+    for tab in ("receiving", "rushing", "passing", "td_scorer"):
+        assert props_posted(load(f"fd_nfl_event_{tab}_tab.json")) is True, tab

@@ -44,3 +44,20 @@ def parse_games(page_json: dict, now: datetime | None = None) -> list[Game]:
             )
         )
     return games
+
+
+def _markets(tab_json: dict) -> list[dict]:
+    return list(tab_json.get("attachments", {}).get("markets", {}).values())
+
+
+def props_posted(event_tab_json: dict) -> bool:
+    """Whether an event-page tab holds any player markets yet.
+
+    Days before a Game, FD's prop tabs answer with only the moneyline, spread
+    and total: "not posted, rerun closer to kickoff", not an error.
+    """
+    return any(
+        runner.get("isPlayerSelection")
+        for market in _markets(event_tab_json)
+        for runner in market.get("runners", [])
+    )
