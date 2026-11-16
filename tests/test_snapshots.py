@@ -98,3 +98,52 @@ def test_run_time_is_filed_in_utc(tmp_path):
     eastern = timezone(timedelta(hours=-5))
     snap = Snapshot(datetime(2026, 11, 15, 21, 30, 0, tzinfo=eastern), root=tmp_path)
     assert snap.run_dir == tmp_path / "2026-11-16" / "023000Z"
+
+
+def test_runs_starting_in_the_same_second_do_not_collide(tmp_path):
+    first = Snapshot(RUN_AT, root=tmp_path)
+    second = Snapshot(RUN_AT, root=tmp_path)
+    third = Snapshot(RUN_AT, root=tmp_path)
+    assert first.run_dir.name == "170405Z"
+    assert second.run_dir.name == "170405Z-2"
+    assert third.run_dir.name == "170405Z-3"
+    first.save_response("draftkings", "events", {"run": 1})
+    second.save_response("draftkings", "events", {"run": 2})
+    assert _load(second.run_dir / "manifest.json")["run_id"] == "170405Z-2"
+    assert len(_load(first.run_dir / "manifest.json")["responses"]) == 1
+
+
+@pytest.mark.parametrize(
+    "book, name",
+    [
+        ("fanduel", "../../escape"),
+        ("fanduel", "/etc/passwd"),
+        ("fanduel", "a/b\\c"),
+        ("../..", "x"),
+        ("fanduel", ".."),
+        ("fanduel", ""),
+    ],
+)
+def test_names_cannot_escape_the_run_directory(tmp_path, book, name):
+    snap = Snapshot(RUN_AT, root=tmp_path)
+    path = snap.save_response(book, name, {"ok": True})
+    assert path.parent == snap.run_dir
+    assert path.resolve().parent == snap.run_dir.resolve()
+    assert _load(path) == {"ok": True}
+    entry = _load(snap.run_dir / "manifest.json")["responses"][0]
+    assert entry["file"] == path.name
+    assert entry["name"] == name  # the original name is kept in the manifest
+
+
+def test_secret_query_params_are_stripped_from_stored_urls(tmp_path):
+    snap = Snapshot(RUN_AT, root=tmp_path)
+    url = (
+        "https://sbapi.example.com/api/event-page"
+        "?_ak=FhMFpcPWXMeyZxOx&eventId=123&AK=x&apikey=y&api_key=z&key=k&Token=t&tab=all"
+    )
+    snap.save_response("fanduel", "event-123", {"ok": True}, url=url)
+
+    stored = _load(snap.run_dir / "manifest.json")["responses"][0]["url"]
+    assert stored == "https://sbapi.example.com/api/event-page?eventId=123&tab=all"
+    for path in snap.run_dir.iterdir():
+        assert "FhMFpcPWXMeyZxOx" not in path.read_text()
