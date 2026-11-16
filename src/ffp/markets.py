@@ -23,6 +23,18 @@ class MainLine:
 
 
 @dataclass(frozen=True)
+class Game:
+    """One scheduled NFL game, as a book lists it."""
+
+    game_id: str  # the book's id
+    away: str  # team name as the book spells it
+    home: str
+    kickoff: str  # ISO 8601 UTC
+    book: str
+    started: bool  # in progress or finished; such Games are not priced
+
+
+@dataclass(frozen=True)
 class PropMarket:
     """A book's offer on one player's Scoring Stat in one Game."""
 
@@ -32,3 +44,4 @@ class PropMarket:
     book: str  # "draftkings" or "fanduel"
     main_line: MainLine | None
     ladder: tuple[Rung, ...]
+    team: str | None = None  # the player's team as the book spells it, when known
