@@ -63,6 +63,11 @@ def load_rules(name_or_path, scoring_dir=Path("scoring")):
     path = Path(name_or_path)
     if not path.is_file():
         path = Path(scoring_dir) / f"{name_or_path}.json"
+    if not path.is_file():
+        raise ValueError(
+            f"unknown Scoring Rules {str(name_or_path)!r}: not a preset "
+            f"({', '.join(PRESETS)}), not a file, and {path} does not exist"
+        )
     data = json.loads(path.read_text())
     for stat in data["offense"]:
         if stat not in SCORING_STATS:

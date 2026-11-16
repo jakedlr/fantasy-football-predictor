@@ -84,3 +84,8 @@ def test_kicker_and_dst_do_not_affect_offense_score(tmp_path):
     rules = load_rules(write_rules(tmp_path, data))
     # Only the TD scores: 1 * 6 = 6, even if the stat line carries K/DST-looking keys
     assert score({**WR_LINE, "pat_made": 1, "sacks": 1}, rules) == pytest.approx(6)
+
+
+def test_unknown_rules_name_errors(tmp_path):
+    with pytest.raises(ValueError, match="no-such-league"):
+        load_rules("no-such-league", scoring_dir=tmp_path)
