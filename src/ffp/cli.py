@@ -8,6 +8,7 @@ from ffp import predict as pipeline
 from ffp.markets import parse_utc
 from ffp.params import CORRELATION_KINDS
 from ffp.players import load_roster, load_schedule
+from ffp.td_share import load_td_history
 from ffp.report import write_json, write_markdown
 from ffp.scoring import DEFAULT_RULES, load_rules
 
@@ -76,16 +77,22 @@ def main(argv: list[str] | None = None) -> int:
         # Filed under the real fetch time, never --now: snapshots are price history (ADR 0001).
         snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, datetime.now(timezone.utc))
         books = pipeline.load_live_books(
-            Http(), [t.game for t in targets], now, on_response=_response_saver(snapshot)
+            Http(), list({t.game.game_id: t.game for t in targets}.values()), now,
+            on_response=_response_saver(snapshot),
+            stats=pipeline.market_stats_for({t.player.position for t in targets}),
         )
         if not books:
             print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)
             return 1
     else:
         books = []  # nobody to price: don't touch the sportsbooks
+    # Each player's TD history splits his TDs and 2-pt. Fetched only once odds are in hand (a
+    # failed odds fetch costs no nflverse download); fixture runs stay offline (position shares).
+    td_history = load_td_history(season) if books and not args.fixtures else {}
 
     results, unfitted = pipeline.predict(
-        targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation
+        targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,
+        td_history=td_history,
     )
     order = {name: i for i, name in reversed(list(enumerate(names)))}
     skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))

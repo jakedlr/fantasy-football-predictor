@@ -42,7 +42,7 @@ def test_a_te_with_every_market_has_no_flags_and_every_stat(tmp_path):
     assert andrews["position"] == "TE"
     assert andrews["flags"] == []
     assert {"receptions", "receiving_yards", "receiving_tds", "rushing_tds"} <= set(andrews["stats"])
-    assert "rushing yards are not modelled yet" in markdown  # listed once, under Assumptions
+    assert "Rushing yards count as 0 for a player no book prices them for" in markdown  # under Assumptions
 
 
 def test_the_correlation_option_is_accepted(tmp_path):
@@ -138,10 +138,14 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
     monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
     monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda season: {})
     seen_games = []
 
-    def fake_live_books(http, games, now, on_response=None):
+    seen_stats = []
+
+    def fake_live_books(http, games, now, on_response=None, stats=None):
         seen_games.extend(games)
+        seen_stats.extend(stats)
         on_response("fanduel", "fd_league", "https://example.test/page?_ak=SECRET&x=1", {"ok": True})
         return ffp.predict.load_fixture_books(FIXTURES)
 
@@ -155,7 +159,8 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
                  "--snapshots", str(snapshots)]) == 0
 
-    assert [g.game_id for g in seen_games] == ["2026_10_LAC_BAL"]  # only the RB-free target's Game
+    assert [g.game_id for g in seen_games] == ["2026_10_LAC_BAL"]  # both targets' Game, asked for once
+    assert "passing_yards" not in seen_stats and "rushing_yards" in seen_stats  # no QB asked for: no passing
     # Finding 1: filed under the real fetch time, not --now, so the price history stays true.
     [run_dir] = (snapshots / run_started.strftime("%Y-%m-%d")).iterdir()
     manifest = json.loads((run_dir / "manifest.json").read_text())
@@ -164,10 +169,12 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     assert [r["name"] for r in manifest["responses"]] == ["fd_league"]
     assert "SECRET" not in (run_dir / "manifest.json").read_text()
     fair = json.loads((run_dir / "fair_points.json").read_text())["fair_points"]
-    assert sorted((f["player"], f["player_id"], f["stat"], f["game_id"]) for f in fair) == [
-        ("Zay Flowers", "00-0039064", stat, "2026_10_LAC_BAL")
-        for stat in ("receiving_yards", "receptions", "rush_rec_tds")
+    zay = sorted((f["player_id"], f["stat"], f["game_id"]) for f in fair if f["player"] == "Zay Flowers")
+    assert zay == [
+        ("00-0039064", stat, "2026_10_LAC_BAL")
+        for stat in ("receiving_yards", "receptions", "rush_rec_tds", "rushing_yards")
     ]
+    assert {f["stat"] for f in fair if f["player"] == "Derrick Henry"} >= {"rushing_yards", "carries"}
 
 
 def test_a_live_run_with_nobody_to_price_makes_no_requests(tmp_path, monkeypatch):
@@ -178,8 +185,23 @@ def test_a_live_run_with_nobody_to_price_makes_no_requests(tmp_path, monkeypatch
     monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
     monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
     monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
     input_md = tmp_path / "INPUT.md"
-    input_md.write_text("Derrick Henry\n")
+    input_md.write_text("Not A Player\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
                  "--snapshots", str(tmp_path / "snaps")]) == 0
     assert not (tmp_path / "snaps").exists()
+
+
+def test_a_live_run_whose_odds_fail_fetches_no_td_history(tmp_path, monkeypatch):
+    import ffp.cli
+    import ffp.predict
+
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: [])
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1

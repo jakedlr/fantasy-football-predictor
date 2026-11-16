@@ -8,20 +8,25 @@ import csv
 import json
 import logging
 import re
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 
 from ffp import params
-from ffp.base_rates import base_rate_stats, td_rushing_share
+from ffp.base_rates import base_rate_stats
 from ffp.distributions import (
     FitError,
     StatDistribution,
+    fit_carries,
+    fit_interceptions,
+    fit_passing_tds,
+    fit_passing_yards,
     fit_receiving_yards,
     fit_receptions,
+    fit_rushing_yards,
     fit_touchdowns,
     prob_zero,
     split_touchdowns,
@@ -48,20 +53,58 @@ from ffp.report import PlayerResult, SkippedPlayer, StatDetail, chances
 from ffp.scoring import ScoringRules
 from ffp.simulate import simulate_scores
 from ffp.sources import draftkings, fanduel
+from ffp.td_share import TdHistory, rushing_td_share
 
 log = logging.getLogger(__name__)
 
 TD_STAT = fanduel.TD_STAT  # rushing + receiving TDs as the books price them; split after the fit
 # The stats fitted from Prop Markets, in fitting order: receptions first, since they set
 # receiving yards' P(0). Their names in "incomplete: missing ..." flags.
-MARKET_STATS = {"receptions": "receptions", "receiving_yards": "receiving yards", TD_STAT: "touchdowns"}
+MARKET_STATS = {
+    "receptions": "receptions",
+    "receiving_yards": "receiving yards",
+    "rushing_yards": "rushing yards",
+    "carries": "carries",
+    "passing_yards": "passing yards",
+    "passing_tds": "passing TDs",
+    "passing_interceptions": "interceptions",
+    TD_STAT: "touchdowns",
+}
+# Usage Stats: fitted for their mean (carries -> expected touches -> fumbles), never simulated or flagged.
+USAGE_STATS = ("carries",)
+# The market stats a position is expected to have: one missing is flagged "incomplete". Any other
+# stat is fitted when a book prices it (a WR's rushing yards) and otherwise counts as 0.
+CORE_STATS = {
+    "QB": ("passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", TD_STAT),
+    "RB": ("rushing_yards", "receptions", "receiving_yards", TD_STAT),
+    "WR": ("receptions", "receiving_yards", TD_STAT),
+    "TE": ("receptions", "receiving_yards", TD_STAT),
+}
+# The market stats _fit_markets fits for a position: what a live run fetches for it. QBs get no
+# receiving stats (MODEL_ASSUMPTIONS) and no carries (QB fumbles are a flat rate); only QBs pass.
+_SKILL_STATS = ("receptions", "receiving_yards", "rushing_yards", "carries", TD_STAT)
+POSITION_STATS = {
+    "QB": ("rushing_yards", "passing_yards", "passing_tds", "passing_interceptions", TD_STAT),
+    "RB": _SKILL_STATS,
+    "WR": _SKILL_STATS,
+    "TE": _SKILL_STATS,
+}
+
+
+def market_stats_for(positions) -> list[str]:
+    """The MARKET_STATS the given positions need, in MARKET_STATS order."""
+    wanted = {stat for position in positions for stat in POSITION_STATS[position]}
+    return [stat for stat in MARKET_STATS if stat in wanted]
+
+
 # The vig c a book's market is devigged with when it has no Main Line (one-sided TD prices never do).
 PRIOR_C = {TD_STAT: TD_PRIOR_C}
-# WR/TE are modelled in full; RB and QB arrive in Sprint 4.
-MODELED_POSITIONS = ("WR", "TE")
-# What the model leaves out for every WR/TE, listed once in the report's assumptions.
+MODELED_POSITIONS = ("QB", "RB", "WR", "TE")
+# What the model leaves out, listed once in the report's assumptions.
 MODEL_ASSUMPTIONS = (
-    "WR/TE rushing yards are not modelled yet (no rushing markets are fetched); they count as 0 points.",
+    "Rushing yards count as 0 for a player no book prices them for (most WRs and TEs).",
+    "QB receptions and receiving yards are not modelled; they count as 0.",
+    "QB fumbles lost are a flat per-game rate, not tied to sacks.",
 )
 
 NO_MARKETS = "no Prop Markets found for this player"
@@ -159,10 +202,7 @@ def _in_progress(game: ScheduledGame) -> str:
 
 
 def _unmodeled(player: Player) -> str:
-    return (
-        f"{player.position} is not supported yet: receiving yards are modelled for "
-        f"{'/'.join(MODELED_POSITIONS)} only (RB and QB arrive in Sprint 4)"
-    )
+    return f"{player.position} is not supported yet, only {'/'.join(MODELED_POSITIONS)}"
 
 
 # --- Book odds ---------------------------------------------------------------------
@@ -184,13 +224,22 @@ def load_fixture_books(fixtures: Path) -> list[BookOdds]:
         + draftkings.parse_prop_markets(read("dk_nfl_td_scorer.json"), None, TD_STAT)
         + draftkings.parse_prop_markets(read("dk_nfl_3plus_tds.json"), None, TD_STAT)
     )
-    receiving_tab = read("fd_nfl_event_receiving_tab.json")
-    td_tab = read("fd_nfl_event_td_scorer_tab.json")
-    fd_markets = (
-        fanduel.parse_prop_markets(receiving_tab, "receiving_yards")
-        + fanduel.parse_prop_markets(receiving_tab, "receptions")
-        + fanduel.parse_prop_markets(td_tab, TD_STAT)
-    )
+    for stat, slug in (("rushing_yards", "rush_yds"), ("carries", "rush_att"), ("passing_yards", "pass_yds"),
+                       ("passing_tds", "pass_tds"), ("passing_interceptions", "ints")):
+        dk_markets += draftkings.parse_prop_markets(read(f"dk_nfl_{slug}_ladder.json"), read(f"dk_nfl_{slug}_ou.json"), stat)
+    tabs = {
+        "receiving-props": read("fd_nfl_event_receiving_tab.json"),
+        "rushing-props": read("fd_nfl_event_rushing_tab.json"),
+        "passing-props": read("fd_nfl_event_passing_tab.json"),
+        "td-scorer-props": read("fd_nfl_event_td_scorer_tab.json"),
+    }
+    fd_markets = [
+        market
+        for stat in MARKET_STATS
+        if stat not in fanduel.NOT_OFFERED
+        for market in fanduel.parse_prop_markets(tabs[fanduel.TABS[stat]], stat)
+    ]
+    receiving_tab = tabs["receiving-props"]
     return [
         BookOdds(draftkings.BOOK, draftkings.parse_games(ladder), dk_markets),
         BookOdds(fanduel.BOOK, fanduel.parse_games(receiving_tab), fd_markets),
@@ -212,8 +261,11 @@ def load_live_books(
     games: Sequence[ScheduledGame],
     now: datetime,
     on_response: Callable | None = None,
+    stats: Sequence[str] | None = None,
 ) -> list[BookOdds]:
-    """Both books' Prop Markets for MARKET_STATS in `games`, fetched live.
+    """Both books' Prop Markets for `stats` (default MARKET_STATS) in `games`, fetched live.
+
+    Pass `market_stats_for(positions)` so a run with no QB doesn't fetch passing markets.
 
     DraftKings serves every Game in one set of subcategory responses per stat;
     each stat is fetched on its own, so a stat it doesn't list yet costs only
@@ -227,8 +279,9 @@ def load_live_books(
     on_response = _once(on_response)
     books = []
 
+    stats = list(MARKET_STATS if stats is None else stats)
     dk_markets, dk_games = [], None
-    for stat in MARKET_STATS:
+    for stat in stats:
         try:
             dk = live.fetch_draftkings(http, [stat], on_response=on_response)
             slug = live.DK_STATS[stat].slug
@@ -245,7 +298,7 @@ def load_live_books(
         log.warning("FanDuel left out: %s", _describe(error))
         return books
     wanted = sorted({g.game_id for g in fd_games for s in games if _same_game(g, s)})
-    tabs = live.fd_tabs(MARKET_STATS)
+    tabs = live.fd_tabs(stats)
     fd_markets = []
     for event_id in wanted:  # one event at a time, so one failed event costs only its own Game
         for tab in tabs:
@@ -254,8 +307,8 @@ def load_live_books(
             except failures as error:
                 log.warning("FanDuel event %s tab %s left out: %s", event_id, tab, _describe(error))
                 continue
-            for stat in MARKET_STATS:  # one stat at a time: a tab holds several (receiving yards, receptions)
-                if fanduel.TABS[stat] != tab:
+            for stat in stats:  # one stat at a time: a tab holds several (receiving yards, receptions)
+                if fanduel.TABS.get(stat) != tab:  # .get: NOT_OFFERED stats have no tab
                     continue
                 try:
                     fd_markets += fanduel.parse_prop_markets(payload, stat)
@@ -319,6 +372,7 @@ def predict(
     rules: ScoringRules,
     on_fair_points: Callable[[Target, str, list[FairPoint]], None] | None = None,
     correlation: str | None = None,
+    td_history: Mapping[str, TdHistory] | None = None,
 ) -> tuple[list[PlayerResult], list[SkippedPlayer]]:
     """A Score Distribution for each target with Prop Markets in its Game.
 
@@ -327,18 +381,22 @@ def predict(
     rushing and receiving TDs by the position's share; fumbles lost and 2-pt
     come from Base Rates. The stats are sampled together through the
     position's latent correlation matrix, `correlation` "within" (default) or
-    "pooled" (S3.6). A stat without a market, or whose fit fails, is left out
-    and flagged "incomplete" (S3.5). With no book pricing the Game at all,
+    "pooled" (S3.6). The rushing/receiving split of TDs and 2-pt is the
+    player's own, from `td_history` (td_share.load_td_history, keyed by gsis_id);
+    without it, the position share. A position's core stat without a market,
+    or whose fit fails, is left out and flagged "incomplete" (S3.5). With no book pricing the Game at all,
     the player is skipped as "props not posted"; with the Game priced but not
     the player, as "no Prop Markets"; with no fit succeeding, as unfittable.
     """
     results, skipped = [], []
     for target in targets:
         priced, by_stat = _markets_for(target, books)
-        if not any(by_stat.values()):
+        # A Usage Stat alone (a carries line) is nothing to score: the player has no markets.
+        if not any(markets for stat, markets in by_stat.items() if stat not in USAGE_STATS):
             skipped.append(SkippedPlayer(target.name, NO_MARKETS if priced else PROPS_NOT_POSTED))
             continue
-        fitted = _fit_markets(target, by_stat, on_fair_points)
+        share = rushing_td_share(target.player.position, (td_history or {}).get(target.player.gsis_id))
+        fitted = _fit_markets(target, by_stat, on_fair_points, share)
         if not fitted.dists:
             reason = f"could not fit any of its markets ({'; '.join(fitted.errors)})"
             skipped.append(SkippedPlayer(target.name, reason))
@@ -350,57 +408,76 @@ def predict(
 @dataclass
 class _Fitted:
     """One player's fitted market stats: Stat Distributions by Scoring Stat, their report
-    details, the markets behind each, and the "incomplete" flags and fit errors."""
+    details (what each was fitted from), and the "incomplete" flags and fit errors."""
 
     dists: dict[str, StatDistribution]
     details: dict[str, StatDetail]
     flags: list[str]
     errors: list[str]
+    rushing_share: float  # the player's rushing share of TDs, which also splits his 2-pt
+    usage: dict[str, StatDistribution]  # Usage Stats (carries): only their means are used
 
 
-def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_points) -> _Fitted:
+def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_points, share: float) -> _Fitted:
     position = target.player.position
-    fitted = _Fitted({}, {}, [], [])
+    core = CORE_STATS[position]
+    fitted = _Fitted({}, {}, [], [], share, {})
 
     def fit(stat: str, fitter):
         markets = by_stat.get(stat)
         label = MARKET_STATS[stat]
         if not markets:
-            fitted.flags.append(f"incomplete: missing {label}")
-            return None, []
+            if stat in core:
+                fitted.flags.append(f"incomplete: missing {label}")
+            return None
         points = fair_points(markets, default_c=PRIOR_C.get(stat, DEFAULT_PRIOR_C))
         if on_fair_points is not None:
             on_fair_points(target, stat, points)
         try:
-            return fitter(points), markets
+            dist = fitter(points)
         except FitError as error:  # a bug or bad configuration raises something else and stops the run
-            fitted.flags.append(f"incomplete: could not fit {label} ({error})")
-            fitted.errors.append(f"{label}: {error}")
-            return None, []
-
-    receptions, markets = fit("receptions", lambda pts: fit_receptions(pts, position))
-    if receptions is not None:
-        fitted.dists["receptions"] = receptions
-        fitted.details["receptions"] = _detail(receptions, markets)
-    # No catch, no yards (research Q4): with a receptions fit, P(0 yards) is P(0 receptions).
-    pi0 = None if receptions is None else prob_zero(receptions)
-    yards, markets = fit("receiving_yards", lambda pts: fit_receiving_yards(pts, position, pi0=pi0))
-    if yards is not None:
-        fitted.dists["receiving_yards"] = yards
-        fitted.details["receiving_yards"] = _detail(yards, markets)
-    tds, markets = fit(TD_STAT, fit_touchdowns)
-    if tds is not None:
-        rushing, receiving = split_touchdowns(tds, td_rushing_share(position))
-        for stat, dist in (("receiving_tds", receiving), ("rushing_tds", rushing)):
+            if stat not in USAGE_STATS:
+                fitted.flags.append(f"incomplete: could not fit {label} ({error})")
+                fitted.errors.append(f"{label}: {error}")
+            return None
+        if stat in USAGE_STATS:
+            fitted.usage[stat] = dist
+        else:
             fitted.dists[stat] = dist
             fitted.details[stat] = _detail(dist, markets)
+        return dist
+
+    if position != "QB":  # QB receptions and receiving yards are not modelled (MODEL_ASSUMPTIONS)
+        receptions = fit("receptions", lambda pts: fit_receptions(pts, position))
+        # No catch, no yards (research Q4): with a receptions fit, P(0 yards) is P(0 receptions).
+        pi0 = None if receptions is None else prob_zero(receptions)
+        fit("receiving_yards", lambda pts: fit_receiving_yards(pts, position, pi0=pi0))
+    fit("rushing_yards", lambda pts: fit_rushing_yards(pts, position))
+    if position != "QB":  # carries only set touches for fumbles, and QB fumbles are a flat rate
+        fit("carries", lambda pts: fit_carries(pts, position))
+    if position == "QB":
+        fit("passing_yards", lambda pts: fit_passing_yards(pts, position))
+        fit("passing_tds", fit_passing_tds)
+        fit("passing_interceptions", fit_interceptions)
+    tds = fit(TD_STAT, fit_touchdowns)
+    if tds is not None:
+        details = fitted.details.pop(TD_STAT)
+        del fitted.dists[TD_STAT]
+        rushing, receiving = split_touchdowns(tds, share)
+        for stat, dist in (("receiving_tds", receiving), ("rushing_tds", rushing)):
+            fitted.dists[stat] = dist
+            fitted.details[stat] = replace(details, mean=float(dist.mean), p50=_median(dist))
     return fitted
+
+
+def _median(dist: StatDistribution) -> float:
+    return float(np.asarray(dist.ppf(np.array([0.5])))[0])
 
 
 def _detail(dist: StatDistribution, markets: list[PropMarket]) -> StatDetail:
     return StatDetail(
         mean=float(dist.mean),
-        p50=float(np.asarray(dist.ppf(np.array([0.5])))[0]),
+        p50=_median(dist),
         books=sorted({m.book for m in markets}),
         rungs=sum(len(m.ladder) for m in markets),
     )
@@ -422,9 +499,16 @@ def _markets_for(target: Target, books: Sequence[BookOdds]) -> tuple[bool, dict[
 
 def _player_result(target: Target, fitted: _Fitted, rules: ScoringRules, correlation: str | None) -> PlayerResult:
     position = target.player.position
-    receptions = fitted.dists.get("receptions")
+    receptions, carries = fitted.dists.get("receptions"), fitted.usage.get("carries")
+    rushing_yards = fitted.dists.get("rushing_yards")
     stat_dists = dict(fitted.dists)
-    stat_dists.update(base_rate_stats(position, receptions_mean=None if receptions is None else receptions.mean))
+    stat_dists.update(base_rate_stats(
+        position,
+        receptions_mean=None if receptions is None else receptions.mean,
+        carries_mean=None if carries is None else carries.mean,
+        rushing_share=fitted.rushing_share,
+        rushing_yards_mean=None if rushing_yards is None else rushing_yards.mean,
+    ))
     scores = simulate_scores(stat_dists, rules, corr=params.correlation(position, correlation))
     game = target.game
     return PlayerResult(

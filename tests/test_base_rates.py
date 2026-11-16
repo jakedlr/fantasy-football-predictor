@@ -164,3 +164,62 @@ def test_committed_values_match_the_research_doc(br):
     assert br["rush_rec_2pt_per_game"]["WR"] == pytest.approx(0.016, abs=0.01)
     assert br["pass_2pt_per_game"]["QB"] == pytest.approx(0.074, abs=0.02)
     assert br["td_rushing_share"]["WR"] == pytest.approx(0.033, abs=0.02)
+
+
+# --- per-player TD share override (S4.3) ---------------------------------------
+
+
+@pytest.mark.parametrize("position", ["QB", "RB", "WR", "TE"])
+def test_two_point_split_by_a_players_own_share(position):
+    p = fake_params()
+    rate = p["rush_rec_2pt_per_game"][position]
+    two = base_rates.two_point_conversions(position, p, rushing_share=0.4)
+    assert two["rushing_2pt"].mean == pytest.approx(rate * 0.4)
+    assert two["receiving_2pt"].mean == pytest.approx(rate * 0.6)
+
+
+def test_base_rate_stats_passes_the_share_through():
+    p = fake_params()
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p, rushing_share=0.9)
+    assert stats["rushing_2pt"].mean == pytest.approx(0.04 * 0.9)
+    assert stats["receiving_2pt"].mean == pytest.approx(0.04 * 0.1)
+
+
+def test_no_share_override_keeps_the_position_share():
+    p = fake_params()
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p, rushing_share=None)
+    assert stats["rushing_2pt"].mean == pytest.approx(0.04 * 0.75)
+
+
+@pytest.mark.parametrize("share", [-0.1, 1.1, float("nan")])
+def test_share_override_out_of_range_is_rejected(share):
+    with pytest.raises(ValueError, match="share"):
+        base_rates.two_point_conversions("RB", fake_params(), rushing_share=share)
+
+
+def test_an_rb_without_carries_gets_the_per_game_fumble_rate():
+    # Sprint 4: RBs have no carries Base Rate; with no carries market, touches are unknown.
+    p = fake_params()
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(p["fumbles_lost_per_game"]["RB"])
+    with_carries = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p)
+    assert with_carries["fumbles_lost"].mean == pytest.approx(0.01 * 18.0)
+
+
+def test_an_rb_with_only_rushing_yards_gets_carries_from_yards_per_carry():
+    # FanDuel has no carries market: a rushing-yards mean over yards per carry sets the touches.
+    p = fake_params(yards_per_carry={"QB": 5.0, "RB": 4.0, "WR": 6.0, "TE": None})
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, rushing_yards_mean=60.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(0.01 * (3.0 + 15.0))
+
+
+def test_a_carries_market_beats_the_rushing_yards_estimate():
+    p = fake_params(yards_per_carry={"RB": 4.0})
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=10.0, rushing_yards_mean=60.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(0.01 * 13.0)
+
+
+def test_no_yards_per_carry_leaves_the_rb_on_the_per_game_rate():
+    p = fake_params(yards_per_carry={"RB": None})
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, rushing_yards_mean=60.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(p["fumbles_lost_per_game"]["RB"])

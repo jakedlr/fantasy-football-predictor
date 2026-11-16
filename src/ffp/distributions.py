@@ -9,7 +9,7 @@ from typing import Protocol
 
 import numpy as np
 from scipy import optimize, stats
-from scipy.special import expit, logit
+from scipy.special import expit, logit, ndtr
 
 from ffp import params
 from ffp.fair import MAIN_LINE_WEIGHT, FairPoint
@@ -107,8 +107,14 @@ class HurdleShiftedGamma:
         return self._mean
 
 
+# The yards Scoring Stats modelled as a HurdleShiftedGamma, each with its own relations
+# per position under its key in params/dispersion.json.
+RECEIVING_YARDS = "receiving_yards"
+RUSHING_YARDS = "rushing_yards"
+
+
 @dataclass(frozen=True)
-class _ReceivingYardsParams:
+class _YardsParams:
     c0: float  # pi0 = expit(c0 + c1 ln mu), mu the overall mean
     c1: float
     a: float  # dispersion relation of the nonzero part: sd_rel(m) = a * m**b
@@ -117,22 +123,71 @@ class _ReceivingYardsParams:
 
 
 @cache
-def _receiving_params(position: str) -> _ReceivingYardsParams:
-    """The position's receiving-yards relations, from params/dispersion.json (scripts/build_params.py)."""
-    table = params.load("dispersion")["receiving_yards"]
+def _yards_params(stat: str, position: str) -> _YardsParams:
+    """The stat's relations for the position, from params/dispersion.json (scripts/build_params.py)."""
+    table = params.load("dispersion")[stat]
     try:
         p = table[position]
     except KeyError:
         raise ValueError(
-            f"no receiving-yards model for position {position!r} ({', '.join(table)})"
+            f"no {stat.replace('_', '-')} model for position {position!r} ({', '.join(table)})"
         ) from None
-    return _ReceivingYardsParams(p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"], p["shift"])
+    return _YardsParams(p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"], p["shift"])
+
+
+def _receiving_params(position: str) -> _YardsParams:
+    return _yards_params(RECEIVING_YARDS, position)
+
+
+def _yards_pi0_relation(stat: str, mu: float, position: str) -> float:
+    p = _yards_params(stat, position)
+    return float(expit(p.c0 + p.c1 * math.log(mu)))
 
 
 def receiving_yards_pi0_relation(mu: float, position: str) -> float:
     """P(0 yards) from the overall mean when there's nothing better: expit(c0 + c1 ln mu)."""
-    p = _receiving_params(position)
-    return float(expit(p.c0 + p.c1 * math.log(mu)))
+    return _yards_pi0_relation(RECEIVING_YARDS, mu, position)
+
+
+def rushing_yards_pi0_relation(mu: float, position: str) -> float:
+    """P(0 rushing yards) from the overall mean: expit(c0 + c1 ln mu), rushing coefficients."""
+    return _yards_pi0_relation(RUSHING_YARDS, mu, position)
+
+
+def _yards(stat: str, mu: float, sd: float, position: str, pi0: float | None) -> HurdleShiftedGamma:
+    """The stat's HurdleShiftedGamma with overall mean mu; see `receiving_yards`."""
+    p = _yards_params(stat, position)
+    if mu <= 0 or sd <= 0:
+        raise ValueError(f"invalid parameters mu={mu}, sd={sd}")
+    if pi0 is None:
+        pi0 = _yards_pi0_relation(stat, mu, position)
+    if not 0 <= pi0 < 1:
+        raise ValueError(f"invalid parameter pi0={pi0}")
+    target = mu / (1 - pi0)
+
+    def nonzero_mean_error(m: float) -> float:
+        return HurdleShiftedGamma(m, sd, 0.0, p.shift).mean - target
+
+    # Discretisation and zero-truncation move the mean by well under 1 yd, and
+    # d(nonzero mean)/dm ≈ 1, so a Newton-like iteration m ← m − error converges fast.
+    m = target
+    for _ in range(100):
+        err = nonzero_mean_error(m)
+        if abs(err) < 1e-11 * target:
+            return HurdleShiftedGamma(m, sd, pi0, p.shift)
+        m = max(m - err, m / 2)
+    raise FitError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
+
+
+def rushing_yards(
+    mu: float, sd: float, position: str, pi0: float | None = None
+) -> HurdleShiftedGamma:
+    """Rushing-yards Stat Distribution for an RB, QB, WR or TE with overall mean mu.
+
+    The receiving-yards model (see `receiving_yards`) with the rushing relations and
+    shift. The bins below 0 carry the negative-yardage games (a stuffed run, a kneel).
+    """
+    return _yards(RUSHING_YARDS, mu, sd, position, pi0)
 
 
 def receiving_yards(
@@ -151,27 +206,7 @@ def receiving_yards(
     monotone: for WRs it bottoms out near m ≈ 30 at mu ≈ 18, so an m below that
     has no consistent pi0 and an m above it has two.
     """
-    p = _receiving_params(position)
-    if mu <= 0 or sd <= 0:
-        raise ValueError(f"invalid parameters mu={mu}, sd={sd}")
-    if pi0 is None:
-        pi0 = receiving_yards_pi0_relation(mu, position)
-    if not 0 <= pi0 < 1:
-        raise ValueError(f"invalid parameter pi0={pi0}")
-    target = mu / (1 - pi0)
-
-    def nonzero_mean_error(m: float) -> float:
-        return HurdleShiftedGamma(m, sd, 0.0, p.shift).mean - target
-
-    # Discretisation and zero-truncation move the mean by well under 1 yd, and
-    # d(nonzero mean)/dm ≈ 1, so a Newton-like iteration m ← m − error converges fast.
-    m = target
-    for _ in range(100):
-        err = nonzero_mean_error(m)
-        if abs(err) < 1e-11 * target:
-            return HurdleShiftedGamma(m, sd, pi0, p.shift)
-        m = max(m - err, m / 2)
-    raise FitError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
+    return _yards(RECEIVING_YARDS, mu, sd, position, pi0)
 
 
 # Fit settings, research/stat-distributions.md Q3.
@@ -195,9 +230,18 @@ def receiving_yards_sd_relation(mu: float, position: str, pi0: float | None = No
 
     pi0 defaults to the pi0 relation at mu.
     """
-    p = _receiving_params(position)
+    return _yards_sd_relation(RECEIVING_YARDS, mu, position, pi0)
+
+
+def rushing_yards_sd_relation(mu: float, position: str, pi0: float | None = None) -> float:
+    """As `receiving_yards_sd_relation`, with the rushing-yards coefficients."""
+    return _yards_sd_relation(RUSHING_YARDS, mu, position, pi0)
+
+
+def _yards_sd_relation(stat: str, mu: float, position: str, pi0: float | None) -> float:
+    p = _yards_params(stat, position)
     if pi0 is None:
-        pi0 = receiving_yards_pi0_relation(mu, position)
+        pi0 = _yards_pi0_relation(stat, mu, position)
     return p.a * (mu / (1 - pi0)) ** p.b
 
 
@@ -211,7 +255,7 @@ def _residuals(dist: StatDistribution, x: np.ndarray, target: np.ndarray) -> np.
     return target - _logit_sf(dist, x)
 
 
-def _fit_main_line_only(point: FairPoint, position: str, pi0: float | None = None) -> HurdleShiftedGamma:
+def _fit_main_line_only(stat: str, point: FairPoint, position: str, pi0: float | None) -> HurdleShiftedGamma:
     """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu).
 
     pi0 is the given one, or its relation at mu when None.
@@ -220,8 +264,8 @@ def _fit_main_line_only(point: FairPoint, position: str, pi0: float | None = Non
 
     def dist(ln_mu: float) -> HurdleShiftedGamma:
         mu = math.exp(ln_mu)
-        sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position, pi0)
-        return receiving_yards(mu, sd, position, pi0)
+        sd = MAIN_LINE_ONLY_KAPPA * _yards_sd_relation(stat, mu, position, pi0)
+        return _yards(stat, mu, sd, position, pi0)
 
     def error(ln_mu: float) -> float:
         return _logit_sf(dist(ln_mu), x)[0] - target
@@ -266,14 +310,31 @@ def fit_receiving_yards(
     With a single point (a Main Line only), pi0 stays on its relation (or the given
     pi0), sd is fixed at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
     """
-    _receiving_params(position)  # validate before doing any work
+    return _fit_yards(RECEIVING_YARDS, points, position, pi0)
+
+
+def fit_rushing_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
+    """Fit an RB/QB/WR/TE rushing-yards Stat Distribution to Fair Probabilities.
+
+    The receiving-yards fit (see `fit_receiving_yards`) with the rushing relations,
+    and always with P(0) fitted under the δ prior: carries are a Usage Stat and do
+    not set it (Sprint 4), so unlike receiving yards there is no pi0 to pass.
+    """
+    return _fit_yards(RUSHING_YARDS, points, position, None)
+
+
+def _fit_yards(
+    stat: str, points: Sequence[FairPoint], position: str, pi0: float | None
+) -> HurdleShiftedGamma:
+    """The fit described in `fit_receiving_yards`, for either yards stat."""
+    _yards_params(stat, position)  # validate before doing any work
     if pi0 is not None and not 0 <= pi0 < 1:
         raise ValueError(f"invalid parameter pi0={pi0}")
     if not points:
         raise FitError("no Fair Probabilities to fit")
     anchor = _anchor(points)
     try:
-        start = _fit_main_line_only(anchor, position, pi0)
+        start = _fit_main_line_only(stat, anchor, position, pi0)
     except FitError:
         if pi0 is None:
             raise
@@ -283,7 +344,7 @@ def fit_receiving_yards(
             "P(Y >= %s) = %s is out of reach with the receptions P(0) = %.3f; fitting P(0) freely",
             anchor.threshold, anchor.prob, pi0,
         )
-        return fit_receiving_yards(points, position)
+        return _fit_yards(stat, points, position, None)
     if len(points) == 1:
         return start
 
@@ -297,7 +358,7 @@ def fit_receiving_yards(
         mu, sd = math.exp(theta[0]), math.exp(theta[1])
         if fixed_pi0 is not None:
             return mu, sd, fixed_pi0
-        pi0 = float(expit(logit(receiving_yards_pi0_relation(mu, position)) + theta[2]))
+        pi0 = float(expit(logit(_yards_pi0_relation(stat, mu, position)) + theta[2]))
         return mu, sd, pi0
 
     def pi0_prior(theta: np.ndarray) -> float:
@@ -312,11 +373,11 @@ def fit_receiving_yards(
         if pi0 > _PI0_MAX:
             return math.inf
         try:
-            dist = receiving_yards(mu, sd, position, pi0)
+            dist = _yards(stat, mu, sd, position, pi0)
         except ValueError:  # FitError included: the nonzero mean did not converge
             return math.inf
         resid = _residuals(dist, x, target)
-        sd_prior = theta[1] - math.log(receiving_yards_sd_relation(mu, position, pi0))
+        sd_prior = theta[1] - math.log(_yards_sd_relation(stat, mu, position, pi0))
         return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + pi0_prior(theta))
 
     # theta = (ln mu, ln sd, δ), or (ln mu, ln sd) when pi0 is given.
@@ -333,7 +394,7 @@ def fit_receiving_yards(
     if not math.isfinite(result.fun):
         raise FitError("no fit within the model's range")
     mu, sd, pi0 = params(result.x)
-    return receiving_yards(mu, sd, position, pi0)
+    return _yards(stat, mu, sd, position, pi0)
 
 
 class _Count:
@@ -389,50 +450,112 @@ class NegativeBinomial(_Count):
         return self.mu
 
 
-# Receptions fit. r is fitted only with this many points besides the Main Line (research Q3:
+# Negative binomial count fits: receptions (a Scoring Stat) and carries (a Usage Stat, used
+# only for its mean). r is fitted only with this many points besides the Main Line (research Q3:
 # "fix r from r(μ) unless there are ≥3 Rungs"); with fewer it stays on the relation.
-RECEPTIONS_MIN_POINTS_FOR_R = 3
+COUNT_MIN_POINTS_FOR_R = 3
 # Prior sd of ln r around the relation. Weak on purpose: r is pinned only by a full Ladder, and
 # then the Ladder should win. Var − mu = mu²/r, so 0.5 in ln r is ±65% on the excess variance.
 FIT_SIGMA_LN_R = 0.5
 FIT_LAMBDA_R = FIT_TAU**2 / FIT_SIGMA_LN_R**2  # = 0.04
-_REC_MU_RANGE = (0.01, 40.0)  # mu the model allows, catches
+RECEPTIONS = "receptions"
+CARRIES = "carries"
+# mu each count model allows: catches, carries (no RB has averaged 40 carries a game).
+_COUNT_MU_RANGE = {RECEPTIONS: (0.01, 40.0), CARRIES: (0.01, 50.0)}
 _LN_R_RANGE = (math.log(0.05), math.log(1e4))  # 1e4: Poisson for any practical purpose
 
 
 @cache
-def _receptions_params(position: str) -> tuple[float, float]:
-    """(r_a, r_b) of the position's NB size relation, from params/dispersion.json."""
+def _count_params(stat: str, position: str) -> tuple[float, float]:
+    """(r_a, r_b) of the position's NB size relation for the stat, from params/dispersion.json."""
     try:
-        rel = params.load("dispersion")["receptions"][position]
+        rel = params.load("dispersion")[stat][position]
     except KeyError:
-        raise ValueError(f"no receptions model for position {position!r}") from None
+        raise ValueError(f"no {stat} model for position {position!r}") from None
     return rel["r_a"], rel["r_b"]
+
+
+def _receptions_params(position: str) -> tuple[float, float]:
+    return _count_params(RECEPTIONS, position)
+
+
+def _count_r_relation(stat: str, mu: float, position: str) -> float:
+    r_a, r_b = _count_params(stat, position)
+    return r_a * mu**r_b
 
 
 def receptions_r_relation(mu: float, position: str) -> float:
     """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
-    r_a, r_b = _receptions_params(position)
-    return r_a * mu**r_b
+    return _count_r_relation(RECEPTIONS, mu, position)
 
 
-def _receptions_on_relation(mu: float, position: str) -> NegativeBinomial:
-    return NegativeBinomial(mu, receptions_r_relation(mu, position))
+def carries_r_relation(mu: float, position: str) -> float:
+    """NB size of carries from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+    return _count_r_relation(CARRIES, mu, position)
 
 
-def _fit_receptions_one_point(point: FairPoint, position: str) -> NegativeBinomial:
-    """Root-find mu so P(Y >= threshold) is the one Fair Probability, r = r(mu)."""
-    x, target = np.array([point.threshold]), logit(point.prob)
+def _count_on_relation(stat: str, mu: float, position: str) -> NegativeBinomial:
+    return NegativeBinomial(mu, _count_r_relation(stat, mu, position))
 
-    def error(ln_mu: float) -> float:
-        return _logit_sf(_receptions_on_relation(math.exp(ln_mu), position), x)[0] - target
 
-    lo, hi = math.log(_REC_MU_RANGE[0]), math.log(_REC_MU_RANGE[1])
-    if error(lo) * error(hi) > 0:
+# The most a count fit may miss its anchor (the Main Line) by, in logit: 1.0 is 0.50 vs 0.73.
+# A fit that misses by more is being pulled by points that contradict it, i.e. bad prices.
+COUNT_ANCHOR_TOL = 1.0
+
+
+def _checked_count(stat: str, dist, mu: float, mu_range: tuple[float, float], anchor: FairPoint):
+    """dist, or FitError when its mean mu sits on the edge of mu_range or it misses its anchor."""
+    lo, hi = mu_range
+    if not lo * (1 + 1e-4) < mu < hi * (1 - 1e-4):
+        raise FitError(f"{stat} fit ran to the edge of the mean in {mu_range} (mean = {mu:.3g})")
+    miss = abs(float(_residuals(dist, np.array([anchor.threshold]), logit(np.array([anchor.prob])))[0]))
+    if miss > COUNT_ANCHOR_TOL:
         raise FitError(
-            f"P(receptions >= {point.threshold}) = {point.prob} is out of reach for mu in {_REC_MU_RANGE}"
+            f"{stat} fit gives P(Y >= {anchor.threshold}) = {float(dist.sf(np.array([anchor.threshold]))[0]):.3f} "
+            f"against {anchor.prob:.3f}: the other points contradict it"
         )
-    return _receptions_on_relation(math.exp(optimize.brentq(error, lo, hi, xtol=1e-12)), position)
+    return dist
+
+
+def _fit_count_mean(points: Sequence[FairPoint], make, mu_range: tuple[float, float], stat: str):
+    """Fit the one mean parameter of a count Stat Distribution `make(mu)` to Fair Probabilities.
+
+    Weighted least squares in logit space over all points, Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]²,
+    over ln mu in `mu_range`. One parameter, so one price pins it (research Q3): the Main
+    Line (weight 3) dominates and extra Rungs mostly check the vig. A single point is
+    reproduced exactly by root-finding. FitError when no point is given, the single point
+    is out of reach, the fit runs to the edge of mu_range, or it misses its anchor (the
+    heaviest point) by more than COUNT_ANCHOR_TOL in logit: the points contradict each other.
+    """
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    anchor = _anchor(points)
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+    lo, hi = math.log(mu_range[0]), math.log(mu_range[1])
+
+    if len(points) == 1:
+
+        def error(ln_mu: float) -> float:
+            return float(_residuals(make(math.exp(ln_mu)), x, target)[0])
+
+        if error(lo) * error(hi) > 0:
+            raise FitError(f"P({stat} >= {anchor.threshold}) = {anchor.prob} is out of reach for mean in {mu_range}")
+        return make(math.exp(optimize.brentq(error, lo, hi, xtol=1e-13)))
+
+    def objective(ln_mu: float) -> float:
+        return float(np.sum(w * _residuals(make(math.exp(ln_mu)), x, target) ** 2))
+
+    result = optimize.minimize_scalar(objective, bounds=(lo, hi), method="bounded", options={"xatol": 1e-10})
+    mu = math.exp(result.x)
+    return _checked_count(stat, make(mu), mu, mu_range, anchor)
+
+
+def fit_carries(points: Sequence[FairPoint], position: str) -> NegativeBinomial:
+    """Fit a carries distribution (negative binomial) to Fair Probabilities, as `fit_receptions`
+    does with the carries r relation. Carries are a Usage Stat: only the mean is used."""
+    return _fit_count(CARRIES, points, position)
 
 
 def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomial:
@@ -443,41 +566,42 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
         Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ_r (ln r − ln r_rel(mu))²
 
     over theta = (ln mu, ln r), λ_r = τ²/σ_r² with σ_r = FIT_SIGMA_LN_R. r is free
-    only with at least RECEPTIONS_MIN_POINTS_FOR_R points besides the Main Line (the
+    only with at least COUNT_MIN_POINTS_FOR_R points besides the Main Line (the
     heaviest point, when it has Main Line weight); otherwise r = r_rel(mu) and only
     mu is fitted. With a single point, mu is root-found to reproduce it exactly.
     """
-    receptions_r_relation(1.0, position)  # validate before doing any work
+    return _fit_count(RECEPTIONS, points, position)
+
+
+def _fit_count(stat: str, points: Sequence[FairPoint], position: str) -> NegativeBinomial:
+    """The fit described in `fit_receptions`, for either count stat."""
+    _count_params(stat, position)  # validate before doing any work
     if not points:
         raise FitError("no Fair Probabilities to fit")
     anchor = _anchor(points)
-    start = _fit_receptions_one_point(anchor, position)
+    mu_range = _COUNT_MU_RANGE[stat]
+
+    def on_relation(mu: float) -> NegativeBinomial:
+        return _count_on_relation(stat, mu, position)
+
+    start = _fit_count_mean([anchor], on_relation, mu_range, stat)  # also: is the anchor in reach at all?
     if len(points) == 1:
         return start
+    besides_main = len(points) - (anchor.weight >= MAIN_LINE_WEIGHT)
+    if besides_main < COUNT_MIN_POINTS_FOR_R:  # r stays on its relation: a one-parameter fit
+        return _fit_count_mean(points, on_relation, mu_range, stat)
 
     x = np.array([p.threshold for p in points], dtype=float)
     target = logit(np.array([p.prob for p in points]))
     w = np.array([p.weight for p in points], dtype=float)
-    ln_mu_range = np.log(_REC_MU_RANGE)
-    besides_main = len(points) - (anchor.weight >= MAIN_LINE_WEIGHT)
-
-    if besides_main < RECEPTIONS_MIN_POINTS_FOR_R:
-
-        def objective_mu(ln_mu: float) -> float:
-            dist = _receptions_on_relation(math.exp(ln_mu), position)
-            return float(np.sum(w * _residuals(dist, x, target) ** 2))
-
-        result = optimize.minimize_scalar(
-            objective_mu, bounds=tuple(ln_mu_range), method="bounded", options={"xatol": 1e-10}
-        )
-        return _checked_receptions(_receptions_on_relation(math.exp(result.x), position), anchor)
+    ln_mu_range = np.log(mu_range)
 
     def objective(theta: np.ndarray) -> float:
         in_range = ln_mu_range[0] <= theta[0] <= ln_mu_range[1] and _LN_R_RANGE[0] <= theta[1] <= _LN_R_RANGE[1]
         if not in_range:
             return math.inf
         mu = math.exp(theta[0])
-        prior = theta[1] - math.log(receptions_r_relation(mu, position))
+        prior = theta[1] - math.log(_count_r_relation(stat, mu, position))
         resid = _residuals(NegativeBinomial(mu, math.exp(theta[1])), x, target)
         return float(np.sum(w * resid**2) + FIT_LAMBDA_R * prior**2)
 
@@ -490,27 +614,9 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
         options={"xatol": 1e-8, "fatol": 1e-13, "initial_simplex": simplex, "maxiter": 3000},
     )
     if not math.isfinite(result.fun):
-        raise FitError("no receptions fit within the model's range")
-    return _checked_receptions(NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1])), anchor)
-
-
-# The most a receptions fit may miss its anchor (the Main Line) by, in logit: 1.0 is 0.50 vs 0.73.
-# A fit that misses by more is being pulled by points that contradict it, i.e. bad prices.
-RECEPTIONS_ANCHOR_TOL = 1.0
-
-
-def _checked_receptions(dist: NegativeBinomial, anchor: FairPoint) -> NegativeBinomial:
-    """dist, or FitError when it sits on the edge of the model's mu range or misses its anchor."""
-    lo, hi = _REC_MU_RANGE
-    if not lo * (1 + 1e-6) < dist.mu < hi * (1 - 1e-6):
-        raise FitError(f"receptions fit ran to the edge of mu in {_REC_MU_RANGE} (mu = {dist.mu:.3g})")
-    miss = abs(float(_residuals(dist, np.array([anchor.threshold]), logit(np.array([anchor.prob])))[0]))
-    if miss > RECEPTIONS_ANCHOR_TOL:
-        raise FitError(
-            f"receptions fit gives P(Y >= {anchor.threshold}) = {float(dist.sf(np.array([anchor.threshold]))[0]):.3f} "
-            f"against {anchor.prob:.3f}: the other points contradict it"
-        )
-    return dist
+        raise FitError(f"no {stat} fit within the model's range")
+    mu = math.exp(result.x[0])
+    return _checked_count(stat, NegativeBinomial(mu, math.exp(result.x[1])), mu, mu_range, anchor)
 
 
 _TD_LAMBDA_MAX = 20.0  # bracket for the root-find when there is no anytime point
@@ -554,3 +660,252 @@ def split_touchdowns(td: Poisson, rushing_share: float) -> tuple[Poisson, Poisso
     if not 0 <= rushing_share <= 1:
         raise ValueError(f"invalid rushing share {rushing_share}")
     return Poisson(td.lam * rushing_share), Poisson(td.lam * (1 - rushing_share))
+
+
+# ---------------------------------------------------------------- Passing (QB, S4.1)
+
+
+class HurdleNormal:
+    """Integer passing yards: a point mass pi0 at 0, else a discretised, zero-truncated normal.
+
+    Construction (research/stat-distributions.md Q4, passing yards):
+    - Continuous part X ~ Normal(m, sd): no shift and no lower bound, so the
+      negative bins keep the (tiny) mass the normal puts below −½.
+    - Discretise: P(y) ∝ Φ((y + ½ − m)/sd) − Φ((y − ½ − m)/sd) for integer y.
+      P(Y >= x) for x >= 1 is the continuous tail beyond x − ½ (the 0.5
+      continuity correction).
+    - Zero-truncate: drop the bin y = 0 (mass Z) and renormalise by 1 − Z. All
+      of Y = 0 comes from the point mass pi0.
+
+    A discretised normal's mean is m (to within e^(−2π²sd²), nothing at yards
+    scale) and the dropped y = 0 bin contributes 0 to it, so the nonzero mean is
+    m / (1 − Z) and the overall mean (1 − pi0)·m / (1 − Z), exactly.
+    """
+
+    def __init__(self, m: float, sd: float, pi0: float):
+        if not (math.isfinite(m) and sd > 0 and math.isfinite(sd) and 0 <= pi0 < 1):
+            raise ValueError(f"invalid parameters m={m}, sd={sd}, pi0={pi0}")
+        self.m, self.sd, self.pi0 = float(m), float(sd), float(pi0)
+        # ndtr rather than a frozen scipy.stats.norm: the fit builds one of these per objective call.
+        self._zero_bin = float(ndtr((0.5 - self.m) / self.sd) - ndtr((-0.5 - self.m) / self.sd))
+        if not self._zero_bin < 1:
+            raise ValueError(f"no mass off zero for m={m}, sd={sd}")
+        self._mean = (1 - self.pi0) * self.m / (1 - self._zero_bin)
+        # Integer support for ppf: m ± 10 sd (the normal has no finite bounds), and 0.
+        self._lo = min(math.floor(self.m - 10 * self.sd), 0)
+        self._hi = max(math.ceil(self.m + 10 * self.sd), 0)
+        self._cdf = None  # P(Y <= y) on the support grid, built on first ppf call
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        """P(Y >= x); a fractional x is rounded up (Y >= 200.5 means Y >= 201)."""
+        x = np.ceil(np.asarray(x, dtype=float))
+        tail = ndtr((self.m - (x - 0.5)) / self.sd)  # P(X >= x − ½)
+        at_or_below_zero = x <= 0
+        nz_sf = np.where(at_or_below_zero, tail - self._zero_bin, tail) / (1 - self._zero_bin)
+        nz_sf = np.clip(nz_sf, 0.0, 1.0)
+        return (1 - self.pi0) * nz_sf + self.pi0 * at_or_below_zero
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        """Smallest integer y with P(Y <= y) >= u."""
+        ys = np.arange(self._lo, self._hi + 1)
+        if self._cdf is None:
+            self._cdf = 1 - self.sf(ys + 1)
+        idx = np.searchsorted(self._cdf, np.asarray(u, dtype=float), side="left")
+        return ys[np.minimum(idx, len(ys) - 1)]
+
+    @property
+    def mean(self) -> float:
+        return self._mean
+
+
+@dataclass(frozen=True)
+class _PassingYardsParams:
+    c0: float  # pi0 = expit(c0 + c1 ln mu), mu the overall mean
+    c1: float
+    a: float  # sd of the nonzero part: a * t**b, t = mu / (1 − pi0) the nonzero mean
+    b: float
+
+
+@cache
+def _passing_params(position: str) -> _PassingYardsParams:
+    """The position's passing-yards relations, from params/dispersion.json (scripts/build_params.py)."""
+    table = params.load("dispersion")["passing_yards"]
+    try:
+        p = table[position]
+    except KeyError:
+        raise ValueError(
+            f"no passing-yards model for position {position!r} ({', '.join(table)})"
+        ) from None
+    if p["family"] != "hurdle_normal":
+        raise ValueError(f"passing-yards params for {position} are {p['family']!r}, not hurdle_normal")
+    return _PassingYardsParams(p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"])
+
+
+# The pi0 relation is evaluated at mu no lower than this. Its fit (params "dispersion") gets its
+# zeros at low mu from benched ex-starters, who get no props; a QB with a market starts the game,
+# and below ~175 yd the relation would split his distribution into two humps (P(0) 0.44 at 150).
+PASSING_PI0_MU_FLOOR = 200.0
+
+
+def passing_yards_pi0_relation(mu: float, position: str = "QB") -> float:
+    """P(0 passing yards) from the overall mean: expit(c0 + c1 ln max(mu, PASSING_PI0_MU_FLOOR))."""
+    p = _passing_params(position)
+    return float(expit(p.c0 + p.c1 * math.log(max(mu, PASSING_PI0_MU_FLOOR))))
+
+
+def passing_yards_sd_relation(mu: float, position: str = "QB", pi0: float | None = None) -> float:
+    """sd of the nonzero part from the dispersion relation: sd_a·t^sd_b, t = mu / (1 − pi0).
+
+    pi0 defaults to the pi0 relation at mu.
+    """
+    p = _passing_params(position)
+    if pi0 is None:
+        pi0 = passing_yards_pi0_relation(mu, position)
+    return p.a * (mu / (1 - pi0)) ** p.b
+
+
+def passing_yards(mu: float, sd: float, position: str = "QB", pi0: float | None = None) -> HurdleNormal:
+    """Passing-yards Stat Distribution for a QB with overall mean mu.
+
+    sd is the sd of the continuous nonzero part. pi0 = P(0 yards) defaults to the
+    relation expit(c0 + c1 ln mu). The nonzero part must have mean t = mu / (1 − pi0),
+    which is m / (1 − Z(m)) (see HurdleNormal), so m solves the fixed point
+    m = t·(1 − Z(m)); the returned distribution's mean is then exactly mu.
+    """
+    _passing_params(position)  # validate before doing any work
+    if not (mu > 0 and sd > 0):
+        raise ValueError(f"invalid parameters mu={mu}, sd={sd}")
+    if pi0 is None:
+        pi0 = passing_yards_pi0_relation(mu, position)
+    if not 0 <= pi0 < 1:
+        raise ValueError(f"invalid parameter pi0={pi0}")
+    target = mu / (1 - pi0)
+
+    def zero_bin(m: float) -> float:  # ndtr: this runs in every step of the fit's optimiser
+        return float(ndtr((0.5 - m) / sd) - ndtr((-0.5 - m) / sd))
+
+    # Z is tiny at QB scale (m several sd above 0) and t·dZ/dm is far below 1, so the
+    # fixed-point iteration contracts fast.
+    m = target
+    for _ in range(100):
+        m_next = target * (1 - zero_bin(m))
+        if abs(m_next - m) < 1e-11 * target:
+            return HurdleNormal(m_next, sd, pi0)
+        m = m_next
+    raise FitError(f"passing-yards location did not converge for mu={mu}, sd={sd}")
+
+
+_PASS_YDS_MU_RANGE = (50.0, 700.0)  # mu the model allows, yards: the root-find bracket and fit bounds
+
+
+def _fit_passing_main_line_only(point: FairPoint, position: str) -> HurdleNormal:
+    """Root-find mu so S(x) matches the one Fair Probability; pi0 on its relation, sd = κ·relation."""
+    x, target = np.array([point.threshold]), logit(point.prob)
+
+    def dist(ln_mu: float) -> HurdleNormal:
+        mu = math.exp(ln_mu)
+        return passing_yards(mu, MAIN_LINE_ONLY_KAPPA * passing_yards_sd_relation(mu, position), position)
+
+    def error(ln_mu: float) -> float:
+        return _logit_sf(dist(ln_mu), x)[0] - target
+
+    lo, hi = math.log(_PASS_YDS_MU_RANGE[0]), math.log(_PASS_YDS_MU_RANGE[1])
+    if error(lo) * error(hi) > 0:
+        raise FitError(
+            f"P(passing yards >= {point.threshold}) = {point.prob} is out of reach for mu in {_PASS_YDS_MU_RANGE}"
+        )
+    return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
+
+
+def fit_passing_yards(points: Sequence[FairPoint], position: str = "QB") -> HurdleNormal:
+    """Fit a QB passing-yards Stat Distribution to Fair Probabilities.
+
+    As fit_receiving_yards with a free pi0: theta = (ln mu, ln sd, δ), logit pi0 =
+    logit pi0_rel(mu) + δ, minimising
+
+        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ (ln sd − ln sd_rel(mu, pi0))² + λ₀ δ²
+
+    by Nelder-Mead from the Main-Line-only fit. With a single point (a Main Line
+    only), pi0 stays on its relation, sd = 0.93·sd_rel(mu), and mu is root-found to
+    reproduce the point exactly.
+    """
+    _passing_params(position)  # validate before doing any work
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    start = _fit_passing_main_line_only(_anchor(points), position)
+    if len(points) == 1:
+        return start
+
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+    ln_mu_range = np.log(_PASS_YDS_MU_RANGE)
+
+    def unpack(theta: np.ndarray) -> tuple[float, float, float]:
+        mu = math.exp(theta[0])
+        pi0 = float(expit(logit(passing_yards_pi0_relation(mu, position)) + theta[2]))
+        return mu, math.exp(theta[1]), pi0
+
+    def objective(theta: np.ndarray) -> float:
+        if not ln_mu_range[0] <= theta[0] <= ln_mu_range[1] or abs(theta[1]) > 20:
+            return math.inf
+        mu, sd, pi0 = unpack(theta)
+        if pi0 > _PI0_MAX:
+            return math.inf
+        try:
+            dist = passing_yards(mu, sd, position, pi0)
+        except ValueError:  # FitError included: the location did not converge
+            return math.inf
+        resid = _residuals(dist, x, target)
+        sd_prior = theta[1] - math.log(passing_yards_sd_relation(mu, position, pi0))
+        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + FIT_LAMBDA_PI0 * theta[2] ** 2)
+
+    theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0])
+    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.1, 0.5])])
+    result = optimize.minimize(
+        objective,
+        theta0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-7, "fatol": 1e-12, "initial_simplex": simplex, "maxiter": 3000},
+    )
+    if not math.isfinite(result.fun):
+        raise FitError("no passing-yards fit within the model's range")
+    mu, sd, pi0 = unpack(result.x)
+    return passing_yards(mu, sd, position, pi0)
+
+
+class Binomial(_Count):
+    """Binomial(n, mu/n) counts with mean mu: passing TDs, n = PASS_TD_ATTEMPTS (research Q4)."""
+
+    def __init__(self, n: int, mu: float):
+        if not (n >= 1 and 0 <= mu <= n):
+            raise ValueError(f"invalid binomial parameters n={n}, mu={mu}")
+        self.n, self.mu = int(n), float(mu)
+        self._dist = stats.binom(self.n, self.mu / self.n)
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        if self.mu == 0:  # scipy's Binomial(n, 0) answers -1 at u = 0
+            return np.zeros_like(np.asarray(u, dtype=float))
+        return super().ppf(u)
+
+    @property
+    def mean(self) -> float:
+        return self.mu
+
+
+PASS_TD_ATTEMPTS = 11  # research Q4: Binomial(11, μ/11) fits passing TDs better than Poisson
+_PASS_TD_MU_RANGE = (0.01, 10.99)
+_INT_LAMBDA_RANGE = (0.01, 10.0)
+
+
+def fit_passing_tds(points: Sequence[FairPoint]) -> Binomial:
+    """Passing TDs as Binomial(11, μ/11), μ fitted to the Fair Probabilities (see _fit_count_mean)."""
+    return _fit_count_mean(points, lambda mu: Binomial(PASS_TD_ATTEMPTS, mu), _PASS_TD_MU_RANGE, "passing TDs")
+
+
+def fit_interceptions(points: Sequence[FairPoint]) -> Poisson:
+    """Interceptions as Poisson(λ), λ fitted to the Fair Probabilities (see _fit_count_mean).
+
+    With only the 0.5 Main Line, λ = −ln P(0 INT) exactly.
+    """
+    return _fit_count_mean(points, Poisson, _INT_LAMBDA_RANGE, "interceptions")

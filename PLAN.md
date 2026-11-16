@@ -20,7 +20,7 @@ Vocabulary: [GLOSSARY.md](GLOSSARY.md). Background: [RESEARCH.md](RESEARCH.md) a
 | Players | Canonical identity is the nflverse `gsis_id`. Matching uses the normalized name + position, with team as tiebreak and an alias table. An ambiguous name fails loudly; a `Name (TEAM)` hint resolves it. A player with missing markets is flagged "incomplete: missing X". A player with no markets is skipped. |
 | Output | `OUTPUT.md` (table) + `output.json` (percentiles + per-stat detail). Fixed seed, 20,000 Monte Carlo samples. |
 | Stack | Python ≥3.11, `src/ffp`, pytest, numpy/scipy, nflreadpy, Scrapling. Tests never touch the network; the fetch function is passed in and recorded fixtures stand in. A live smoke test is marked separately. Useful modules are copied from prizepicks-optimizer together with their tests. |
-| Process | One branch per sprint. Commit after each red→green and each refactor. At sprint end: push, open a PR, merge when green. Each sprint has a research wave (subagents), then a build wave (one subagent per isolated module, each in its own git worktree, doing red-green-refactor). I integrate the modules and run the full suite at the end. |
+| Process | One branch per sprint. Commit after each red→green and each refactor. At sprint end: push, open a PR, merge when green. Each sprint has a research wave (subagents), then a build wave (one subagent per isolated module, each in its own git worktree, doing red-green-refactor). I integrate the modules and run the full suite at the end. Every change that alters behaviour, usage or status updates `README.md` in the same commit (see `CLAUDE.md`). |
 | Git | Trimmed fixtures are committed. `snapshots/`, `.cache/`, nflverse downloads and outputs are gitignored, since the repo is public. |
 
 ## Module map
@@ -139,16 +139,16 @@ Done when WR/TE output includes receptions, TDs, fumbles and 2-pt, all correlate
 
 ## Sprint 4 — RB and QB
 
-**Research wave:** check the QB rushing and RB Ladder fixtures. Generate the RB/QB params, including the workhorse-RB override.
+**Research wave:** check the QB rushing and RB Ladder fixtures and record a rush-attempts (carries) fixture if one is missing. Generate the RB/QB params: rushing-yards relations (RB, QB, and WR/TE for receivers with rushing markets), passing-yards relations, the carries r(μ) relation, and the empirical-Bayes shrinkage (strength and seasons) for each player's rushing TD share.
 
-**Build wave:** 3 subagents (QB passing stats; rushing stats; position matrices).
+**Build wave:** 3 subagents (QB passing stats; rushing stats + carries; position matrices + TD split).
 
-Done when all four positions are supported.
+Done when a QB, RB, WR and TE each get a full Score Distribution and the suite passes.
 
 - **S4.1 Passing yards** (normal + mass at 0), **pass TDs** (Binomial(11, μ/11)), **INTs** (Poisson). DK only for INTs if FD has none.
-- **S4.2 Rushing yards** (point mass at 0 + shifted gamma, with a shift for negatives) for RBs and QBs.
-- **S4.3 Position matrices** and the RB rushing/receiving TD split from the player's own history.
-- **S4.4 QB fumbles from sacks.**
+- **S4.2 Rushing yards** (point mass at 0 + shifted gamma, with a shift for negatives) for RBs and QBs, and for WR/TE when a rushing market exists (the "counts as 0" assumption stays only for those without one). **Carries** are a Usage Stat: fetched, fitted as a negative binomial, used only for their mean in expected touches (fumbles), never simulated, and they don't set rushing-yards P(0). With no carries market (FanDuel has none), expected carries come from the rushing-yards mean over the position's yards-per-carry Base Rate; with neither market, fumbles lost uses the per-game Base Rate, unflagged (PR #7 review).
+- **S4.3 Position matrices** for QB and RB (one per position, no workhorse override), and the **per-player rushing TD share** for all four positions (research/nflverse-data.md section 6): volume share v = (ρr·C + κ·m)/(ρr·C + ρt·T + κ) from the player's carries C and targets T, then share = (R + k·v)/(N + k) from his rushing TDs R of N rush+rec TDs; κ = 2, k = 30; window this season to date + the previous 2 seasons. It splits both TDs and 2-pt conversions. History comes from nflverse weekly player stats fetched at runtime; no history, or nflverse unreachable (logged), gives the position share m.
+- ~~S4.4 QB fumbles from sacks.~~ Dropped (Sprint 4 planning): no book offers a QB sacks-taken market, and research/nflverse-data.md finds QB fumbles lost barely vary by usage, so the flat per-game rate stays.
 
 ## Backlog (later sprints, order decided after Sprint 4)
 
@@ -157,3 +157,5 @@ Done when all four positions are supported.
 - **Kicker and D/ST** from team totals and opponent totals.
 - **Conditional receptions→yards model** or a supervised alternative, adopted only if the backtest shows the copula is miscalibrated.
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
+- **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
+- **Workhorse-RB correlation override** (≥55% carry share: RuYd–Rec −0.12 vs +0.02 pooled), adopted only if the backtest shows it matters.

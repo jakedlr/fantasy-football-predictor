@@ -8,6 +8,10 @@ Turns sportsbook player prop prices into a probability distribution of each NFL 
 A player statistic that changes fantasy points, such as receptions, receiving yards, rushing TDs or interceptions thrown.
 _Avoid_: Event, scoring event, category
 
+**Usage Stat**:
+A player statistic that scores no fantasy points but shapes the distribution of a Scoring Stat, such as carries.
+_Avoid_: Volume stat, usage market
+
 **Scoring Rules**:
 The points awarded per unit of each Scoring Stat. A named preset (standard, half-PPR, full PPR) or a Custom Scoring Rules set for a specific league.
 _Avoid_: Scoring format, scoring system, settings
@@ -27,7 +31,7 @@ One scheduled NFL game. A sportsbook's "event" means a Game.
 _Avoid_: Event, matchup, fixture
 
 **Prop Market**:
-A book's offer on one player's Scoring Stat in one Game.
+A book's offer on one player's Scoring Stat or Usage Stat in one Game.
 _Avoid_: Prop, bet, market
 
 **Main Line**:
