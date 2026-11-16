@@ -137,17 +137,23 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("Zay Flowers\nDerrick Henry\n")
     snapshots = tmp_path / "snaps"
+    from datetime import datetime, timezone
+
+    run_started = datetime.now(timezone.utc)
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
                  "--snapshots", str(snapshots)]) == 0
 
     assert [g.game_id for g in seen_games] == ["2026_10_LAC_BAL"]  # only the RB-free target's Game
-    [run_dir] = (snapshots / "2026-11-16").iterdir()
+    # Finding 1: filed under the real fetch time, not --now, so the price history stays true.
+    [run_dir] = (snapshots / run_started.strftime("%Y-%m-%d")).iterdir()
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["run_at"].startswith(run_started.strftime("%Y-%m-%dT%H"))
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert [r["name"] for r in manifest["responses"]] == ["fd_league"]
     assert "SECRET" not in (run_dir / "manifest.json").read_text()
     fair = json.loads((run_dir / "fair_points.json").read_text())["fair_points"]
-    assert [(f["player"], f["stat"], f["game_id"]) for f in fair] == [
-        ("Zay Flowers", "receiving_yards", "2026_10_LAC_BAL")
+    assert [(f["player"], f["player_id"], f["stat"], f["game_id"]) for f in fair] == [
+        ("Zay Flowers", "00-0039064", "receiving_yards", "2026_10_LAC_BAL")
     ]
 
 

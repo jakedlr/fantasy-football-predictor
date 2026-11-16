@@ -72,7 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     elif targets:
         from ffp.sources.http import Http
 
-        snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, now)
+        # Filed under the real fetch time, never --now: snapshots are price history (ADR 0001).
+        snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, datetime.now(timezone.utc))
         books = pipeline.load_live_books(
             Http(), [t.game for t in targets], now, on_response=_response_saver(snapshot)
         )
@@ -130,7 +131,13 @@ def _fair_points_saver(snapshot):
 
     def save(target: pipeline.Target, points) -> None:
         try:
-            snapshot.save_fair_points(target.player.name, pipeline.STAT, points, game_id=target.game.game_id)
+            snapshot.save_fair_points(
+                target.player.name,
+                pipeline.STAT,
+                points,
+                game_id=target.game.game_id,
+                player_id=target.player.gsis_id,
+            )
         except OSError as error:
             log.warning("snapshot: could not save Fair Probabilities for %s: %s", target.name, error)
 

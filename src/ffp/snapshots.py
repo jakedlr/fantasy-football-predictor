@@ -96,15 +96,19 @@ class Snapshot:
         points: Sequence[FairPoint],
         *,
         game_id: str | None = None,
+        player_id: str | None = None,
     ) -> Path:
         """Record the Fair Probabilities used to fit player's stat in fair_points.json.
 
-        One entry per (player, stat): saving the same pair again replaces it.
-        Returns the path of fair_points.json.
+        One entry per (player_id or, without one, player name; stat): saving the
+        same pair again replaces it. Pass the nflverse gsis_id as player_id, so two
+        players who share a name keep separate entries. Returns the path of
+        fair_points.json.
         """
         fair_points = dict(self._fair_points)
-        fair_points[(player, stat)] = {
+        fair_points[(player_id or player, stat)] = {
             "player": player,
+            "player_id": player_id,
             "stat": stat,
             "game_id": game_id,
             "points": [asdict(p) for p in points],

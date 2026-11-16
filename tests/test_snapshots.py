@@ -22,6 +22,7 @@ def test_run_writes_raw_responses_and_fair_probabilities_under_date(tmp_path):
         "receiving_yards",
         [FairPoint(70, 0.5, 3.0), FairPoint(100, 0.22, 1.0)],
         game_id="123",
+        player_id="00-0036900",
     )
 
     run_dir = tmp_path / "2026-11-15" / "170405Z"
@@ -32,6 +33,7 @@ def test_run_writes_raw_responses_and_fair_probabilities_under_date(tmp_path):
     assert saved == [
         {
             "player": "Ja'Marr Chase",
+            "player_id": "00-0036900",
             "stat": "receiving_yards",
             "game_id": "123",
             "points": [
@@ -192,3 +194,12 @@ def test_a_crash_mid_write_leaves_earlier_files_valid(tmp_path, monkeypatch):
     assert after == before  # nothing half-written, no temp files left behind
     assert _load(snap.run_dir / "manifest.json")["responses"][0]["file"] == first.name
     assert [e["player"] for e in _load(snap.run_dir / "fair_points.json")["fair_points"]] == ["A"]
+
+
+def test_two_players_with_one_name_keep_their_own_fair_points(tmp_path):
+    # Sprint 2 review finding 7: entries were keyed by display name, so one overwrote the other.
+    snap = Snapshot(datetime(2026, 11, 15, 17, 4, 5, tzinfo=timezone.utc), root=tmp_path)
+    snap.save_fair_points("Josh Johnson", "receiving_yards", [FairPoint(30, 0.5, 3.0)], player_id="00-1")
+    path = snap.save_fair_points("Josh Johnson", "receiving_yards", [FairPoint(20, 0.5, 3.0)], player_id="00-2")
+    entries = _load(path)["fair_points"]
+    assert [(e["player_id"], e["points"][0]["threshold"]) for e in entries] == [("00-1", 30), ("00-2", 20)]
