@@ -198,6 +198,23 @@ def test_on_response_sees_every_response_with_its_book_name_and_full_url(fake):
     assert [p for _, _, _, p in seen] == [*dk.values(), fd_league, *fd.values()]
 
 
+@pytest.mark.live
+def test_the_real_endpoints_answer(tmp_path):
+    """5 real requests, at least 3.5 s apart; responses stay in tmp_path and are never committed."""
+    import time
+
+    http = Http(tmp_path)
+    dk = live.fetch_draftkings(http, ["receiving_yards"])
+    assert {"events", "markets", "selections"} <= set(dk["dk_rec_yds_ladder"])
+    time.sleep(3.5)  # hosts are paced on their own; keep the run as a whole slow too
+    league = live.fetch_fanduel_league(http)
+    games = [e for e in league["attachments"]["events"].values() if " @ " in e["name"]]
+    assert games
+    payloads = live.fetch_fanduel_events(http, [games[0]["eventId"]])
+    assert all("attachments" in p for p in payloads.values())
+    assert http.live_requests == 5
+
+
 def test_a_failed_request_is_not_handed_on(tmp_path):
     from ffp.sources.http import FetchError
 
