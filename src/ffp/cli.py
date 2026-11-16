@@ -1,10 +1,16 @@
 import argparse
+import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ffp import predict as pipeline
+from ffp.markets import parse_utc
+from ffp.players import load_roster, load_schedule
 from ffp.report import write_json, write_markdown
 from ffp.scoring import DEFAULT_RULES, load_rules
+
+log = logging.getLogger("ffp")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,8 +23,13 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument(
         "--fixtures",
         type=Path,
-        required=True,
-        help="directory of recorded sportsbook responses (live odds arrive in Sprint 2)",
+        help="replay recorded sportsbook responses and nflverse CSVs from this directory "
+        "instead of fetching live odds",
+    )
+    predict.add_argument(
+        "--now",
+        type=parse_utc,
+        help="predict as if it were this time (ISO 8601, UTC unless an offset is given); default: now",
     )
     predict.add_argument(
         "--scoring", default=DEFAULT_RULES, help=f"Scoring Rules preset or file (default {DEFAULT_RULES})"
@@ -26,20 +37,103 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument(
         "--output-dir", type=Path, default=Path("."), help="where OUTPUT.md and output.json go"
     )
+    predict.add_argument(
+        "--snapshots",
+        type=Path,
+        default=Path("snapshots"),
+        help="where live runs save their raw responses and Fair Probabilities (default snapshots/)",
+    )
+    predict.add_argument("--no-snapshot", action="store_true", help="don't save a snapshot of a live run")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     rules = load_rules(args.scoring)
     names = pipeline.read_input(args.input)
-    markets, games = pipeline.load_fixture_markets(args.fixtures)
-    results, skipped = pipeline.predict(names, markets, games, rules)
+    now = args.now or datetime.now(timezone.utc)
+    season = pipeline.nfl_season(now)
+
+    if args.fixtures:
+        roster, schedule = pipeline.load_fixture_nflverse(args.fixtures, season)
+    else:
+        roster, schedule = load_roster(season), load_schedule(season)
+    targets, skipped = pipeline.resolve_targets(names, roster, schedule, now)
+
+    snapshot = None
+    if args.fixtures:
+        books = pipeline.load_fixture_books(args.fixtures)
+    elif targets:
+        from ffp.sources.http import Http
+
+        # Filed under the real fetch time, never --now: snapshots are price history (ADR 0001).
+        snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, datetime.now(timezone.utc))
+        books = pipeline.load_live_books(
+            Http(), [t.game for t in targets], now, on_response=_response_saver(snapshot)
+        )
+        if not books:
+            print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)
+            return 1
+    else:
+        books = []  # nobody to price: don't touch the sportsbooks
+
+    results, unfitted = pipeline.predict(
+        targets, books, rules, on_fair_points=_fair_points_saver(snapshot)
+    )
+    order = {name: i for i, name in reversed(list(enumerate(names)))}
+    skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))
 
     generated_at = datetime.now(timezone.utc)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     common = dict(rules_name=rules.name, generated_at=generated_at, assumptions=rules.assumptions)
     write_markdown(results, skipped, path=args.output_dir / "OUTPUT.md", **common)
     write_json(results, skipped, path=args.output_dir / "output.json", **common)
-    print(f"Wrote {args.output_dir / 'OUTPUT.md'}: {len(results)} players, {len(skipped)} skipped")
+    where = f"; snapshot in {snapshot.run_dir}" if snapshot else ""
+    print(f"Wrote {args.output_dir / 'OUTPUT.md'}: {len(results)} players, {len(skipped)} skipped{where}")
     return 0
+
+
+# A snapshot is history for later backtests: failing to write one is reported, never fatal.
+
+
+def _open_snapshot(root: Path, now: datetime):
+    from ffp.snapshots import Snapshot
+
+    try:
+        return Snapshot(now, root=root)
+    except OSError as error:
+        log.warning("no snapshot for this run: %s", error)
+        return None
+
+
+def _response_saver(snapshot):
+    if snapshot is None:
+        return None
+
+    def save(book: str, name: str, url: str, payload) -> None:
+        try:
+            snapshot.save_response(book, name, payload, url=url)
+        except OSError as error:
+            log.warning("snapshot: could not save %s %s: %s", book, name, error)
+
+    return save
+
+
+def _fair_points_saver(snapshot):
+    if snapshot is None:
+        return None
+
+    def save(target: pipeline.Target, points) -> None:
+        try:
+            snapshot.save_fair_points(
+                target.player.name,
+                pipeline.STAT,
+                points,
+                game_id=target.game.game_id,
+                player_id=target.player.gsis_id,
+            )
+        except OSError as error:
+            log.warning("snapshot: could not save Fair Probabilities for %s: %s", target.name, error)
+
+    return save

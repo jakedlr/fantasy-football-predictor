@@ -3,7 +3,7 @@ name = "ffp"
 version = "0.1.0"
 description = "NFL fantasy Score Distributions from sportsbook prop prices"
 requires-python = ">=3.11"
-dependencies = ["numpy>=2.0", "scipy>=1.13"]
+dependencies = ["numpy>=2.0", "scipy>=1.13", "nflreadpy>=0.1.5", "scrapling[fetchers]>=0.3"]
 
 [project.optional-dependencies]
 dev = ["pytest", "numpy"]

@@ -7,22 +7,14 @@ research/sportsbook-markets.md, DraftKings section.
 """
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
 
-from ..markets import Game, MainLine, PropMarket, Rung
+from ..markets import Game, MainLine, PropMarket, Rung, format_utc, ladder_without_main_line_copy, parse_utc
 from ..odds import parse_american
 
 BOOK = "draftkings"
 
 # (player name as DK spells it, DK event id)
 Key = tuple[str, str]
-
-
-def _kickoff(start_event_date: str) -> str:
-    """DK's "2026-11-17T01:15:00.0000000Z" (7-digit fraction) as "2026-11-17T01:15:00Z"."""
-    whole_seconds = start_event_date.rstrip("Z").split(".")[0]
-    moment = datetime.fromisoformat(whole_seconds).replace(tzinfo=timezone.utc)
-    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def parse_games(subcategory_json: dict) -> list[Game]:
@@ -35,7 +27,7 @@ def parse_games(subcategory_json: dict) -> list[Game]:
                 game_id=event["id"],
                 away=teams["Away"],
                 home=teams["Home"],
-                kickoff=_kickoff(event["startEventDate"]),
+                kickoff=format_utc(parse_utc(event["startEventDate"])),  # DK sends a 7-digit fraction
                 book=BOOK,
                 # Anything but NOT_STARTED (STARTED, or a finished/suspended state) is not priced.
                 started=event.get("status") != "NOT_STARTED",
@@ -126,19 +118,6 @@ def _team(game: Game | None, venue_role: str | None) -> str | None:
     return {"HomePlayer": game.home, "AwayPlayer": game.away}.get(venue_role)
 
 
-def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
-    """The Ladder sorted by threshold, minus the Rung at the Main Line Over's threshold.
-
-    "Over L" and the Rung "floor(L)+1 or more" are the same event. DK usually
-    copies the Over's odds onto that Rung (O/U 71.5 at −113 → "72+" at −113) but
-    not always (Over 37.5 at −111 vs "38+" at −109). The Main Line already
-    carries the event, so the Rung is dropped either way.
-    """
-    if main_line is not None:
-        same_event = main_line.over_threshold
-        ladder = [r for r in ladder if r.threshold != same_event]
-    return tuple(sorted(ladder, key=lambda r: r.threshold))
-
 
 def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> list[PropMarket]:
     """One Prop Market per player per Game, from a Ladder and an O/U subcategory response.
@@ -165,7 +144,7 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> li
                 game_id=event_id,
                 book=BOOK,
                 main_line=main_line,
-                ladder=_without_main_line_copy(ladders.get(key, []), main_line),
+                ladder=ladder_without_main_line_copy(ladders.get(key, []), main_line),
                 team=_team(game, venue_roles[key]),
             )
         )
