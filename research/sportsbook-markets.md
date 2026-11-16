@@ -69,6 +69,8 @@ Categories: `1000` "Passing Props " (the trailing space is really in the name), 
 | Anytime TD, 1st TD, 2+ TDs | 1003 / **12438** "TD Scorer" | `Anytime Touchdown Scorer` (mt 11019), `1st Touchdown Scorer` (11018), `Score 2 or More` (11020) | n/a | |
 | 3+ TDs | 1003 / **12422** "3+ TDs" | Score 3 or More | n/a | |
 
+**15960 "Player to Not Score"** (market "Player Not To Score a TD") is the No side of anytime TD, offered for only a few players per game (6 on 2026-11-16). Its Yes/No pairs calibrate the TD vig (`fair.TD_PRIOR_C`); fixture `dk_nfl_player_not_to_score.json`.
+
 Other TD subcats in 1003: 11818 Last TD Scorer, 12424 Anytime TD - 1st Quarter, 12425 First TD Scorer - 2nd Half, 12451 1st Team TD Scorer, 15960 Player to Not Score, 18744 Either Anytime TD, 18745 Combined TDs, 20382 TD Scorer - Halves Grid, 11938 TD Exactas.
 
 **DK has no separate rushing-TD or receiving-TD market.** No such subcategory exists in any category. Its only TD props are scorer props.

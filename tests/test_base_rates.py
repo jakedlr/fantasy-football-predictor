@@ -123,6 +123,20 @@ def test_base_rate_stats_for_wr():
     assert stats["receiving_2pt"].mean == pytest.approx(0.045)
 
 
+@pytest.mark.parametrize("position", ["WR", "TE"])
+def test_with_no_usage_market_fumbles_lost_is_the_per_game_rate(position):
+    # Review finding 7: a missing receptions market counted as 0 catches, cutting a WR's fumbles to carries only.
+    p = fake_params()
+    stats = base_rates.base_rate_stats(position, receptions_mean=None, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(p["fumbles_lost_per_game"][position])
+
+
+def test_td_rushing_share_is_read_from_the_base_rates():
+    assert base_rates.td_rushing_share("TE", params=fake_params()) == 0.1
+    with pytest.raises(ValueError):
+        base_rates.td_rushing_share("K")
+
+
 def test_base_rate_stats_for_qb_needs_no_touches():
     stats = base_rates.base_rate_stats("QB", receptions_mean=None, params=fake_params())
     assert set(stats) == {"fumbles_lost", "rushing_2pt", "receiving_2pt", "passing_2pt"}

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -322,22 +323,31 @@ def fit_pi0(mu: np.ndarray, y: np.ndarray) -> tuple[float, float]:
     return float(res.x[0]), float(res.x[1])
 
 
-def _location_for_nonzero_mean(target: np.ndarray, sd: np.ndarray, shift: float, iters: int = 6) -> np.ndarray:
-    """The gamma location m whose zero-truncated nonzero part has mean `target` (it settles
-    within ~5 iterations), as
+def _location_for_nonzero_mean(target: np.ndarray, sd: np.ndarray, shift: float, max_iter: int = 100) -> np.ndarray:
+    """The gamma location m whose zero-truncated nonzero part has mean `target`, solved exactly as
     ffp.distributions.receiving_yards solves it at runtime (the gamma on X + shift has mean
-    m + shift and sd `sd`; the bin X in (-1/2, 1/2) is removed). Vectorised fixed-point
-    iteration m <- m - error, using E[G; G in A] = mean * P_{k+1}(A) for a gamma G."""
-    m = np.array(target, dtype=float)
-    lo, hi = shift - 0.5, shift + 0.5
-    for _ in range(iters):
+    m + shift and sd `sd`; the bin X in (-1/2, 1/2) is removed): the step m <- max(m - error, m/2),
+    to the same 1e-11 relative tolerance. Vectorised, using E[G; G in A] = mean * P_{k+1}(A) for a
+    gamma G. Raises ValueError where it doesn't converge, as the runtime raises FitError.
+
+    One approximation remains: this is the continuous part's mean, the runtime takes the mean of
+    the discretised bins. They differ by ~3e-5 relative at typical targets and by up to ~0.2% for
+    tiny targets with a wide sd, where the gamma is steep at its lower end. An exact discrete mean
+    needs a sum over the integer support per row, too slow inside the NLL."""
+    target = np.asarray(target, dtype=float)
+    m = target.copy()
+    lo, hi = max(shift - 0.5, 0.0), shift + 0.5
+    for _ in range(max_iter):
         mean = m + shift
         k, scale = (mean / sd) ** 2, sd * sd / mean
-        zero_bin = special.gammainc(k, hi / scale) - special.gammainc(k, max(lo, 0.0) / scale)
-        mass_in_bin = mean * (special.gammainc(k + 1, hi / scale) - special.gammainc(k + 1, max(lo, 0.0) / scale))
-        nonzero_mean = (mean - mass_in_bin) / (1.0 - zero_bin) - shift
-        m = np.maximum(m - (nonzero_mean - target), 0.5)
-    return m
+        zero_bin = special.gammainc(k, hi / scale) - special.gammainc(k, lo / scale)
+        mass_in_bin = mean * (special.gammainc(k + 1, hi / scale) - special.gammainc(k + 1, lo / scale))
+        err = (mean - mass_in_bin) / (1.0 - zero_bin) - shift - target
+        done = np.abs(err) < 1e-11 * target
+        if done.all():
+            return m
+        m = np.where(done, m, np.maximum(m - err, m / 2))
+    raise ValueError(f"nonzero mean did not converge for {int((~done).sum())} of {done.size} targets")
 
 
 def _hurdle_nonzero_nll(params, target: np.ndarray, y: np.ndarray, shift: float) -> float:
@@ -346,7 +356,10 @@ def _hurdle_nonzero_nll(params, target: np.ndarray, y: np.ndarray, shift: float)
     nonzero mean is `target` = mu / (1 - pi0) (params = ln a, b)."""
     a, b = np.exp(params[0]), params[1]
     sd = a * target ** b
-    mean = _location_for_nonzero_mean(target, sd, shift) + shift
+    try:
+        mean = _location_for_nonzero_mean(target, sd, shift) + shift
+    except ValueError:  # no runtime distribution exists here either: steer the optimiser away
+        return math.inf
     k, scale = (mean / sd) ** 2, sd * sd / mean
     cdf = lambda v: special.gammainc(k, np.maximum(v, 0.0) / scale)  # noqa: E731
     p = cdf(y + shift + 0.5) - cdf(y + shift - 0.5)

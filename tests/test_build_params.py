@@ -314,11 +314,23 @@ def test_fit_sd_relation_recovers_the_runtime_models_power_law():
         assert fa * m**fb == pytest.approx(a * m**b, rel=0.01), m
 
 
-def test_the_location_solver_matches_the_runtime_model():
+@pytest.mark.parametrize(
+    "target, sd, rel",
+    [
+        (np.array([8.0, 15.0, 30.0, 70.0]), 1.975 * np.array([8.0, 15.0, 30.0, 70.0]) ** 0.716, 1e-4),
+        # Review finding 6: small targets, wide sd. The gamma is steep at its lower end here, so the
+        # continuous mean the build uses and the runtime's discretised mean differ most (≈0.2%).
+        (np.array([3.0, 5.0]), np.array([7.5, 9.0]), 5e-3),
+    ],
+)
+def test_the_location_solver_matches_the_runtime_model(target, sd, rel):
     from ffp.distributions import receiving_yards
 
-    target = np.array([8.0, 15.0, 30.0, 70.0])
-    sd = 1.975 * target**0.716
     m = bp._location_for_nonzero_mean(target, sd, 5.0)
     for t, s_, loc in zip(target, sd, m):
-        assert loc == pytest.approx(receiving_yards(t, s_, "TE", pi0=0.0).m, rel=0.01)
+        assert loc == pytest.approx(receiving_yards(t, s_, "TE", pi0=0.0).m, rel=rel)
+
+
+def test_the_location_solver_raises_where_it_cannot_converge():
+    with pytest.raises(ValueError, match="did not converge"):
+        bp._location_for_nonzero_mean(np.array([30.0]), np.array([20.0]), 5.0, max_iter=1)

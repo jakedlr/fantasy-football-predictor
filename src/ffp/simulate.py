@@ -99,7 +99,8 @@ def sample_joint(
     stats_all = list(corr[0])
     matrix = copula.validate(stats_all, corr[1])
     names, sub = copula.submatrix(stats_all, matrix, stat_dists)
-    uniforms = copula.correlated_uniforms(names, sub, n, rng) if names else {}
+    # A sub-matrix of a validated matrix is valid: skip the second check (review finding 9).
+    uniforms = copula.correlated_uniforms_unchecked(names, sub, n, rng) if names else {}
     samples = sample_stats(stat_dists, n, rng, uniforms)
     if "receptions" in samples:
         for stat in RECEIVING_STATS:

@@ -305,3 +305,11 @@ def test_td_scorer_response_alone_gives_anytime_and_two_plus():
     markets = parse_prop_markets(load("dk_nfl_td_scorer.json"), None, "rush_rec_tds")
     zay = next(m for m in markets if m.player == "Zay Flowers")
     assert [(r.threshold, r.odds) for r in zay.ladder] == [(1, 155.0), (2, 1300.0)]
+
+
+def test_a_threshold_listed_twice_keeps_its_first_price():
+    # Review finding 5: merging the same subcategory twice (or 3+ TDs into TD Scorer) gave duplicate Rungs.
+    payload = td_scorer_and_3plus()
+    twice = {**payload, "selections": payload["selections"] + payload["selections"]}
+    henry = next(m for m in parse_prop_markets(twice, None, "rush_rec_tds") if m.player == "Derrick Henry")
+    assert [(r.threshold, r.odds) for r in henry.ladder] == [(1, -150.0), (2, 390.0), (3, 1700.0)]

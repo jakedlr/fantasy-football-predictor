@@ -67,15 +67,19 @@ def _threshold(sel: dict) -> int | None:
 
 
 def _ladders(ladder_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key, list[Rung]]:
-    """Each player's Rungs: milestoneValue N, or a TD scorer's "N or more", means Y >= N."""
-    rungs: dict[Key, list[Rung]] = {}
+    """Each player's Rungs: milestoneValue N, or a TD scorer's "N or more", means Y >= N.
+
+    A threshold seen twice for one player and Game (the payload can merge several
+    subcategories) keeps its first price, as on FanDuel.
+    """
+    rungs: dict[Key, dict[int, Rung]] = {}
     for key, venue_role, sel in _player_selections(ladder_json):
         threshold = _threshold(sel)
         if threshold is None:
             continue
-        rungs.setdefault(key, []).append(Rung(threshold, _odds(sel), BOOK))
+        rungs.setdefault(key, {}).setdefault(threshold, Rung(threshold, _odds(sel), BOOK))
         venue_roles.setdefault(key, venue_role)
-    return rungs
+    return {key: list(by_threshold.values()) for key, by_threshold in rungs.items()}
 
 
 def _is_main(sel: dict) -> bool:

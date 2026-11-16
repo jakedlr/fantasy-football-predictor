@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from ffp import params
-from ffp.base_rates import base_rate_stats
+from ffp.base_rates import base_rate_stats, td_rushing_share
 from ffp.distributions import (
     FitError,
     StatDistribution,
@@ -26,7 +26,7 @@ from ffp.distributions import (
     prob_zero,
     split_touchdowns,
 )
-from ffp.fair import FairPoint, fair_points
+from ffp.fair import DEFAULT_PRIOR_C, TD_PRIOR_C, FairPoint, fair_points
 from ffp.markets import Game, PropMarket, parse_utc
 from ffp.players import (
     PROPS_NOT_POSTED,
@@ -55,6 +55,8 @@ TD_STAT = fanduel.TD_STAT  # rushing + receiving TDs as the books price them; sp
 # The stats fitted from Prop Markets, in fitting order: receptions first, since they set
 # receiving yards' P(0). Their names in "incomplete: missing ..." flags.
 MARKET_STATS = {"receptions": "receptions", "receiving_yards": "receiving yards", TD_STAT: "touchdowns"}
+# The vig c a book's market is devigged with when it has no Main Line (one-sided TD prices never do).
+PRIOR_C = {TD_STAT: TD_PRIOR_C}
 # WR/TE are modelled in full; RB and QB arrive in Sprint 4.
 MODELED_POSITIONS = ("WR", "TE")
 # What the model leaves out for every WR/TE, listed once in the report's assumptions.
@@ -249,11 +251,16 @@ def load_live_books(
         for tab in tabs:
             try:
                 [payload] = live.fetch_fanduel_events(http, [event_id], tabs=[tab], on_response=on_response).values()
-                for stat in MARKET_STATS:
-                    if fanduel.TABS[stat] == tab:
-                        fd_markets += fanduel.parse_prop_markets(payload, stat)
             except failures as error:
                 log.warning("FanDuel event %s tab %s left out: %s", event_id, tab, _describe(error))
+                continue
+            for stat in MARKET_STATS:  # one stat at a time: a tab holds several (receiving yards, receptions)
+                if fanduel.TABS[stat] != tab:
+                    continue
+                try:
+                    fd_markets += fanduel.parse_prop_markets(payload, stat)
+                except failures as error:
+                    log.warning("FanDuel event %s %s left out: %s", event_id, MARKET_STATS[stat], _describe(error))
     books.append(BookOdds(fanduel.BOOK, fd_games, fd_markets))
     return books
 
@@ -361,7 +368,7 @@ def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_p
         if not markets:
             fitted.flags.append(f"incomplete: missing {label}")
             return None, []
-        points = fair_points(markets)
+        points = fair_points(markets, default_c=PRIOR_C.get(stat, DEFAULT_PRIOR_C))
         if on_fair_points is not None:
             on_fair_points(target, stat, points)
         try:
@@ -383,8 +390,7 @@ def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_p
         fitted.details["receiving_yards"] = _detail(yards, markets)
     tds, markets = fit(TD_STAT, fit_touchdowns)
     if tds is not None:
-        share = params.load("base_rates")["td_rushing_share"][position]
-        rushing, receiving = split_touchdowns(tds, share)
+        rushing, receiving = split_touchdowns(tds, td_rushing_share(position))
         for stat, dist in (("receiving_tds", receiving), ("rushing_tds", rushing)):
             fitted.dists[stat] = dist
             fitted.details[stat] = _detail(dist, markets)
