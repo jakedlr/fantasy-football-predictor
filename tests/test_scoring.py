@@ -89,3 +89,19 @@ def test_kicker_and_dst_do_not_affect_offense_score(tmp_path):
 def test_unknown_rules_name_errors(tmp_path):
     with pytest.raises(ValueError, match="no-such-league"):
         load_rules("no-such-league", scoring_dir=tmp_path)
+
+
+def test_numpy_samples_score_elementwise():
+    import numpy as np
+    samples = {
+        "receptions": np.array([0, 6, 10]),
+        "receiving_yards": np.array([0.0, 85.0, 120.0]),
+        "receiving_tds": np.array([0, 1, 2]),
+        "fumbles_lost": np.array([0, 1, 0]),
+    }
+    points = score(samples, load_rules("ppr"))
+    # Sample 0: all zeros = 0
+    # Sample 1: the WR line under ppr = 18.5
+    # Sample 2: 10 * 1 + 120 * 0.1 + 2 * 6 + 0 * -2 = 10 + 12 + 12 = 34
+    assert isinstance(points, np.ndarray)
+    np.testing.assert_allclose(points, [0, 18.5, 34])
