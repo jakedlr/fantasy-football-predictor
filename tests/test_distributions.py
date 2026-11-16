@@ -281,3 +281,29 @@ def test_receiving_yards_relations_come_from_the_params_file():
         assert receiving_yards_sd_relation(25.0, position) == pytest.approx(sd_relation(25.0, position))
     shift = params.load("dispersion")["receiving_yards"]["RB"]["shift"]
     assert receiving_yards(20.0, 15.0, "RB").shift == shift
+
+
+# Sprint 3 review findings 7-9.
+
+
+def test_prob_zero_and_prob_negative_for_every_family():
+    # Finding 8: one definition of P(Y = 0) for the fit (yards pi0) and the simulation (no-catch mass).
+    from scipy import stats
+
+    from ffp.distributions import NegativeBinomial, Poisson, prob_negative, prob_zero
+
+    assert prob_zero(Poisson(0.4)) == pytest.approx(math.exp(-0.4))
+    nb = NegativeBinomial(3.0, 8.0)
+    assert prob_zero(nb) == pytest.approx(stats.nbinom(8.0, 8.0 / 11.0).pmf(0))
+    assert prob_negative(nb) == 0.0
+    hurdle = receiving_yards(20.0, 18.0, "WR", pi0=0.25)
+    assert prob_zero(hurdle) == pytest.approx(0.25)
+    assert 0 < prob_negative(hurdle) < 0.05  # the shifted gamma's small negative-yardage mass
+
+
+def test_coefficient_lookups_are_built_once():
+    # Finding 7: the fit's objective looked the coefficients up thousands of times per player.
+    from ffp.distributions import _receiving_params, _receptions_params
+
+    assert _receiving_params("WR") is _receiving_params("WR")
+    assert _receptions_params("WR") is _receptions_params("WR")

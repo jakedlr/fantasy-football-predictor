@@ -3,6 +3,7 @@
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cache
 from typing import Protocol
 
 import numpy as np
@@ -36,6 +37,16 @@ class StatDistribution(Protocol):
     @property
     def mean(self) -> float:
         """Expected value."""
+
+
+def prob_zero(dist: StatDistribution) -> float:
+    """P(Y = 0) of an integer-valued Stat Distribution."""
+    return float(dist.sf(np.array([0]))[0] - dist.sf(np.array([1]))[0])
+
+
+def prob_negative(dist: StatDistribution) -> float:
+    """P(Y < 0): only yards go negative (a loss on a catch or a run)."""
+    return float(1 - dist.sf(np.array([0]))[0])
 
 
 class HurdleShiftedGamma:
@@ -102,6 +113,7 @@ class _ReceivingYardsParams:
     shift: float  # the shifted gamma's location shift, yards
 
 
+@cache
 def _receiving_params(position: str) -> _ReceivingYardsParams:
     """The position's receiving-yards relations, from params/dispersion.json (scripts/build_params.py)."""
     table = params.load("dispersion")["receiving_yards"]
@@ -219,6 +231,13 @@ def _fit_main_line_only(point: FairPoint, position: str, pi0: float | None = Non
     return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
 
 
+def _anchor(points: Sequence[FairPoint]) -> FairPoint:
+    """The point a fit starts from and falls back on: the heaviest (the Main Line, when
+    present); among equal weights, the one nearest 50%, not an extreme Rung such as "10+"
+    at −2000."""
+    return max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+
+
 def fit_receiving_yards(
     points: Sequence[FairPoint], position: str, pi0: float | None = None
 ) -> HurdleShiftedGamma:
@@ -250,7 +269,7 @@ def fit_receiving_yards(
     # The 1-point fit is the fallback and the starting point for the full fit. Its
     # anchor is the heaviest point (the Main Line, when present); among equal
     # weights, the one nearest 50%, not an extreme Rung such as "10+" at −2000.
-    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+    anchor = _anchor(points)
     start = _fit_main_line_only(anchor, position, pi0)
     if len(points) == 1:
         return start
@@ -304,11 +323,25 @@ def fit_receiving_yards(
     return receiving_yards(mu, sd, position, pi0)
 
 
-class Poisson:
-    """Poisson(lam) counts: TDs from an anytime-TD price, and the Base Rate stats.
+class _Count:
+    """An integer count on 0, 1, 2, ... backed by a frozen scipy distribution `_dist`.
 
-    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x).
+    sf(x) = P(Y >= x), with a fractional x rounded up (Y >= 4.5 means Y >= 5);
+    ppf(u) = the smallest k with P(Y <= k) >= u.
     """
+
+    _dist: object
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        x = np.ceil(np.asarray(x, dtype=float))
+        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        return self._dist.ppf(np.asarray(u, dtype=float))
+
+
+class Poisson(_Count):
+    """Poisson(lam) counts: TDs from an anytime-TD price, and the Base Rate stats."""
 
     def __init__(self, lam: float):
         if not lam >= 0:
@@ -316,24 +349,20 @@ class Poisson:
         self.lam = float(lam)
         self._dist = stats.poisson(self.lam)
 
-    def sf(self, x: np.ndarray) -> np.ndarray:
-        x = np.ceil(np.asarray(x, dtype=float))
-        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
-
     def ppf(self, u: np.ndarray) -> np.ndarray:
-        if self.lam == 0:
+        if self.lam == 0:  # scipy's Poisson(0) answers -1 at u = 0
             return np.zeros_like(np.asarray(u, dtype=float))
-        return self._dist.ppf(np.asarray(u, dtype=float))
+        return super().ppf(u)
 
     @property
     def mean(self) -> float:
         return self.lam
 
 
-class NegativeBinomial:
+class NegativeBinomial(_Count):
     """Receptions: NB with mean mu and size r, so Var = mu + mu²/r (research Q1b, Q4).
 
-    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x). As r → ∞ it tends to Poisson(mu).
+    As r → ∞ it tends to Poisson(mu).
     """
 
     def __init__(self, mu: float, r: float):
@@ -341,15 +370,6 @@ class NegativeBinomial:
             raise ValueError(f"invalid negative binomial parameters mu={mu}, r={r}")
         self.mu, self.r = float(mu), float(r)
         self._dist = stats.nbinom(self.r, self.r / (self.r + self.mu))
-
-    def sf(self, x: np.ndarray) -> np.ndarray:
-        """P(Y >= x); a fractional x is rounded up (Y >= 4.5 means Y >= 5)."""
-        x = np.ceil(np.asarray(x, dtype=float))
-        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
-
-    def ppf(self, u: np.ndarray) -> np.ndarray:
-        """Smallest integer k with P(Y <= k) >= u."""
-        return self._dist.ppf(np.asarray(u, dtype=float))
 
     @property
     def mean(self) -> float:
@@ -367,13 +387,20 @@ _REC_MU_RANGE = (0.01, 40.0)  # mu the model allows, catches
 _LN_R_RANGE = (math.log(0.05), math.log(1e4))  # 1e4: Poisson for any practical purpose
 
 
-def receptions_r_relation(mu: float, position: str) -> float:
-    """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+@cache
+def _receptions_params(position: str) -> tuple[float, float]:
+    """(r_a, r_b) of the position's NB size relation, from params/dispersion.json."""
     try:
         rel = params.load("dispersion")["receptions"][position]
     except KeyError:
         raise ValueError(f"no receptions model for position {position!r}") from None
-    return rel["r_a"] * mu ** rel["r_b"]
+    return rel["r_a"], rel["r_b"]
+
+
+def receptions_r_relation(mu: float, position: str) -> float:
+    """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+    r_a, r_b = _receptions_params(position)
+    return r_a * mu**r_b
 
 
 def _receptions_on_relation(mu: float, position: str) -> NegativeBinomial:
@@ -411,7 +438,7 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
     if not points:
         raise FitError("no Fair Probabilities to fit")
     # The anchor is the heaviest point (the Main Line, when present), as in fit_receiving_yards.
-    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+    anchor = _anchor(points)
     start = _fit_receptions_one_point(anchor, position)
     if len(points) == 1:
         return start

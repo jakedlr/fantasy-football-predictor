@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ffp import copula
-from ffp.distributions import StatDistribution
+from ffp.distributions import StatDistribution, prob_negative, prob_zero
 from ffp.scoring import ScoringRules, score
 
 DEFAULT_SEED = 20261115
@@ -124,9 +124,8 @@ def _no_catch_coupled(
     That needs p0 >= p_nc; with less zero mass (a TD rate too high for this many no-catch
     games) the no-catch games still get 0, and the catch games take the rest of the scale.
     """
-    p_nc = float(1 - receptions.sf(np.array([1]))[0])
-    q = float(1 - dist.sf(np.array([0]))[0])
-    p0 = float(dist.sf(np.array([0]))[0] - dist.sf(np.array([1]))[0])
+    p_nc = prob_zero(receptions)
+    q, p0 = prob_negative(dist), prob_zero(dist)
     taken = min(p_nc, p0)  # the zero mass the no-catch games use
     catch = ~no_catch
     out = np.zeros_like(u, dtype=float)

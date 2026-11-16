@@ -23,6 +23,7 @@ from ffp.distributions import (
     fit_receiving_yards,
     fit_receptions,
     fit_touchdowns,
+    prob_zero,
     split_touchdowns,
 )
 from ffp.fair import FairPoint, fair_points
@@ -375,7 +376,7 @@ def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_p
         fitted.dists["receptions"] = receptions
         fitted.details["receptions"] = _detail(receptions, markets)
     # No catch, no yards (research Q4): with a receptions fit, P(0 yards) is P(0 receptions).
-    pi0 = None if receptions is None else float(1 - receptions.sf(np.array([1]))[0])
+    pi0 = None if receptions is None else prob_zero(receptions)
     yards, markets = fit("receiving_yards", lambda pts: fit_receiving_yards(pts, position, pi0=pi0))
     if yards is not None:
         fitted.dists["receiving_yards"] = yards
