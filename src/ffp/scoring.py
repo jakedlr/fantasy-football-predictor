@@ -26,6 +26,9 @@ SCORING_STATS = (
 class ScoringRules:
     name: str
     offense: dict = field(default_factory=dict)
+    kicker: dict = field(default_factory=dict)
+    dst: dict = field(default_factory=dict)
+    assumptions: list = field(default_factory=list)
 
 
 _STANDARD = ScoringRules(
@@ -65,7 +68,13 @@ def load_rules(name_or_path, scoring_dir=Path("scoring")):
         if stat not in SCORING_STATS:
             raise ValueError(f"{path}: unknown Scoring Stat {stat!r} in offense")
     offense = {stat: data["offense"].get(stat, 0) for stat in SCORING_STATS}
-    return ScoringRules(name=data["name"], offense=offense)
+    return ScoringRules(
+        name=data["name"],
+        offense=offense,
+        kicker=data.get("kicker", {}),
+        dst=data.get("dst", {}),
+        assumptions=data.get("assumptions", []),
+    )
 
 
 def score(stat_line, rules):

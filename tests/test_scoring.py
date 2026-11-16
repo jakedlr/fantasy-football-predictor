@@ -65,3 +65,22 @@ def test_missing_offense_stats_default_to_zero(tmp_path):
     assert rules.offense["receptions"] == 0
     # Only the TD scores: 1 * 6 = 6
     assert score(WR_LINE, rules) == pytest.approx(6)
+
+
+def test_espn_league_kicker_and_dst_sections_load():
+    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    assert rules.kicker["pat_made"] == 1
+    assert rules.kicker["fg_missed"] == -1
+    assert rules.kicker["fg_made_by_distance"][-1] == {"min": 60, "max": None, "points": 6}
+    assert rules.dst["sacks"] == 1
+    assert rules.dst["punt_return_tds"] == 6
+    assert rules.dst["points_allowed_tiers"][0] == {"min": 0, "max": 0, "points": 5}
+    assert rules.dst["yards_allowed_tiers"][-1] == {"min": 550, "max": None, "points": -7}
+    assert any("18-27" in a for a in rules.assumptions)
+
+
+def test_kicker_and_dst_do_not_affect_offense_score(tmp_path):
+    data = {"name": "k-heavy", "offense": {"receiving_tds": 6}, "kicker": {"pat_made": 100}, "dst": {"sacks": 100}}
+    rules = load_rules(write_rules(tmp_path, data))
+    # Only the TD scores: 1 * 6 = 6, even if the stat line carries K/DST-looking keys
+    assert score({**WR_LINE, "pat_made": 1, "sacks": 1}, rules) == pytest.approx(6)
