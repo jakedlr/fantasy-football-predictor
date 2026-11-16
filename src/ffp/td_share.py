@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from ffp import params as _params
 from ffp.base_rates import POSITIONS, td_rushing_share
+from ffp.players import _present
 
 log = logging.getLogger(__name__)
 
@@ -97,12 +98,6 @@ def load_td_history(season: int, fetch: Fetch | None = None, params: Mapping | N
         log.warning("TD history unavailable (%s); every player's rushing TD share is the position share", e)
         return {}
     return {pid: TdHistory(*acc) for pid, acc in totals.items()}
-
-
-def _present(value: object) -> bool:
-    if value is None or value != value:
-        return False
-    return str(value).strip().lower() not in ("", "none", "nan", "null")
 
 
 def _count(value: object) -> float:
