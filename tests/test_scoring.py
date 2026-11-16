@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -43,3 +44,15 @@ def test_espn_league_scores_qb_line():
     # 11 + 8 - 2 + 2 = 19
     rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
     assert score(qb_line, rules) == pytest.approx(19)
+
+
+def write_rules(tmp_path, data, name="custom"):
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_unknown_scoring_stat_is_rejected(tmp_path):
+    path = write_rules(tmp_path, {"name": "custom", "offense": {"receptions": 1, "longest_reception": 1}})
+    with pytest.raises(ValueError, match="longest_reception"):
+        load_rules(path)

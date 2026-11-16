@@ -57,7 +57,13 @@ PRESETS = {
 def load_rules(name_or_path, scoring_dir=Path("scoring")):
     if name_or_path in PRESETS:
         return PRESETS[name_or_path]
-    data = json.loads((Path(scoring_dir) / f"{name_or_path}.json").read_text())
+    path = Path(name_or_path)
+    if not path.is_file():
+        path = Path(scoring_dir) / f"{name_or_path}.json"
+    data = json.loads(path.read_text())
+    for stat in data["offense"]:
+        if stat not in SCORING_STATS:
+            raise ValueError(f"{path}: unknown Scoring Stat {stat!r} in offense")
     return ScoringRules(name=data["name"], offense=data["offense"])
 
 
