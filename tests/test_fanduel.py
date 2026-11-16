@@ -1,3 +1,4 @@
+import copy
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ffp.markets import Game, MainLine, PropMarket, Rung
-from ffp.sources.fanduel import MARKET_STEMS, TABS, parse_games, parse_prop_markets, props_posted
+from ffp.sources.fanduel import MARKET_STEMS, NOT_OFFERED, TABS, parse_games, parse_prop_markets, props_posted
 
 FIXTURES = Path(__file__).resolve().parents[1] / "research" / "fixtures"
 
@@ -318,3 +319,67 @@ def test_first_last_and_half_td_scorers_are_not_rungs():
 
 def test_a_tab_without_td_markets_gives_no_td_prop_markets():
     assert parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "rush_rec_tds") == []
+
+
+# --- QB and RB markets (S4.1/S4.2) ---------------------------------------------------------
+
+
+def tab_markets(tab: str, stat: str) -> dict[str, PropMarket]:
+    return {m.player: m for m in parse_prop_markets(load(f"fd_nfl_event_{tab}_tab.json"), stat)}
+
+
+def test_qb_and_rb_stats_name_their_tabs():
+    assert TABS["passing_yards"] == TABS["passing_tds"] == "passing-props"
+    assert TABS["rushing_yards"] == "rushing-props"
+
+
+def test_passing_yards_main_line_and_ladder():
+    herbert = tab_markets("passing", "passing_yards")["Justin Herbert"]
+    assert (herbert.stat, herbert.team) == ("passing_yards", "Los Angeles Chargers")
+    assert herbert.main_line == MainLine(200.5, -113.0, -113.0, "fanduel")
+    assert [(r.threshold, r.odds) for r in herbert.ladder] == [
+        (125, -1000.0), (150, -440.0), (175, -225.0), (200, -118.0), (225, 158.0),
+        (250, 270.0), (275, 470.0), (300, 750.0), (325, 1200.0),
+    ]
+
+
+def test_passing_tds_main_line_and_ladder():
+    brissett = tab_markets("passing", "passing_tds")["Jacoby Brissett"]
+    assert brissett.main_line == MainLine(1.5, 142.0, -188.0, "fanduel")
+    assert [(r.threshold, r.odds) for r in brissett.ladder] == [(1, -400.0), (3, 520.0), (4, 1500.0)]
+
+
+def test_rushing_yards_main_line_and_ladder_merged_over_tiers():
+    markets = tab_markets("rushing", "rushing_yards")
+    assert len(markets) == 8
+    henry = markets["Derrick Henry"]
+    assert (henry.team, henry.main_line) == ("Baltimore Ravens", MainLine(80.5, -113.0, -113.0, "fanduel"))
+    rungs = {r.threshold: r.odds for r in henry.ladder}
+    assert (rungs[60], rungs[100], rungs[150]) == (-300.0, 182.0, 850.0)
+    assert markets["Justin Herbert"].main_line.line == 20.5  # a QB in the rushing tab
+
+
+def test_rushing_and_passing_yards_are_told_apart_by_market_type_not_runner_name():
+    # Both Ladders' runners read "Justin Herbert N+ Yards": only the market type says which stat.
+    passing, rushing = load("fd_nfl_event_passing_tab.json"), load("fd_nfl_event_rushing_tab.json")
+    both = copy.deepcopy(passing)
+    both["attachments"]["markets"].update(rushing["attachments"]["markets"])
+    rush = next(m for m in parse_prop_markets(both, "rushing_yards") if m.player == "Justin Herbert")
+    pass_ = next(m for m in parse_prop_markets(both, "passing_yards") if m.player == "Justin Herbert")
+    assert rush == tab_markets("rushing", "rushing_yards")["Justin Herbert"]
+    assert pass_ == tab_markets("passing", "passing_yards")["Justin Herbert"]
+    assert max(r.threshold for r in rush.ladder) < min(r.threshold for r in pass_.ladder)
+
+
+def test_rushing_plus_receiving_yards_are_not_rushing_yards():
+    # "Zay Flowers - Rush + Rec Yds" sits in the same tab with the same "<Player> Over" runners.
+    zay = tab_markets("rushing", "rushing_yards")["Zay Flowers"]
+    assert zay.main_line == MainLine(3.5, 100.0, -128.0, "fanduel")
+    assert [r.threshold for r in zay.ladder] == [5, 10, 15, 20]
+
+
+@pytest.mark.parametrize("stat", ["passing_interceptions", "carries"])
+def test_a_stat_fanduel_does_not_offer_gives_no_markets_not_an_error(stat):
+    assert stat in NOT_OFFERED and stat not in TABS
+    for tab in ("passing", "rushing", "receiving"):
+        assert parse_prop_markets(load(f"fd_nfl_event_{tab}_tab.json"), stat) == []

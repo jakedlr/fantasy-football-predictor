@@ -29,6 +29,19 @@ def site():
         DK_SUB.format(1342, 14115): load("dk_nfl_receptions_ou.json"),
         DK_SUB.format(1003, 12438): load("dk_nfl_td_scorer.json"),
         DK_SUB.format(1003, 12422): load("dk_nfl_3plus_tds.json"),
+        DK_SUB.format(1000, 16569): load("dk_nfl_pass_yds_ladder.json"),
+        DK_SUB.format(1000, 9524): load("dk_nfl_pass_yds_ou.json"),
+        DK_SUB.format(1000, 16568): load("dk_nfl_pass_tds_ladder.json"),
+        DK_SUB.format(1000, 9525): load("dk_nfl_pass_tds_ou.json"),
+        DK_SUB.format(1000, 16819): load("dk_nfl_ints_ladder.json"),
+        DK_SUB.format(1000, 15937): load("dk_nfl_ints_ou.json"),
+        # The league fixture also lists the in-play "Interceptions O/U" id 18958: nothing pre-game there.
+        DK_SUB.format(1000, 18958): {"events": [], "markets": [], "selections": []},
+        DK_SUB.format(1001, 16571): load("dk_nfl_rush_yds_ladder.json"),
+        DK_SUB.format(1001, 9514): load("dk_nfl_rush_yds_ou.json"),
+        DK_SUB.format(1001, 16820): load("dk_nfl_rush_att_ladder.json"),
+        DK_SUB.format(1001, 9518): load("dk_nfl_rush_att_ou.json"),
+        FD_EVENT.format(live.FD_APP_KEY, MNF, "passing-props"): load("fd_nfl_event_passing_tab.json"),
         FD_EVENT.format(live.FD_APP_KEY, MNF, "td-scorer-props"): load("fd_nfl_event_td_scorer_tab.json"),
         live.FD_LEAGUE_URL: load("fd_nfl_league.json"),
         FD_EVENT.format(live.FD_APP_KEY, MNF, "receiving-props"): load("fd_nfl_event_receiving_tab.json"),
@@ -238,6 +251,45 @@ def test_no_events_means_no_requests(fake):
     fetch, http = fake
     assert live.fetch_fanduel_events(http, []) == {}
     assert fetch.calls == []
+
+
+# --- QB and RB markets (S4.1/S4.2) -------------------------------------------------
+
+
+@pytest.mark.parametrize("stat, slug, ladder, main_line", [
+    ("passing_yards", "pass_yds", [(1000, 16569)], [(1000, 9524)]),
+    ("passing_tds", "pass_tds", [(1000, 16568)], [(1000, 9525)]),
+    ("passing_interceptions", "ints", [(1000, 16819)], [(1000, 18958), (1000, 15937)]),
+    ("rushing_yards", "rush_yds", [(1001, 16571)], [(1001, 9514)]),
+    ("carries", "rush_att", [(1001, 16820)], [(1001, 9518)]),
+])
+def test_draftkings_qb_and_rb_stats_are_their_ladder_and_ou(fake, stat, slug, ladder, main_line):
+    fetch, http = fake
+    payloads = live.fetch_draftkings(http, [stat])
+    assert fetch.calls == [live.DK_LEAGUE_URL] + [DK_SUB.format(c, s) for c, s in ladder + main_line]
+    assert list(payloads) == ["dk_league", f"dk_{slug}_ladder", f"dk_{slug}_ou"]
+    markets = draftkings.parse_prop_markets(payloads[f"dk_{slug}_ladder"], payloads[f"dk_{slug}_ou"], stat)
+    assert markets and all(m.main_line is not None for m in markets)
+
+
+def test_draftkings_interceptions_merge_the_pre_game_and_in_play_ids(fake):
+    payloads = live.fetch_draftkings(fake[1], ["passing_interceptions"])
+    markets = draftkings.parse_prop_markets(payloads["dk_ints_ladder"], payloads["dk_ints_ou"],
+                                            "passing_interceptions")
+    herbert = next(m for m in markets if m.player == "Justin Herbert")
+    assert herbert.main_line.line == 0.5
+    assert [r.threshold for r in herbert.ladder] == [2, 3]
+
+
+def test_fanduel_tabs_for_qb_and_rb_stats():
+    assert live.fd_tabs(["passing_yards", "passing_tds", "rushing_yards"]) == ["passing-props", "rushing-props"]
+    assert live.FD_PASSING_TAB == "passing-props" and live.FD_RUSHING_TAB == "rushing-props"
+
+
+def test_fanduel_tabs_skip_stats_fanduel_does_not_offer():
+    # FD posts no interceptions-thrown and no rush-attempts market: no tab to ask, not an error.
+    assert live.fd_tabs(["passing_interceptions", "carries"]) == []
+    assert live.fd_tabs(["carries", "rushing_yards", "passing_interceptions"]) == ["rushing-props"]
 
 
 # --- on_response ------------------------------------------------------------------

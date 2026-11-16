@@ -313,3 +313,59 @@ def test_a_threshold_listed_twice_keeps_its_first_price():
     twice = {**payload, "selections": payload["selections"] + payload["selections"]}
     henry = next(m for m in parse_prop_markets(twice, None, "rush_rec_tds") if m.player == "Derrick Henry")
     assert [(r.threshold, r.odds) for r in henry.ladder] == [(1, -150.0), (2, 390.0), (3, 1700.0)]
+
+
+# --- QB and RB markets (S4.1/S4.2): the same parser, new fixtures -------------------------------
+
+
+def qb_rb_markets(slug: str, stat: str) -> dict[str, PropMarket]:
+    markets = parse_prop_markets(load(f"dk_nfl_{slug}_ladder.json"), load(f"dk_nfl_{slug}_ou.json"), stat)
+    return {m.player: m for m in markets}
+
+
+def test_passing_yards_main_line_and_ladder():
+    herbert = qb_rb_markets("pass_yds", "passing_yards")["Justin Herbert"]
+    assert (herbert.stat, herbert.team) == ("passing_yards", "LA Chargers")
+    assert herbert.main_line == MainLine(200.5, -112.0, -112.0, "draftkings")
+    rungs = {r.threshold: r.odds for r in herbert.ladder}
+    assert (rungs[150], rungs[200], rungs[250], rungs[300]) == (-455.0, -115.0, 281.0, 850.0)
+    assert 201 not in rungs  # the main-line rung "201+" is the Over's event
+    assert len(rungs) == 23
+
+
+def test_passing_tds_main_line_at_one_and_a_half():
+    brissett = qb_rb_markets("pass_tds", "passing_tds")["Jacoby Brissett"]
+    assert brissett.main_line == MainLine(1.5, 129.0, -166.0, "draftkings")
+    assert [(r.threshold, r.odds) for r in brissett.ladder] == [(1, -419.0), (3, 585.0), (4, 2000.0)]
+
+
+def test_interceptions_one_plus_duplicates_the_over_and_is_dropped():
+    herbert = qb_rb_markets("ints", "passing_interceptions")["Justin Herbert"]
+    assert herbert.main_line == MainLine(0.5, -165.0, 129.0, "draftkings")
+    assert [(r.threshold, r.odds) for r in herbert.ladder] == [(2, 285.0), (3, 970.0)]
+
+
+def test_rushing_yards_for_an_rb_and_a_qb():
+    markets = qb_rb_markets("rush_yds", "rushing_yards")
+    assert len(markets) == 8
+    henry = markets["Derrick Henry"]
+    assert henry.main_line == MainLine(81.5, -110.0, -114.0, "draftkings")
+    rungs = {r.threshold: r.odds for r in henry.ladder}
+    assert (rungs[60], rungs[100], rungs[150]) == (-287.0, 191.0, 1120.0)
+    assert markets["Justin Herbert"].main_line.line == 20.5
+    assert markets["Justin Herbert"].team == "LA Chargers"
+
+
+def test_carries_main_line_and_ladder():
+    henry = qb_rb_markets("rush_att", "carries")["Derrick Henry"]
+    assert (henry.stat, henry.team) == ("carries", "BAL Ravens")
+    assert henry.main_line == MainLine(19.5, -101.0, -126.0, "draftkings")
+    rungs = {r.threshold: r.odds for r in henry.ladder}
+    assert (rungs[16], rungs[22]) == (-323.0, 216.0)
+    assert 20 not in rungs
+
+
+def test_a_carries_main_line_without_a_ladder():
+    hill = qb_rb_markets("rush_att", "carries")["Justice Hill"]
+    assert hill.main_line == MainLine(3.5, -160.0, 125.0, "draftkings")
+    assert hill.ladder == ()
