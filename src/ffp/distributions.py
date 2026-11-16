@@ -635,10 +635,16 @@ def _passing_params(position: str) -> _PassingYardsParams:
     return _PassingYardsParams(p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"])
 
 
+# The pi0 relation is evaluated at mu no lower than this. Its fit (params "dispersion") gets its
+# zeros at low mu from benched ex-starters, who get no props; a QB with a market starts the game,
+# and below ~175 yd the relation would split his distribution into two humps (P(0) 0.44 at 150).
+PASSING_PI0_MU_FLOOR = 200.0
+
+
 def passing_yards_pi0_relation(mu: float, position: str = "QB") -> float:
-    """P(0 passing yards) from the overall mean: expit(c0 + c1 ln mu)."""
+    """P(0 passing yards) from the overall mean: expit(c0 + c1 ln max(mu, PASSING_PI0_MU_FLOOR))."""
     p = _passing_params(position)
-    return float(expit(p.c0 + p.c1 * math.log(mu)))
+    return float(expit(p.c0 + p.c1 * math.log(max(mu, PASSING_PI0_MU_FLOOR))))
 
 
 def passing_yards_sd_relation(mu: float, position: str = "QB", pi0: float | None = None) -> float:

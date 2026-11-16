@@ -38,8 +38,9 @@ def relation():
 
 
 def pi0_rel(mu):
+    """The relation as fitted, held at its 200-yd value below 200 yd (PASSING_PI0_MU_FLOOR)."""
     c0, c1, _, _ = relation()
-    return expit(c0 + c1 * math.log(mu))
+    return expit(c0 + c1 * math.log(max(mu, 200.0)))
 
 
 def sd_rel(mu):
@@ -282,3 +283,15 @@ def test_ints_contradictory_points_raise():
 def test_ints_without_points_raises():
     with pytest.raises(FitError):
         fit_interceptions([])
+
+
+@pytest.mark.parametrize("line", [120.5, 150.5, 175.5])
+def test_a_low_main_line_is_not_split_into_two_humps(line):
+    # The fitted pi0 relation is steep below ~175 yd: its zeros are benched ex-starters, who get no
+    # props. A QB with a market starts the game, so the relation is held at its 200-yd value.
+    from ffp.distributions import PASSING_PI0_MU_FLOOR, fit_passing_yards, passing_yards_pi0_relation
+
+    fit = fit_passing_yards([FairPoint(math.floor(line) + 1, 0.5, 3.0)], "QB")
+    assert fit.pi0 == pytest.approx(passing_yards_pi0_relation(PASSING_PI0_MU_FLOOR), rel=1e-9)
+    assert fit.pi0 < 0.03
+    assert fit.m == pytest.approx(line, abs=5)
