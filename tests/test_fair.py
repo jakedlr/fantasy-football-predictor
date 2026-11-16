@@ -119,6 +119,30 @@ def test_probabilities_are_clipped_away_from_0_and_1():
     assert points[200].prob == pytest.approx(1e-4)
 
 
+def test_two_books_with_different_thresholds_merge():
+    # Each book has its own vig; both describe the same fair curve.
+    dk = market("draftkings", {40: 0.88, 80: 0.40}, main=(69.5, 0.55), c=0.10)
+    fd = market("fanduel", {50: 0.80, 100: 0.18}, main=(64.5, 0.62), c=0.20)
+
+    points = by_threshold(fair_points([dk, fd]))
+
+    assert sorted(points) == [40, 50, 65, 70, 80, 100]
+    assert points[50].prob == pytest.approx(0.80, abs=1e-9)
+    assert points[65].prob == pytest.approx(0.62, abs=1e-9)
+    assert points[65].weight == 3
+
+
+def test_same_threshold_from_two_books_pools_by_weight():
+    dk = market("draftkings", {60: 0.70}, main=(69.5, 0.55), c=0.10)
+    fd = market("fanduel", {60: 0.66}, main=(69.5, 0.55), c=0.20)
+
+    points = by_threshold(fair_points([dk, fd]))
+
+    assert points[60].prob == pytest.approx(0.68, abs=1e-9)
+    assert points[60].weight == 2
+    assert points[70].weight == 6
+
+
 def test_prior_c_overrides_the_default_per_book():
     fair = {50: 0.7, 80: 0.3}
     m = market("fanduel", fair, main=None, c=0.3)
