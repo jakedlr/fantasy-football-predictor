@@ -25,6 +25,8 @@ def site():
         live.DK_LEAGUE_URL: load("dk_nfl_league.json"),
         DK_SUB.format(1342, 16570): load("dk_nfl_rec_yds_ladder.json"),
         DK_SUB.format(1342, 14114): load("dk_nfl_rec_yds_ou.json"),
+        DK_SUB.format(1342, 16821): load("dk_nfl_receptions_ladder.json"),
+        DK_SUB.format(1342, 14115): load("dk_nfl_receptions_ou.json"),
         live.FD_LEAGUE_URL: load("fd_nfl_league.json"),
         FD_EVENT.format(live.FD_APP_KEY, MNF, "receiving-props"): load("fd_nfl_event_receiving_tab.json"),
         FD_EVENT.format(live.FD_APP_KEY, MNF, "rushing-props"): load("fd_nfl_event_rushing_tab.json"),
@@ -75,6 +77,17 @@ def test_draftkings_payloads_feed_the_draftkings_parser(fake):
     payloads = live.fetch_draftkings(fake[1], ["receiving_yards"])
     markets = draftkings.parse_prop_markets(payloads["dk_rec_yds_ladder"], payloads["dk_rec_yds_ou"],
                                             "receiving_yards")
+    zay = next(m for m in markets if m.player == "Zay Flowers")
+    assert zay.main_line is not None and zay.ladder
+
+
+def test_draftkings_receptions_are_the_receptions_ladder_and_ou(fake):
+    fetch, http = fake
+    payloads = live.fetch_draftkings(http, ["receptions"])
+    assert fetch.calls == [live.DK_LEAGUE_URL, DK_SUB.format(1342, 16821), DK_SUB.format(1342, 14115)]
+    assert list(payloads) == ["dk_league", "dk_receptions_ladder", "dk_receptions_ou"]
+    markets = draftkings.parse_prop_markets(payloads["dk_receptions_ladder"], payloads["dk_receptions_ou"],
+                                            "receptions")
     zay = next(m for m in markets if m.player == "Zay Flowers")
     assert zay.main_line is not None and zay.ladder
 
@@ -169,6 +182,15 @@ def test_fanduel_tabs_are_a_parameter(fake):
     payloads = live.fetch_fanduel_events(http, [MNF], tabs=["receiving-props", "rushing-props"])
     assert list(payloads) == [("fd_event", MNF, "receiving-props"), ("fd_event", MNF, "rushing-props")]
     assert len(fetch.calls) == 2
+
+
+def test_fanduel_tabs_for_stats_ask_each_tab_once():
+    assert live.fd_tabs(["receiving_yards", "receptions"]) == ["receiving-props"]
+
+
+def test_fanduel_tabs_for_an_unknown_stat_are_an_error():
+    with pytest.raises(ValueError, match="fumbles_lost"):
+        live.fd_tabs(["receptions", "fumbles_lost"])
 
 
 def test_no_events_means_no_requests(fake):

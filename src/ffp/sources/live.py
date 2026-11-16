@@ -40,6 +40,7 @@ class DkStat(NamedTuple):
 
 DK_STATS = {
     "receiving_yards": DkStat("rec_yds", "Receiving Props", "Receiving Yards", "Rec Yards O/U"),
+    "receptions": DkStat("receptions", "Receiving Props", "Receptions", "Receptions O/U"),
 }
 
 
@@ -118,6 +119,15 @@ FD_PASSING_TAB = "passing-props"
 FD_RECEIVING_TAB = fanduel.TABS["receiving_yards"]  # tabs the parser reads live in fanduel.TABS
 FD_RUSHING_TAB = "rushing-props"
 FD_TD_SCORER_TAB = "td-scorer-props"
+
+
+def fd_tabs(stats: Iterable[str]) -> list[str]:
+    """The event-page tabs that hold these stats' markets, each once, in first-asked order."""
+    stats = list(stats)
+    unknown = [s for s in stats if s not in fanduel.TABS]
+    if unknown:
+        raise ValueError(f"no FanDuel tab known for {', '.join(unknown)} (known: {', '.join(fanduel.TABS)})")
+    return list(dict.fromkeys(fanduel.TABS[s] for s in stats))
 
 
 def fetch_fanduel_league(http: Http, on_response: OnResponse | None = None) -> dict:
