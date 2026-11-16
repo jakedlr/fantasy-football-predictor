@@ -166,3 +166,67 @@ def test_fit_failures_are_fit_errors_but_an_unknown_position_is_not():
     with pytest.raises(ValueError) as raised:
         fit_receiving_yards([FairPoint(30, 0.5, 3.0)], "RB")
     assert not isinstance(raised.value, FitError)
+
+
+# Review findings 2, 4, 5 (Sprint 0/1 review).
+
+# Derrick Henry on the DK fixture: O/U 5.5 and his Ladder, as Fair Probabilities.
+HENRY = [
+    FairPoint(6, 0.513, 3.0), FairPoint(10, 0.358, 1.0), FairPoint(15, 0.235, 1.0),
+    FairPoint(20, 0.161, 1.0), FairPoint(25, 0.115, 1.0), FairPoint(30, 0.083, 1.0),
+    FairPoint(40, 0.044, 1.0), FairPoint(50, 0.027, 1.0),
+]
+
+
+def test_a_low_volume_fit_honours_its_main_line():
+    # Finding 2: pi0 tied to mu made Henry's fit give P(Y >= 6) = 0.361 against the book's 0.513.
+    fit = fit_receiving_yards(HENRY, "WR")
+    # The rest of the miss is the WR gamma's shape: Henry is an RB (own shape in Sprint 4).
+    assert fit.sf(np.array([6]))[0] == pytest.approx(0.513, abs=0.04)
+    assert fit.ppf(np.array([0.5]))[0] in (5, 6)  # the Main Line's median, 5.5, not 0
+
+
+def test_pi0_is_fitted_from_where_the_formula_puts_it():
+    # Points simulated from a hurdle whose P(0) is well below the formula's for its mean.
+    mu = 14.0
+    formula_pi0 = expit(6.75 - 2.48 * math.log(mu))  # ≈ 0.52
+    truth = receiving_yards(mu, 16.0, "WR", pi0=0.30)
+    xs = [5, 10, 15, 20, 30, 40]
+    pts = [FairPoint(x, float(truth.sf(np.array([x]))[0]), 3.0 if x == 10 else 1.0) for x in xs]
+    fit = fit_receiving_yards(pts, "WR")
+    assert abs(fit.pi0 - 0.30) < abs(formula_pi0 - 0.30) / 2
+    np.testing.assert_allclose(fit.sf(np.array(xs)), [p.prob for p in pts], atol=0.02)
+
+
+def test_main_line_only_fit_keeps_the_formula_pi0():
+    # One point can't pin pi0, so it stays on the formula.
+    fit = fit_receiving_yards([FairPoint(53, 0.47, 3.0)], "WR")
+    assert fit.pi0 == pytest.approx(expit(6.75 - 2.48 * math.log(fit.mean)), rel=1e-9)
+
+
+def test_a_ladder_only_fit_starts_from_its_mid_ladder_rung():
+    # Finding 4: with equal weights the start was the first, most extreme Rung. A "10+" clipped
+    # to 1 − 1e-4 by fair.PROB_FLOOR made the 1-point root-find raise "out of reach".
+    truth = receiving_yards(55.0, 36.0, "WR")
+    xs = [10, 30, 50, 70, 90, 110]
+    pts = [FairPoint(x, float(truth.sf(np.array([x]))[0]), 1.0) for x in xs]
+    pts[0] = FairPoint(10, 1 - 1e-4, 1.0)
+    fit = fit_receiving_yards(pts, "WR")
+    # The clipped Rung still pulls the fit (it is taken at face value), but only so far.
+    assert fit.mean == pytest.approx(55.0, rel=0.2)
+
+
+@pytest.mark.parametrize("xs", [[10, 20, 30], [2, 5, 10, 20], [30, 50, 70]])
+@pytest.mark.parametrize("ps", [[0.03, 0.02, 0.01], [0.01, 0.005, 0.001], [1e-3, 5e-4, 1e-4]])
+@pytest.mark.parametrize("main_weight", [1.0, 3.0])
+def test_low_probabilities_everywhere_do_not_crash_the_optimizer(xs, ps, main_weight):
+    # Finding 5: Rungs at 1-3% can push Nelder-Mead to tiny mu, where pi0 rounds to 1 and the
+    # objective raised. A fit inside the model's range, or a FitError, is fine; nothing else is.
+    from ffp.distributions import FitError
+
+    pts = [FairPoint(x, p, main_weight if i == 0 else 1.0) for i, (x, p) in enumerate(zip(xs, ps))]
+    try:
+        fit = fit_receiving_yards(pts, "WR")
+    except FitError:
+        return
+    assert 1.0 <= fit.mean <= 500.0 and 0 <= fit.pi0 < 1
