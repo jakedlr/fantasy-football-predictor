@@ -420,15 +420,46 @@ def test_rb_fumbles_use_fitted_carries_plus_receptions(nflverse, books, monkeypa
     assert dists["fumbles_lost"].mean == pytest.approx(rate * touches, rel=1e-9)
 
 
-def test_an_rb_without_a_carries_market_gets_the_per_game_fumble_rate(nflverse, books, monkeypatch):
+def test_an_rb_without_a_carries_market_gets_carries_from_rushing_yards(nflverse, books, monkeypatch):
+    # FanDuel has no carries market: rushing yards over yards per carry stand in.
     from ffp import params
 
     calls = _capture_simulation(monkeypatch)
     no_carries = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat != "carries"]) for b in books]
     [henry], [] = run(["Derrick Henry"], nflverse, no_carries)
     [(dists, _)] = calls
-    assert dists["fumbles_lost"].mean == pytest.approx(params.load("base_rates")["fumbles_lost_per_game"]["RB"])
+    br = params.load("base_rates")
+    touches = dists["rushing_yards"].mean / br["yards_per_carry"]["RB"] + dists["receptions"].mean
+    assert dists["fumbles_lost"].mean == pytest.approx(br["fumbles_lost_per_touch"]["RB"] * touches, rel=1e-9)
     assert not any("carries" in f for f in henry.flags)  # a Usage Stat is never flagged
+
+
+def test_an_rb_with_no_carries_or_rushing_yards_gets_the_per_game_fumble_rate(nflverse, books, monkeypatch):
+    from ffp import params
+
+    calls = _capture_simulation(monkeypatch)
+    no_rushing = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat not in ("carries", "rushing_yards")])
+                  for b in books]
+    run(["Derrick Henry"], nflverse, no_rushing)
+    [(dists, _)] = calls
+    assert dists["fumbles_lost"].mean == pytest.approx(params.load("base_rates")["fumbles_lost_per_game"]["RB"])
+
+
+def test_a_player_with_only_a_carries_market_has_no_markets(nflverse, books):
+    # A Usage Stat alone is nothing to score: skipped as "no Prop Markets", not an empty fit error.
+    from ffp.predict import NO_MARKETS
+
+    carries_only = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat == "carries" or m.player != "Derrick Henry"])
+                    for b in books]
+    results, [skip] = run(["Derrick Henry"], nflverse, carries_only)
+    assert results == []
+    assert skip.reason == NO_MARKETS
+
+
+def test_a_qb_carries_market_is_not_fitted(nflverse, books):
+    seen = []
+    run(["Justin Herbert"], nflverse, books, on_fair_points=lambda t, stat, pts: seen.append(stat))
+    assert "carries" not in seen  # QB fumbles are a flat rate: his carries would go unused
 
 
 def test_a_qb_gets_passing_and_rushing_stats(nflverse, books, monkeypatch):
@@ -480,3 +511,11 @@ def test_the_td_split_uses_the_players_own_history(nflverse, books, monkeypatch)
     # The 2-pt Base Rate is split the same way.
     two = dists["rushing_2pt"].mean / (dists["rushing_2pt"].mean + dists["receiving_2pt"].mean)
     assert two == pytest.approx(share, rel=1e-9)
+
+
+def test_market_stats_for_skips_passing_without_a_qb():
+    from ffp.predict import MARKET_STATS, market_stats_for
+
+    assert "passing_yards" not in market_stats_for({"WR", "RB"})
+    assert set(market_stats_for({"QB", "WR"})) == set(MARKET_STATS)
+    assert "carries" not in market_stats_for({"QB"}) and "receptions" not in market_stats_for({"QB"})

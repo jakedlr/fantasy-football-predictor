@@ -9,7 +9,7 @@ from typing import Protocol
 
 import numpy as np
 from scipy import optimize, stats
-from scipy.special import expit, logit
+from scipy.special import expit, logit, ndtr
 
 from ffp import params
 from ffp.fair import MAIN_LINE_WEIGHT, FairPoint
@@ -453,7 +453,7 @@ class NegativeBinomial(_Count):
 # Negative binomial count fits: receptions (a Scoring Stat) and carries (a Usage Stat, used
 # only for its mean). r is fitted only with this many points besides the Main Line (research Q3:
 # "fix r from r(μ) unless there are ≥3 Rungs"); with fewer it stays on the relation.
-RECEPTIONS_MIN_POINTS_FOR_R = 3
+COUNT_MIN_POINTS_FOR_R = 3
 # Prior sd of ln r around the relation. Weak on purpose: r is pinned only by a full Ladder, and
 # then the Ladder should win. Var − mu = mu²/r, so 0.5 in ln r is ±65% on the excess variance.
 FIT_SIGMA_LN_R = 0.5
@@ -498,20 +498,58 @@ def _count_on_relation(stat: str, mu: float, position: str) -> NegativeBinomial:
     return NegativeBinomial(mu, _count_r_relation(stat, mu, position))
 
 
-def _fit_count_one_point(stat: str, point: FairPoint, position: str) -> NegativeBinomial:
-    """Root-find mu so P(Y >= threshold) is the one Fair Probability, r = r(mu)."""
-    x, target = np.array([point.threshold]), logit(point.prob)
-    mu_range = _COUNT_MU_RANGE[stat]
+# The most a count fit may miss its anchor (the Main Line) by, in logit: 1.0 is 0.50 vs 0.73.
+# A fit that misses by more is being pulled by points that contradict it, i.e. bad prices.
+COUNT_ANCHOR_TOL = 1.0
 
-    def error(ln_mu: float) -> float:
-        return _logit_sf(_count_on_relation(stat, math.exp(ln_mu), position), x)[0] - target
 
-    lo, hi = math.log(mu_range[0]), math.log(mu_range[1])
-    if error(lo) * error(hi) > 0:
+def _checked_count(stat: str, dist, mu: float, mu_range: tuple[float, float], anchor: FairPoint):
+    """dist, or FitError when its mean mu sits on the edge of mu_range or it misses its anchor."""
+    lo, hi = mu_range
+    if not lo * (1 + 1e-4) < mu < hi * (1 - 1e-4):
+        raise FitError(f"{stat} fit ran to the edge of the mean in {mu_range} (mean = {mu:.3g})")
+    miss = abs(float(_residuals(dist, np.array([anchor.threshold]), logit(np.array([anchor.prob])))[0]))
+    if miss > COUNT_ANCHOR_TOL:
         raise FitError(
-            f"P({stat} >= {point.threshold}) = {point.prob} is out of reach for mu in {mu_range}"
+            f"{stat} fit gives P(Y >= {anchor.threshold}) = {float(dist.sf(np.array([anchor.threshold]))[0]):.3f} "
+            f"against {anchor.prob:.3f}: the other points contradict it"
         )
-    return _count_on_relation(stat, math.exp(optimize.brentq(error, lo, hi, xtol=1e-12)), position)
+    return dist
+
+
+def _fit_count_mean(points: Sequence[FairPoint], make, mu_range: tuple[float, float], stat: str):
+    """Fit the one mean parameter of a count Stat Distribution `make(mu)` to Fair Probabilities.
+
+    Weighted least squares in logit space over all points, Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]²,
+    over ln mu in `mu_range`. One parameter, so one price pins it (research Q3): the Main
+    Line (weight 3) dominates and extra Rungs mostly check the vig. A single point is
+    reproduced exactly by root-finding. FitError when no point is given, the single point
+    is out of reach, the fit runs to the edge of mu_range, or it misses its anchor (the
+    heaviest point) by more than COUNT_ANCHOR_TOL in logit: the points contradict each other.
+    """
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    anchor = _anchor(points)
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+    lo, hi = math.log(mu_range[0]), math.log(mu_range[1])
+
+    if len(points) == 1:
+
+        def error(ln_mu: float) -> float:
+            return float(_residuals(make(math.exp(ln_mu)), x, target)[0])
+
+        if error(lo) * error(hi) > 0:
+            raise FitError(f"P({stat} >= {anchor.threshold}) = {anchor.prob} is out of reach for mean in {mu_range}")
+        return make(math.exp(optimize.brentq(error, lo, hi, xtol=1e-13)))
+
+    def objective(ln_mu: float) -> float:
+        return float(np.sum(w * _residuals(make(math.exp(ln_mu)), x, target) ** 2))
+
+    result = optimize.minimize_scalar(objective, bounds=(lo, hi), method="bounded", options={"xatol": 1e-10})
+    mu = math.exp(result.x)
+    return _checked_count(stat, make(mu), mu, mu_range, anchor)
 
 
 def fit_carries(points: Sequence[FairPoint], position: str) -> NegativeBinomial:
@@ -528,7 +566,7 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
         Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ_r (ln r − ln r_rel(mu))²
 
     over theta = (ln mu, ln r), λ_r = τ²/σ_r² with σ_r = FIT_SIGMA_LN_R. r is free
-    only with at least RECEPTIONS_MIN_POINTS_FOR_R points besides the Main Line (the
+    only with at least COUNT_MIN_POINTS_FOR_R points besides the Main Line (the
     heaviest point, when it has Main Line weight); otherwise r = r_rel(mu) and only
     mu is fitted. With a single point, mu is root-found to reproduce it exactly.
     """
@@ -541,26 +579,22 @@ def _fit_count(stat: str, points: Sequence[FairPoint], position: str) -> Negativ
     if not points:
         raise FitError("no Fair Probabilities to fit")
     anchor = _anchor(points)
-    start = _fit_count_one_point(stat, anchor, position)
+    mu_range = _COUNT_MU_RANGE[stat]
+
+    def on_relation(mu: float) -> NegativeBinomial:
+        return _count_on_relation(stat, mu, position)
+
+    start = _fit_count_mean([anchor], on_relation, mu_range, stat)  # also: is the anchor in reach at all?
     if len(points) == 1:
         return start
+    besides_main = len(points) - (anchor.weight >= MAIN_LINE_WEIGHT)
+    if besides_main < COUNT_MIN_POINTS_FOR_R:  # r stays on its relation: a one-parameter fit
+        return _fit_count_mean(points, on_relation, mu_range, stat)
 
     x = np.array([p.threshold for p in points], dtype=float)
     target = logit(np.array([p.prob for p in points]))
     w = np.array([p.weight for p in points], dtype=float)
-    ln_mu_range = np.log(_COUNT_MU_RANGE[stat])
-    besides_main = len(points) - (anchor.weight >= MAIN_LINE_WEIGHT)
-
-    if besides_main < RECEPTIONS_MIN_POINTS_FOR_R:
-
-        def objective_mu(ln_mu: float) -> float:
-            dist = _count_on_relation(stat, math.exp(ln_mu), position)
-            return float(np.sum(w * _residuals(dist, x, target) ** 2))
-
-        result = optimize.minimize_scalar(
-            objective_mu, bounds=tuple(ln_mu_range), method="bounded", options={"xatol": 1e-10}
-        )
-        return _checked_count(stat, _count_on_relation(stat, math.exp(result.x), position), anchor)
+    ln_mu_range = np.log(mu_range)
 
     def objective(theta: np.ndarray) -> float:
         in_range = ln_mu_range[0] <= theta[0] <= ln_mu_range[1] and _LN_R_RANGE[0] <= theta[1] <= _LN_R_RANGE[1]
@@ -581,26 +615,8 @@ def _fit_count(stat: str, points: Sequence[FairPoint], position: str) -> Negativ
     )
     if not math.isfinite(result.fun):
         raise FitError(f"no {stat} fit within the model's range")
-    return _checked_count(stat, NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1])), anchor)
-
-
-# The most a count fit may miss its anchor (the Main Line) by, in logit: 1.0 is 0.50 vs 0.73.
-# A fit that misses by more is being pulled by points that contradict it, i.e. bad prices.
-RECEPTIONS_ANCHOR_TOL = 1.0
-
-
-def _checked_count(stat: str, dist: NegativeBinomial, anchor: FairPoint) -> NegativeBinomial:
-    """dist, or FitError when it sits on the edge of the model's mu range or misses its anchor."""
-    lo, hi = _COUNT_MU_RANGE[stat]
-    if not lo * (1 + 1e-6) < dist.mu < hi * (1 - 1e-6):
-        raise FitError(f"{stat} fit ran to the edge of mu in {(lo, hi)} (mu = {dist.mu:.3g})")
-    miss = abs(float(_residuals(dist, np.array([anchor.threshold]), logit(np.array([anchor.prob])))[0]))
-    if miss > RECEPTIONS_ANCHOR_TOL:
-        raise FitError(
-            f"{stat} fit gives P(Y >= {anchor.threshold}) = {float(dist.sf(np.array([anchor.threshold]))[0]):.3f} "
-            f"against {anchor.prob:.3f}: the other points contradict it"
-        )
-    return dist
+    mu = math.exp(result.x[0])
+    return _checked_count(stat, NegativeBinomial(mu, math.exp(result.x[1])), mu, mu_range, anchor)
 
 
 _TD_LAMBDA_MAX = 20.0  # bracket for the root-find when there is no anytime point
@@ -670,8 +686,8 @@ class HurdleNormal:
         if not (math.isfinite(m) and sd > 0 and math.isfinite(sd) and 0 <= pi0 < 1):
             raise ValueError(f"invalid parameters m={m}, sd={sd}, pi0={pi0}")
         self.m, self.sd, self.pi0 = float(m), float(sd), float(pi0)
-        self._norm = stats.norm(self.m, self.sd)
-        self._zero_bin = float(self._norm.cdf(0.5) - self._norm.cdf(-0.5))
+        # ndtr rather than a frozen scipy.stats.norm: the fit builds one of these per objective call.
+        self._zero_bin = float(ndtr((0.5 - self.m) / self.sd) - ndtr((-0.5 - self.m) / self.sd))
         if not self._zero_bin < 1:
             raise ValueError(f"no mass off zero for m={m}, sd={sd}")
         self._mean = (1 - self.pi0) * self.m / (1 - self._zero_bin)
@@ -683,7 +699,7 @@ class HurdleNormal:
     def sf(self, x: np.ndarray) -> np.ndarray:
         """P(Y >= x); a fractional x is rounded up (Y >= 200.5 means Y >= 201)."""
         x = np.ceil(np.asarray(x, dtype=float))
-        tail = self._norm.sf(x - 0.5)  # P(X >= x − ½)
+        tail = ndtr((self.m - (x - 0.5)) / self.sd)  # P(X >= x − ½)
         at_or_below_zero = x <= 0
         nz_sf = np.where(at_or_below_zero, tail - self._zero_bin, tail) / (1 - self._zero_bin)
         nz_sf = np.clip(nz_sf, 0.0, 1.0)
@@ -765,8 +781,8 @@ def passing_yards(mu: float, sd: float, position: str = "QB", pi0: float | None 
         raise ValueError(f"invalid parameter pi0={pi0}")
     target = mu / (1 - pi0)
 
-    def zero_bin(m: float) -> float:
-        return float(stats.norm.cdf(0.5, m, sd) - stats.norm.cdf(-0.5, m, sd))
+    def zero_bin(m: float) -> float:  # ndtr: this runs in every step of the fit's optimiser
+        return float(ndtr((0.5 - m) / sd) - ndtr((-0.5 - m) / sd))
 
     # Z is tiny at QB scale (m several sd above 0) and t·dZ/dm is far below 1, so the
     # fixed-point iteration contracts fast.
@@ -880,51 +896,6 @@ class Binomial(_Count):
 PASS_TD_ATTEMPTS = 11  # research Q4: Binomial(11, μ/11) fits passing TDs better than Poisson
 _PASS_TD_MU_RANGE = (0.01, 10.99)
 _INT_LAMBDA_RANGE = (0.01, 10.0)
-COUNT_ANCHOR_TOL = RECEPTIONS_ANCHOR_TOL  # the most a one-parameter count fit may miss its anchor, logit
-
-
-def _fit_count_mean(points: Sequence[FairPoint], make, mu_range: tuple[float, float], stat: str):
-    """Fit the one mean parameter of a count Stat Distribution `make(mu)` to Fair Probabilities.
-
-    Weighted least squares in logit space over all points, Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]²,
-    over ln mu in `mu_range`. One parameter, so one price pins it (research Q3): the Main
-    Line (weight 3) dominates and extra Rungs mostly check the vig. A single point is
-    reproduced exactly by root-finding. FitError when no point is given, the single point
-    is out of reach, the fit runs to the edge of mu_range, or it misses its anchor (the
-    heaviest point) by more than COUNT_ANCHOR_TOL in logit: the points contradict each other.
-    """
-    if not points:
-        raise FitError("no Fair Probabilities to fit")
-    anchor = _anchor(points)
-    x = np.array([p.threshold for p in points], dtype=float)
-    target = logit(np.array([p.prob for p in points]))
-    w = np.array([p.weight for p in points], dtype=float)
-    lo, hi = math.log(mu_range[0]), math.log(mu_range[1])
-
-    if len(points) == 1:
-
-        def error(ln_mu: float) -> float:
-            return float(_residuals(make(math.exp(ln_mu)), x, target)[0])
-
-        if error(lo) * error(hi) > 0:
-            raise FitError(f"P({stat} >= {anchor.threshold}) = {anchor.prob} is out of reach for mean in {mu_range}")
-        return make(math.exp(optimize.brentq(error, lo, hi, xtol=1e-13)))
-
-    def objective(ln_mu: float) -> float:
-        return float(np.sum(w * _residuals(make(math.exp(ln_mu)), x, target) ** 2))
-
-    result = optimize.minimize_scalar(objective, bounds=(lo, hi), method="bounded", options={"xatol": 1e-10})
-    mu = math.exp(result.x)
-    if not mu_range[0] * (1 + 1e-4) < mu < mu_range[1] * (1 - 1e-4):
-        raise FitError(f"{stat} fit ran to the edge of the mean in {mu_range} (mean = {mu:.3g})")
-    dist = make(mu)
-    miss = abs(float(_residuals(dist, np.array([anchor.threshold]), logit(np.array([anchor.prob])))[0]))
-    if miss > COUNT_ANCHOR_TOL:
-        raise FitError(
-            f"{stat} fit gives P(Y >= {anchor.threshold}) = {float(dist.sf(np.array([anchor.threshold]))[0]):.3f} "
-            f"against {anchor.prob:.3f}: the other points contradict it"
-        )
-    return dist
 
 
 def fit_passing_tds(points: Sequence[FairPoint]) -> Binomial:

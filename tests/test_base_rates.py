@@ -204,3 +204,22 @@ def test_an_rb_without_carries_gets_the_per_game_fumble_rate():
     assert stats["fumbles_lost"].mean == pytest.approx(p["fumbles_lost_per_game"]["RB"])
     with_carries = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=15.0, params=p)
     assert with_carries["fumbles_lost"].mean == pytest.approx(0.01 * 18.0)
+
+
+def test_an_rb_with_only_rushing_yards_gets_carries_from_yards_per_carry():
+    # FanDuel has no carries market: a rushing-yards mean over yards per carry sets the touches.
+    p = fake_params(yards_per_carry={"QB": 5.0, "RB": 4.0, "WR": 6.0, "TE": None})
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, rushing_yards_mean=60.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(0.01 * (3.0 + 15.0))
+
+
+def test_a_carries_market_beats_the_rushing_yards_estimate():
+    p = fake_params(yards_per_carry={"RB": 4.0})
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, carries_mean=10.0, rushing_yards_mean=60.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(0.01 * 13.0)
+
+
+def test_no_yards_per_carry_leaves_the_rb_on_the_per_game_rate():
+    p = fake_params(yards_per_carry={"RB": None})
+    stats = base_rates.base_rate_stats("RB", receptions_mean=3.0, rushing_yards_mean=60.0, params=p)
+    assert stats["fumbles_lost"].mean == pytest.approx(p["fumbles_lost_per_game"]["RB"])

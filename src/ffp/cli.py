@@ -67,8 +67,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         roster, schedule = load_roster(season), load_schedule(season)
     targets, skipped = pipeline.resolve_targets(names, roster, schedule, now)
-    # Each player's TD history splits his TDs and 2-pt; fixture runs stay offline (position shares).
-    td_history = load_td_history(season) if targets and not args.fixtures else {}
 
     snapshot = None
     if args.fixtures:
@@ -81,12 +79,16 @@ def main(argv: list[str] | None = None) -> int:
         books = pipeline.load_live_books(
             Http(), list({t.game.game_id: t.game for t in targets}.values()), now,
             on_response=_response_saver(snapshot),
+            stats=pipeline.market_stats_for({t.player.position for t in targets}),
         )
         if not books:
             print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)
             return 1
     else:
         books = []  # nobody to price: don't touch the sportsbooks
+    # Each player's TD history splits his TDs and 2-pt. Fetched only once odds are in hand (a
+    # failed odds fetch costs no nflverse download); fixture runs stay offline (position shares).
+    td_history = load_td_history(season) if books and not args.fixtures else {}
 
     results, unfitted = pipeline.predict(
         targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,

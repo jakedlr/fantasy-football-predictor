@@ -141,8 +141,11 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     monkeypatch.setattr(ffp.cli, "load_td_history", lambda season: {})
     seen_games = []
 
-    def fake_live_books(http, games, now, on_response=None):
+    seen_stats = []
+
+    def fake_live_books(http, games, now, on_response=None, stats=None):
         seen_games.extend(games)
+        seen_stats.extend(stats)
         on_response("fanduel", "fd_league", "https://example.test/page?_ak=SECRET&x=1", {"ok": True})
         return ffp.predict.load_fixture_books(FIXTURES)
 
@@ -157,6 +160,7 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
                  "--snapshots", str(snapshots)]) == 0
 
     assert [g.game_id for g in seen_games] == ["2026_10_LAC_BAL"]  # both targets' Game, asked for once
+    assert "passing_yards" not in seen_stats and "rushing_yards" in seen_stats  # no QB asked for: no passing
     # Finding 1: filed under the real fetch time, not --now, so the price history stays true.
     [run_dir] = (snapshots / run_started.strftime("%Y-%m-%d")).iterdir()
     manifest = json.loads((run_dir / "manifest.json").read_text())
@@ -187,3 +191,17 @@ def test_a_live_run_with_nobody_to_price_makes_no_requests(tmp_path, monkeypatch
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
                  "--snapshots", str(tmp_path / "snaps")]) == 0
     assert not (tmp_path / "snaps").exists()
+
+
+def test_a_live_run_whose_odds_fail_fetches_no_td_history(tmp_path, monkeypatch):
+    import ffp.cli
+    import ffp.predict
+
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: [])
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
