@@ -10,6 +10,7 @@ from ffp.players import (
     RosterEntry,
     UnknownPlayerError,
     UnknownTeamError,
+    UnsupportedPlayerError,
     load_roster,
     resolve_player,
     team_code_from_book_name,
@@ -81,6 +82,51 @@ def test_team_hint_on_a_unique_name_still_checks_the_team(roster):
         resolve_player("Ja'Marr Chase (PIT)", roster)
 
 
+def test_kicker_is_not_supported_yet(roster):
+    with pytest.raises(UnsupportedPlayerError, match="not supported yet"):
+        resolve_player("Evan McPherson", roster)
+
+
+@pytest.mark.parametrize("text", [
+    "Ravens D/ST", "BAL DST", "BAL D/ST", "Baltimore Ravens Defense", "Ravens", "Ravens DEF",
+    "Ravens D-ST", "Bengals Defense", "Baltimore D/ST", "D/ST (BAL)",
+])
+def test_dst_is_not_supported_yet(roster, text):
+    with pytest.raises(UnsupportedPlayerError, match="not supported yet"):
+        resolve_player(text, roster)
+
+
+def test_name_on_only_a_non_skill_position_is_not_supported(roster):
+    only_lb = [e for e in roster if e.gsis_id != "00-0036322"]  # drop the WR Justin Jefferson
+    with pytest.raises(UnsupportedPlayerError, match="LB"):
+        resolve_player("Justin Jefferson", only_lb)
+
+
+@pytest.mark.parametrize("text, gsis_id", [
+    ("Hollywood Brown", "00-0035662"),
+    ("Chigoziem Okonkwo", "00-0037809"),
+    ("Chig Okonkwo", "00-0037809"),
+    ("Kenneth Walker", "00-0038134"),
+    ("Kenneth Walker III", "00-0038134"),
+])
+def test_aliases_and_suffixes(roster, text, gsis_id):
+    assert resolve_player(text, roster).gsis_id == gsis_id
+
+
+def test_team_hint_may_be_a_nickname_or_book_name(roster):
+    roster = [*roster, JOSH_JOHNSON_QB, JOSH_JOHNSON_RB]
+    assert resolve_player("Josh Johnson (Ravens)", roster).gsis_id == "00-0099999"
+    assert resolve_player("Josh Johnson (Arizona Cardinals)", roster).gsis_id == "00-0026300"
+
+
+def test_load_roster_keeps_each_players_latest_team_and_drops_cut_players(roster):
+    by_id = {e.gsis_id: e for e in roster}
+    assert by_id["00-0038519"].team == "HOU"  # Nikko Remigio, KC weeks 1-9, HOU week 10
+    assert "00-0036924" not in by_id  # Michael Carter, CUT
+    assert by_id["00-0035662"].team == "PHI"  # Marquise Brown, latest row is week 9 (bye)
+    assert by_id["00-0034796"].status == "RES"  # Lamar Jackson on reserve is still resolvable
+
+
 FULL_NAMES = {
     "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens",
     "BUF": "Buffalo Bills", "CAR": "Carolina Panthers", "CHI": "Chicago Bears",
@@ -124,4 +170,5 @@ def test_unknown_team_name_raises(book_name):
 def test_player_errors_share_a_value_error_base():
     assert issubclass(UnknownPlayerError, PlayerError)
     assert issubclass(AmbiguousPlayerError, PlayerError)
+    assert issubclass(UnsupportedPlayerError, PlayerError)
     assert issubclass(PlayerError, ValueError)

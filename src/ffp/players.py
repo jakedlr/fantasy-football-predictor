@@ -28,6 +28,24 @@ class AmbiguousPlayerError(PlayerError):
     """More than one supported player has this name; a (TEAM) hint is needed."""
 
 
+class UnsupportedPlayerError(PlayerError):
+    """A K, a D/ST or another position outside QB/RB/WR/TE."""
+
+
+# Names books or people use that nflverse doesn't, as normalized name -> the
+# normalized nflverse display name. Suffixes ("Kenneth Walker" vs "Kenneth
+# Walker III") need no entry: normalize_name drops them.
+ALIASES: dict[str, str] = {
+    "hollywood brown": "marquise brown",
+    "chigoziem okonkwo": "chig okonkwo",
+    "zonovan knight": "bam knight",
+    "gabriel davis": "gabe davis",
+    "nathaniel dell": "tank dell",
+    "joshua palmer": "josh palmer",
+    "joshua downs": "josh downs",
+}
+
+
 @dataclass(frozen=True)
 class Player:
     """A canonical NFL player."""
@@ -51,7 +69,17 @@ class RosterEntry:
 
 
 def load_roster(season: int, fetch: Fetch) -> list[RosterEntry]:
-    """Each player's latest weekly-roster row in `season`."""
+    """Each player's latest weekly-roster row in `season`, all positions.
+
+    `fetch(season)` returns nflverse `load_rosters_weekly` rows. The latest
+    week gives the current team, so traded players resolve to their new team.
+    Players whose latest status is CUT or RET are dropped: they're on no team.
+    Every other status stays (ACT, RES, INA, DEV, ...), so a player on reserve
+    still resolves and is later skipped for having no Prop Markets. A team on
+    bye has no row in its bye week, which is why "latest" is per player and
+    not the season's last week. Non-skill positions are kept so a K or a
+    defender gets a precise error instead of "unknown".
+    """
     latest: dict[str, RosterEntry] = {}
     for row in fetch(season):
         entry = RosterEntry(
@@ -65,23 +93,33 @@ def load_roster(season: int, fetch: Fetch) -> list[RosterEntry]:
         held = latest.get(entry.gsis_id)
         if held is None or entry.week >= held.week:
             latest[entry.gsis_id] = entry
-    return list(latest.values())
+    return [entry for entry in latest.values() if entry.status not in _OFF_ROSTER]
+
+
+_OFF_ROSTER = frozenset({"CUT", "RET"})
 
 
 def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     """The Player an INPUT.md line names.
 
     `text` is a player name, optionally followed by a team hint: "Name (TEAM)".
-    Names compare by `normalize_name`; only QB/RB/WR/TE count. The hint keeps
-    only the players on that team.
+    Names compare by `normalize_name` after the alias table; only QB/RB/WR/TE
+    count. The hint keeps only the players on that team. A K, a D/ST ("Ravens
+    D/ST", "BAL DST", "Ravens") or any other position raises
+    UnsupportedPlayerError.
     """
-    name, team = _split_team_hint(text)
+    name, hint = _split_team_hint(text)
+    if _names_a_dst(name):
+        raise UnsupportedPlayerError(
+            f'"{text}" looks like a team defense: D/ST is not supported yet, only QB/RB/WR/TE'
+        )
+    team = _hint_team_code(hint) if hint is not None else None
     key = normalize_name(name)
-    matches = [
-        entry
-        for entry in roster
-        if entry.position in SUPPORTED_POSITIONS and normalize_name(entry.name) == key
-    ]
+    key = ALIASES.get(key, key)
+    same_name = [entry for entry in roster if normalize_name(entry.name) == key]
+    matches = [entry for entry in same_name if entry.position in SUPPORTED_POSITIONS]
+    if not matches and same_name:
+        raise UnsupportedPlayerError(_unsupported_message(text, same_name))
     if team is not None:
         on_team = [entry for entry in matches if entry.team == team]
         if not on_team and matches:
@@ -99,6 +137,36 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
         )
     entry = matches[0]
     return Player(entry.gsis_id, entry.name, entry.position, entry.team)
+
+
+def _unsupported_message(text: str, entries: Sequence[RosterEntry]) -> str:
+    found = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in entries)
+    if any(e.position == "K" for e in entries):
+        return f'"{text}" is a kicker ({found}): K is not supported yet, only QB/RB/WR/TE'
+    return f'"{text}" is not a QB/RB/WR/TE ({found}): only QB/RB/WR/TE are supported'
+
+
+_DST = re.compile(r"^(?:(?P<team>.*)\s)?(?:dst|d st|def|defense|defence)$")
+
+
+def _names_a_dst(name: str) -> bool:
+    """Whether a name is a team defense: "Ravens D/ST", "BAL DST", "Ravens", "D/ST"."""
+    if _DST.match(normalize_name(name)):
+        return True
+    try:
+        team_code_from_book_name(name)
+    except UnknownTeamError:
+        return False
+    return True
+
+
+def _hint_team_code(hint: str) -> str:
+    try:
+        return team_code_from_book_name(hint)
+    except UnknownTeamError:
+        raise UnknownPlayerError(
+            f'"({hint})" is not an NFL team; use a team code such as (BAL)'
+        ) from None
 
 
 # nflverse team code -> (city as FanDuel spells it, nickname). DraftKings spells a
