@@ -70,3 +70,23 @@ def test_main_line_point_has_weight_3_and_its_fair_over_probability():
     assert main.prob == pytest.approx(0.5, abs=1e-9)
     assert points[40].weight == 1
     assert points[100].weight == 1
+
+
+def test_without_main_line_uses_default_prior_c_from_a_minus_115_line():
+    fair = {50: 0.7, 80: 0.3}
+    m = market("fanduel", fair, main=None, c=math.log(1.15))
+
+    points = by_threshold(fair_points([m]))
+
+    assert points[50].prob == pytest.approx(0.7, abs=1e-9)
+    assert points[80].prob == pytest.approx(0.3, abs=1e-9)
+
+
+def test_prior_c_overrides_the_default_per_book():
+    fair = {50: 0.7, 80: 0.3}
+    m = market("fanduel", fair, main=None, c=0.3)
+
+    points = by_threshold(fair_points([m], prior_c={"fanduel": 0.3}))
+
+    assert points[50].prob == pytest.approx(0.7, abs=1e-9)
+    assert points[80].prob == pytest.approx(0.3, abs=1e-9)
