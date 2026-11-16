@@ -82,3 +82,22 @@ def test_point_mass_gives_equal_percentiles_at_that_score():
     for value in result.percentiles().values():
         assert value == pytest.approx(21.5)
     assert result.mean == pytest.approx(21.5)
+
+
+def test_chance_of_at_least_matches_the_samples():
+    result = simulate_scores({"receiving_yards": REC_YDS}, ESPN, n=5_000, seed=3)
+    for points in (0, 4, 6, 8, 10, 15, 100):
+        assert result.chance_of_at_least(points) == pytest.approx(np.mean(result.points >= points))
+    # Points take values 0, 2, 4, ..., 15 exactly; P(points >= 8) is P(yards >= 80) = 0.4.
+    assert result.chance_of_at_least(8) == pytest.approx(0.4, abs=0.03)
+
+
+def test_percentile_k_has_k_percent_at_or_below_it():
+    # Pk is the smallest sample x with P(points <= x) >= k%.
+    from ffp.simulate import ScoreDistribution
+
+    dist = ScoreDistribution(np.arange(1.0, 21.0))  # 1..20, each 5%
+    assert dist.percentile(5) == 1.0
+    assert dist.percentile(25) == 5.0
+    assert dist.percentile(50) == 10.0
+    assert dist.percentile(95) == 19.0
