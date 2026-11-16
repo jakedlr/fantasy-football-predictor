@@ -8,7 +8,7 @@ Vocabulary: [GLOSSARY.md](GLOSSARY.md). Background: [RESEARCH.md](RESEARCH.md) a
 
 | # | Decision |
 |---|---|
-| Scoring | Built-in presets `standard`, `half-ppr`, `ppr`, plus custom files `scoring/*.json`. Default is `scoring/espn-league.json`: full PPR, 4-pt pass TD, −2 INT, −2 fumble lost. Its D/ST tiers that the league page doesn't show are assumed to be ESPN defaults and flagged as assumptions in the file. |
+| Scoring | Built-in presets `standard`, `half-ppr`, `ppr`, plus custom files `scoring/*.json`, which override bundled ones. Default is the bundled `src/ffp/rules/espn-league.json`: full PPR, 4-pt pass TD, −2 INT, −2 fumble lost. Its D/ST tiers that the league page doesn't show are assumed to be ESPN defaults and flagged as assumptions in the file. |
 | Scope | QB/RB/WR/TE only. A K or DST name gets "not supported yet". Return TDs and fumble-recovery TDs are a listed omission. |
 | Game | Each player's next scheduled Game, at the prices current at run time. If props aren't posted yet, skip the player with a "rerun closer to kickoff" message. |
 | Percentiles | Pₖ means P(points ≤ Pₖ) = k%. Output also includes "chance of N+ points" for a few round thresholds. |
