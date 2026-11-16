@@ -3,7 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from ffp.players import Player, load_roster, resolve_player
+from ffp.players import (
+    AmbiguousPlayerError,
+    Player,
+    PlayerError,
+    RosterEntry,
+    UnknownPlayerError,
+    load_roster,
+    resolve_player,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -32,3 +40,30 @@ def test_resolves_initials_with_or_without_periods(roster, text):
 def test_skill_position_wins_over_a_defender_with_the_same_name(roster):
     player = resolve_player("Justin Jefferson", roster)
     assert (player.gsis_id, player.position, player.team) == ("00-0036322", "WR", "MIN")
+
+
+def test_unknown_name_raises(roster):
+    with pytest.raises(UnknownPlayerError, match="Joe Nobody"):
+        resolve_player("Joe Nobody", roster)
+
+
+# nflverse has no 2026 skill-player collision after normalizing (research/nflverse-data.md
+# section 2), so the second "Josh Johnson" is made up; the first is the real ARI QB.
+JOSH_JOHNSON_QB = RosterEntry("00-0026300", "Josh Johnson", "QB", "ARI", "ACT", 10)
+JOSH_JOHNSON_RB = RosterEntry("00-0099999", "Josh Johnson Jr.", "RB", "BAL", "ACT", 10)
+
+
+def test_ambiguous_name_raises_and_lists_candidates(roster):
+    roster = [*roster, JOSH_JOHNSON_QB, JOSH_JOHNSON_RB]
+    with pytest.raises(AmbiguousPlayerError) as err:
+        resolve_player("Josh Johnson", roster)
+    message = str(err.value)
+    assert "Josh Johnson (QB, ARI)" in message
+    assert "Josh Johnson Jr. (RB, BAL)" in message
+    assert "(TEAM)" in message
+
+
+def test_player_errors_share_a_value_error_base():
+    assert issubclass(UnknownPlayerError, PlayerError)
+    assert issubclass(AmbiguousPlayerError, PlayerError)
+    assert issubclass(PlayerError, ValueError)

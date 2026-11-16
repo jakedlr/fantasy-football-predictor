@@ -15,6 +15,18 @@ Fetch = Callable[[int], Iterable[Row]]
 SUPPORTED_POSITIONS = frozenset({"QB", "RB", "WR", "TE"})
 
 
+class PlayerError(ValueError):
+    """An INPUT.md line that can't be resolved to one supported Player."""
+
+
+class UnknownPlayerError(PlayerError):
+    """No supported player has this name."""
+
+
+class AmbiguousPlayerError(PlayerError):
+    """More than one supported player has this name; a (TEAM) hint is needed."""
+
+
 @dataclass(frozen=True)
 class Player:
     """A canonical NFL player."""
@@ -58,7 +70,19 @@ def load_roster(season: int, fetch: Fetch) -> list[RosterEntry]:
 def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     """The Player an INPUT.md line names."""
     key = normalize_name(text)
-    for entry in roster:
-        if entry.position in SUPPORTED_POSITIONS and normalize_name(entry.name) == key:
-            return Player(entry.gsis_id, entry.name, entry.position, entry.team)
-    raise ValueError(text)
+    matches = [
+        entry
+        for entry in roster
+        if entry.position in SUPPORTED_POSITIONS and normalize_name(entry.name) == key
+    ]
+    if not matches:
+        raise UnknownPlayerError(f'no QB/RB/WR/TE named "{text}" on a current NFL roster')
+    if len(matches) > 1:
+        candidates = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in matches)
+        raise AmbiguousPlayerError(
+            f'"{text}" matches more than one player: {candidates}. '
+            f'Add the team to the line, e.g. "{text} ({matches[0].team})", '
+            "using Name (TEAM)."
+        )
+    entry = matches[0]
+    return Player(entry.gsis_id, entry.name, entry.position, entry.team)
