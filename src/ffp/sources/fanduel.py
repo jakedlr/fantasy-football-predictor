@@ -15,9 +15,20 @@ from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line
 BOOK = "fanduel"
 
 # Scoring Stat → the stem of FD's market types for it. "PLAYER_X_<stem>_<tier>" is the
-# Main Line, "PLAYER_X_ALT_<stem>_<tier>" the Ladder. Rushing yards ("RUSHING_YARDS")
-# and passing yards ("PASSING_YARDS") follow the same pattern; add them here and in TABS.
-MARKET_STEMS = {"receiving_yards": "RECEIVING_YARDS", "receptions": "RECEPTIONS"}
+# Main Line, "PLAYER_X_ALT_<stem>_<tier>" the Ladder. The stem is what tells rushing from
+# passing yards: both Ladders' runners read "<Player> N+ Yards".
+MARKET_STEMS = {
+    "receiving_yards": "RECEIVING_YARDS",
+    "receptions": "RECEPTIONS",
+    "passing_yards": "PASSING_YARDS",
+    "passing_tds": "PASSING_TOUCHDOWNS",
+    "rushing_yards": "RUSHING_YARDS",
+}
+
+# Stats FanDuel posts no market for (research/sportsbook-markets.md, Sprint 4 re-check):
+# no interceptions thrown, and no rush attempts (carries, a Usage Stat). They have no tab;
+# parse_prop_markets gives no Prop Markets for them rather than an error.
+NOT_OFFERED = frozenset({"passing_interceptions", "carries"})
 
 # Rushing + receiving TDs, split later (not a Scoring Stat): only one-sided scorer markets,
 # one per Game, each runner a bare player name. Market type → the Rung's threshold N
@@ -26,7 +37,14 @@ TD_STAT = "rush_rec_tds"
 TD_MARKET_THRESHOLDS = {"ANY_TIME_TOUCHDOWN_SCORER": 1, "TO_SCORE_2+_TOUCHDOWNS": 2, "TO_SCORE_3+_TOUCHDOWNS": 3}
 
 # Scoring Stat → the event-page tab slug (the `tab=` query value) that holds its markets.
-TABS = {"receiving_yards": "receiving-props", "receptions": "receiving-props", TD_STAT: "td-scorer-props"}
+TABS = {
+    "receiving_yards": "receiving-props",
+    "receptions": "receiving-props",
+    "passing_yards": "passing-props",
+    "passing_tds": "passing-props",
+    "rushing_yards": "rushing-props",
+    TD_STAT: "td-scorer-props",
+}
 
 # (player name as FD spells it, FD event id)
 Key = tuple[str, str]
@@ -208,7 +226,12 @@ def parse_prop_markets(event_tab_json: dict, stat: str) -> list[PropMarket]:
 
     For TD_STAT the tab is the TD scorer tab: no Main Line, and the anytime,
     2+ and 3+ scorer prices are Rungs 1, 2 and 3.
+
+    A stat in NOT_OFFERED gives no Prop Markets from any tab; any other stat
+    without a tab is a ValueError.
     """
+    if stat in NOT_OFFERED:
+        return []
     if stat not in TABS:
         raise ValueError(f"no FanDuel market for Scoring Stat {stat!r}")
     markets = _markets(event_tab_json)

@@ -30,7 +30,7 @@ DK_SUBCATEGORY_URL = DK_LEAGUE_URL + "/categories/{category_id}/subcategories/{s
 
 
 class DkStat(NamedTuple):
-    """Where DraftKings lists one Scoring Stat: category and subcategory names as the league response spells them."""
+    """Where DraftKings lists one Scoring Stat or Usage Stat: category and subcategory names as the league response spells them."""
 
     slug: str  # short name used in payload keys: dk_<slug>_ladder, dk_<slug>_ou
     category: str
@@ -43,6 +43,11 @@ class DkStat(NamedTuple):
 DK_STATS = {
     "receiving_yards": DkStat("rec_yds", "Receiving Props", "Receiving Yards", "Rec Yards O/U"),
     "receptions": DkStat("receptions", "Receiving Props", "Receptions", "Receptions O/U"),
+    "passing_yards": DkStat("pass_yds", "Passing Props", "Pass Yards", "Pass Yards O/U"),
+    "passing_tds": DkStat("pass_tds", "Passing Props", "Pass TDs", "Pass TDs O/U"),
+    "passing_interceptions": DkStat("ints", "Passing Props", "Interceptions", "Interceptions O/U"),
+    "rushing_yards": DkStat("rush_yds", "Rushing Props", "Rush Yards", "Rush Yards O/U"),
+    "carries": DkStat("rush_att", "Rushing Props", "Rush Attempts", "Rush Attempts O/U"),  # a Usage Stat
     # Anytime, 1st TD and 2+ are in "TD Scorer"; 3+ has its own subcategory. Only the anytime price is
     # needed to fit TDs, so a missing "3+ TDs" just means no 3+ Rungs.
     "rush_rec_tds": DkStat("tds", "TD Scorers", "TD Scorer", None, extra_ladders=("3+ TDs",)),
@@ -136,8 +141,11 @@ FD_TD_SCORER_TAB = fanduel.TABS[fanduel.TD_STAT]
 
 
 def fd_tabs(stats: Iterable[str]) -> list[str]:
-    """The event-page tabs that hold these stats' markets, each once, in first-asked order."""
-    stats = list(stats)
+    """The event-page tabs that hold these stats' markets, each once, in first-asked order.
+
+    A stat FanDuel doesn't offer (fanduel.NOT_OFFERED) needs no tab and is skipped.
+    """
+    stats = [s for s in stats if s not in fanduel.NOT_OFFERED]
     unknown = [s for s in stats if s not in fanduel.TABS]
     if unknown:
         raise ValueError(f"no FanDuel tab known for {', '.join(unknown)} (known: {', '.join(fanduel.TABS)})")
