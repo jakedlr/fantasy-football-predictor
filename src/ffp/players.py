@@ -102,6 +102,12 @@ def load_roster(season: int, fetch: Fetch | None = None) -> list[RosterEntry]:
 _OFF_ROSTER = frozenset({"CUT", "RET"})
 
 
+def name_key(name: str) -> str:
+    """The key two spellings of one player's name share: `normalize_name`, then the alias table."""
+    key = normalize_name(name)
+    return ALIASES.get(key, key)
+
+
 def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     """The Player an INPUT.md line names.
 
@@ -117,8 +123,7 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
             f'"{text}" looks like a team defense: D/ST is not supported yet, only QB/RB/WR/TE'
         )
     team = _hint_team_code(hint) if hint is not None else None
-    key = normalize_name(name)
-    key = ALIASES.get(key, key)
+    key = name_key(name)
     same_name = [entry for entry in roster if normalize_name(entry.name) == key]
     matches = [entry for entry in same_name if entry.position in SUPPORTED_POSITIONS]
     if not matches and same_name:

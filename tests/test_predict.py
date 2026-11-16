@@ -1,0 +1,147 @@
+"""The Sprint 2 pipeline: INPUT.md names -> Players and next Games -> both books' Prop Markets -> fits."""
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+from ffp.markets import Game, MainLine, PropMarket, Rung
+from ffp.predict import (
+    BookOdds,
+    load_fixture_books,
+    load_fixture_nflverse,
+    predict,
+    resolve_targets,
+)
+from ffp.players import PROPS_NOT_POSTED, ScheduledGame
+from ffp.scoring import load_rules
+
+FIXTURES = Path(__file__).resolve().parents[1] / "research" / "fixtures"
+BEFORE_MNF = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)  # LAC @ BAL kicks off 01:15Z on the 17th
+RULES = load_rules("ppr")
+
+
+@pytest.fixture(scope="module")
+def nflverse():
+    return load_fixture_nflverse(FIXTURES, 2026)
+
+
+@pytest.fixture(scope="module")
+def books():
+    return load_fixture_books(FIXTURES)
+
+
+def run(names, nflverse, books, now=BEFORE_MNF, **kwargs):
+    roster, schedule = nflverse
+    targets, skipped = resolve_targets(names, roster, schedule, now)
+    results, unfitted = predict(targets, books, RULES, **kwargs)
+    return results, skipped + unfitted
+
+
+def test_fixture_books_are_draftkings_and_fanduel(books):
+    assert [b.book for b in books] == ["draftkings", "fanduel"]
+    assert all(b.markets for b in books)
+
+
+def test_a_wr_is_resolved_to_his_team_position_and_next_game(nflverse, books):
+    [zay], skipped = run(["Zay Flowers"], nflverse, books)
+    assert skipped == []
+    assert (zay.team, zay.position, zay.game) == ("BAL", "WR", "LAC @ BAL")
+    assert zay.kickoff == "2026-11-17T01:15:00Z"  # nflverse kickoff, not a book's
+    assert not any("position assumed" in f for f in zay.flags)
+
+
+def test_both_books_fit_one_stat_distribution(nflverse, books):
+    # S2.5: DK and FD Rungs at different thresholds go into one fit, Main Lines weighted x3.
+    seen = {}
+    [zay], _ = run(["Zay Flowers"], nflverse, books, on_fair_points=lambda t, pts: seen.update({t.name: pts}))
+    detail = zay.stats["receiving_yards"]
+    assert detail.books == ["draftkings", "fanduel"]
+    dk_rungs = sum(len(m.ladder) for m in books[0].markets if m.player == "Zay Flowers")
+    fd_rungs = sum(len(m.ladder) for m in books[1].markets if m.player == "Zay Flowers")
+    assert detail.rungs == dk_rungs + fd_rungs
+    points = seen["Zay Flowers"]
+    # DK O/U 71.5 -> Y >= 72 and FD O/U 69.5 -> Y >= 70, each weighted 3 (merged with any Rung there).
+    by_threshold = {p.threshold: p.weight for p in points}
+    assert by_threshold[72] >= 3 and by_threshold[70] >= 3
+
+
+def test_an_rb_is_skipped_until_rb_models_arrive(nflverse, books):
+    results, skipped = run(["Derrick Henry"], nflverse, books)
+    assert results == []
+    [henry] = skipped
+    assert henry.name == "Derrick Henry"
+    assert "RB" in henry.reason and "not supported yet" in henry.reason
+
+
+def test_an_unknown_name_is_skipped_with_the_resolution_error(nflverse, books):
+    results, [skip] = run(["Not A Player"], nflverse, books)
+    assert results == []
+    assert "Not A Player" in skip.reason
+
+
+def test_a_player_whose_game_has_no_props_gets_rerun_closer_to_kickoff(nflverse, books):
+    # After MNF kicks off, Zay's next Game is week 11 at CAR, which no book in the fixtures lists.
+    after_mnf = datetime(2026, 11, 17, 6, 0, tzinfo=timezone.utc)
+    results, [skip] = run(["Zay Flowers"], nflverse, books, now=after_mnf)
+    assert results == []
+    assert skip.reason == PROPS_NOT_POSTED
+
+
+def test_a_player_in_a_listed_game_without_his_own_market_is_no_markets(nflverse):
+    roster, schedule = nflverse
+    game = Game("g1", "LA Chargers", "BAL Ravens", "2026-11-17T01:15:00Z", "draftkings", False)
+    other = PropMarket("Mark Andrews", "receiving_yards", "g1", "draftkings",
+                       MainLine(30.5, -110, -110, "draftkings"), (), "BAL Ravens")
+    targets, _ = resolve_targets(["Zay Flowers"], roster, schedule, BEFORE_MNF)
+    results, [skip] = predict(targets, [BookOdds("draftkings", [game], [other])], RULES)
+    assert "no Prop Markets" in skip.reason
+
+
+def test_book_games_are_matched_by_teams_not_by_name_or_id(nflverse):
+    # FD spells teams out in full and has its own ids and a slightly different kickoff.
+    roster, schedule = nflverse
+    fd_game = Game("36275768", "Los Angeles Chargers", "Baltimore Ravens", "2026-11-17T01:21:00Z", "fanduel", False)
+    market = PropMarket(
+        "Zay Flowers", "receiving_yards", "36275768", "fanduel",
+        MainLine(69.5, -113, -113, "fanduel"),
+        (Rung(50, -250, "fanduel"), Rung(90, 200, "fanduel")),
+        "Baltimore Ravens",
+    )
+    targets, _ = resolve_targets(["Zay Flowers"], roster, schedule, BEFORE_MNF)
+    [zay], [] = predict(targets, [BookOdds("fanduel", [fd_game], [market])], RULES)
+    assert zay.stats["receiving_yards"].books == ["fanduel"]
+
+
+def test_a_book_game_that_has_started_is_not_used(nflverse):
+    roster, schedule = nflverse
+    started = Game("g1", "LA Chargers", "BAL Ravens", "2026-11-17T01:15:00Z", "draftkings", True)
+    market = PropMarket("Zay Flowers", "receiving_yards", "g1", "draftkings",
+                        MainLine(71.5, -113, -111, "draftkings"), (), "BAL Ravens")
+    targets, _ = resolve_targets(["Zay Flowers"], roster, schedule, BEFORE_MNF)
+    results, [skip] = predict(targets, [BookOdds("draftkings", [started], [market])], RULES)
+    assert results == [] and skip.reason == PROPS_NOT_POSTED
+
+
+def test_a_book_name_spelled_differently_still_matches(nflverse):
+    # A book may drop a suffix or use a nickname the alias table knows.
+    roster, schedule = nflverse
+    game = Game("g1", "LA Chargers", "BAL Ravens", "2026-11-17T01:15:00Z", "draftkings", False)
+    market = PropMarket("Ja'Kobi Lane", "receiving_yards", "g1", "draftkings",
+                        MainLine(20.5, -110, -110, "draftkings"), (), "BAL Ravens")
+    targets, _ = resolve_targets(["JaKobi Lane"], roster, schedule, BEFORE_MNF)
+    [lane], [] = predict(targets, [BookOdds("draftkings", [game], [market])], RULES)
+    assert lane.player == "JaKobi Lane"
+
+
+def test_skips_keep_input_order(nflverse, books):
+    _, skipped = run(["Not A Player", "Derrick Henry", "Zay Flowers", "Nobody Else"], nflverse, books)
+    assert [s.name for s in skipped] == ["Not A Player", "Derrick Henry", "Nobody Else"]
+
+
+def test_next_game_is_the_schedule_game(nflverse):
+    roster, schedule = nflverse
+    [target], _ = resolve_targets(["Tre Harris"], roster, schedule, BEFORE_MNF)
+    assert isinstance(target.game, ScheduledGame)
+    assert target.game.game_id == "2026_10_LAC_BAL"
+    assert target.player.team == "LAC"

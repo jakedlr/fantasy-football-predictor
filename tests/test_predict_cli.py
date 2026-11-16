@@ -1,4 +1,4 @@
-"""End-to-end: `ffp predict INPUT.md --fixtures research/fixtures` (Sprint 1 walking skeleton)."""
+"""End-to-end: `ffp predict INPUT.md --fixtures research/fixtures`, replaying DK + FD and nflverse fixtures."""
 
 import json
 from pathlib import Path
@@ -6,13 +6,15 @@ from pathlib import Path
 from ffp.cli import main
 
 FIXTURES = Path(__file__).parent.parent / "research" / "fixtures"
+BEFORE_MNF = "2026-11-16T12:00:00Z"  # the fixtures' Game, LAC @ BAL, kicks off 2026-11-17T01:15Z
 
 
 def run_predict(tmp_path: Path, names: list[str]) -> tuple[str, dict]:
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("\n".join(names) + "\n")
     exit_code = main(
-        ["predict", str(input_md), "--fixtures", str(FIXTURES), "--output-dir", str(tmp_path)]
+        ["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
+         "--output-dir", str(tmp_path)]
     )
     assert exit_code == 0
     return (tmp_path / "OUTPUT.md").read_text(), json.loads((tmp_path / "output.json").read_text())
@@ -23,8 +25,10 @@ def test_predicts_receiving_yards_score_percentiles_for_a_wr(tmp_path):
 
     [zay] = data["players"]
     assert zay["player"] == "Zay Flowers"
-    assert zay["team"] == "BAL Ravens"
-    assert zay["game"] == "LA Chargers @ BAL Ravens"
+    assert zay["team"] == "BAL"
+    assert zay["game"] == "LAC @ BAL"
+    assert zay["position"] == "WR"
+    assert zay["stats"]["receiving_yards"]["books"] == ["draftkings", "fanduel"]
     p = zay["percentiles"]
     assert p["P5"] < p["P25"] < p["P50"] < p["P75"] < p["P95"]
     # Main Line 71.5 yds is near the median, so P50 is about 7 points under 0.1/yd.
@@ -32,19 +36,20 @@ def test_predicts_receiving_yards_score_percentiles_for_a_wr(tmp_path):
     assert "Zay Flowers" in markdown
 
 
-def test_sprint_1_flags_its_simplifications(tmp_path):
-    _, data = run_predict(tmp_path, ["Zay Flowers"])
-    flags = data["players"][0]["flags"]
-    assert any("position assumed WR" in f for f in flags)
-    assert any("receiving yards only" in f for f in flags)
+def test_sprint_2_flags_its_simplifications(tmp_path):
+    _, data = run_predict(tmp_path, ["Mark Andrews"])
+    [andrews] = data["players"]
+    assert andrews["position"] == "TE"  # resolved, no longer assumed WR
+    assert not any("position assumed" in f for f in andrews["flags"])
+    assert any("receiving yards only" in f for f in andrews["flags"])
 
 
 def test_blank_lines_are_ignored_and_unknown_players_are_skipped(tmp_path):
     _, data = run_predict(tmp_path, ["", "Not A Player", "  ", "Zay Flowers"])
     assert [r["player"] for r in data["players"]] == ["Zay Flowers"]
-    assert data["skipped"] == [
-        {"player": "Not A Player", "reason": "no Prop Markets found for this player"}
-    ]
+    [skip] = data["skipped"]
+    assert skip["player"] == "Not A Player"
+    assert skip["reason"].startswith('no QB/RB/WR/TE named "Not A Player"')
 
 
 def test_markdown_list_and_heading_markers_are_not_part_of_names(tmp_path):
@@ -64,15 +69,15 @@ def test_a_player_whose_fit_fails_is_skipped_and_the_rest_are_still_written(tmp_
     real_fit = ffp.predict.fit_receiving_yards
 
     def fit_or_fail(points, position):
-        if points[0].threshold == 6:  # Derrick Henry's Main Line 5.5 -> Y >= 6 is his lowest point
+        if position == "TE":  # Mark Andrews
             raise FitError("out of reach")
         return real_fit(points, position)
 
     monkeypatch.setattr(ffp.predict, "fit_receiving_yards", fit_or_fail)
-    _, data = run_predict(tmp_path, ["Derrick Henry", "Zay Flowers"])
+    _, data = run_predict(tmp_path, ["Mark Andrews", "Zay Flowers"])
     assert [r["player"] for r in data["players"]] == ["Zay Flowers"]
     assert data["skipped"] == [
-        {"player": "Derrick Henry", "reason": "could not fit receiving yards: out of reach"}
+        {"player": "Mark Andrews", "reason": "could not fit receiving yards: out of reach"}
     ]
 
 
@@ -82,11 +87,13 @@ def test_an_error_that_is_not_a_fit_failure_stops_the_run(tmp_path, monkeypatch)
 
     import ffp.predict
 
-    monkeypatch.setattr(ffp.predict, "SPRINT_1_POSITION", "RB")
+    # Let an RB through resolution: the fit has no RB model, which is a bug, not a skip.
+    monkeypatch.setattr(ffp.predict, "MODELED_POSITIONS", ("WR", "TE", "RB"))
     input_md = tmp_path / "INPUT.md"
-    input_md.write_text("Zay Flowers\n")
+    input_md.write_text("Derrick Henry\n")
     with pytest.raises(ValueError, match="no receiving-yards model for position 'RB'"):
-        main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--output-dir", str(tmp_path)])
+        main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
+              "--output-dir", str(tmp_path)])
     assert not (tmp_path / "OUTPUT.md").exists()
 
 
@@ -103,3 +110,57 @@ def test_other_common_markdown_is_not_part_of_names(tmp_path):
     assert read_input(input_md) == [
         "Zay Flowers", "Tre Harris", "Mark Andrews", "Quentin Johnston", "Derrick Henry"
     ]
+
+
+def test_a_fixture_run_saves_no_snapshot(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run_predict(tmp_path, ["Zay Flowers"])
+    assert not (tmp_path / "snapshots").exists()
+
+
+def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
+    # S2.6 wired in: the live path with the network replaced by the fixtures.
+    import ffp.cli
+    import ffp.predict
+
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    seen_games = []
+
+    def fake_live_books(http, games, now, on_response=None):
+        seen_games.extend(games)
+        on_response("fanduel", "fd_league", "https://example.test/page?_ak=SECRET&x=1", {"ok": True})
+        return ffp.predict.load_fixture_books(FIXTURES)
+
+    monkeypatch.setattr(ffp.predict, "load_live_books", fake_live_books)
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\nDerrick Henry\n")
+    snapshots = tmp_path / "snaps"
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
+                 "--snapshots", str(snapshots)]) == 0
+
+    assert [g.game_id for g in seen_games] == ["2026_10_LAC_BAL"]  # only the RB-free target's Game
+    [run_dir] = (snapshots / "2026-11-16").iterdir()
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert [r["name"] for r in manifest["responses"]] == ["fd_league"]
+    assert "SECRET" not in (run_dir / "manifest.json").read_text()
+    fair = json.loads((run_dir / "fair_points.json").read_text())["fair_points"]
+    assert [(f["player"], f["stat"], f["game_id"]) for f in fair] == [
+        ("Zay Flowers", "receiving_yards", "2026_10_LAC_BAL")
+    ]
+
+
+def test_a_live_run_with_nobody_to_price_makes_no_requests(tmp_path, monkeypatch):
+    import ffp.cli
+    import ffp.predict
+
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Derrick Henry\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
+                 "--snapshots", str(tmp_path / "snaps")]) == 0
+    assert not (tmp_path / "snaps").exists()
