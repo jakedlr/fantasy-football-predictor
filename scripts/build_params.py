@@ -42,7 +42,6 @@ CORRELATION_STATS = {
 QUALIFY = {"QB": ("attempts", 15), "RB": ("offense_pct", 0.30), "WR": ("offense_pct", 0.50), "TE": ("offense_pct", 0.50)}
 WITHIN_MIN_GAMES = 6
 PD_FLOOR = 1e-3
-WORKHORSE_CARRY_SHARE = 0.55  # bell-cow RB tier (nflverse-data.md 3d)
 
 # Dispersion (stat-distributions.md). Families, as ffp.distributions implements them:
 HURDLE_GAMMA = "hurdle_shifted_gamma"  # P(0) mass + discretised zero-truncated shifted gamma
@@ -277,32 +276,6 @@ def correlation_entry(df: pl.DataFrame, cols: list[str], kind: str, *, draws: in
         "n_players": df["player_id"].n_unique(),
         "n_player_seasons": df.select("player_id", "season").n_unique(),
         "min_eigenvalue": round(float(np.linalg.eigvalsh(latent).min()), 3),
-    }
-
-
-def with_trailing_carry_share(games: pl.DataFrame, player_stats: pl.DataFrame) -> pl.DataFrame:
-    """games plus trail_carry_share: the player's mean share of his team's carries over his
-    previous 2-4 games of the same season (nflverse-data.md 3d), null with fewer than 2.
-    Team carries sum every player on the team in player_stats, whatever his position."""
-    team = player_stats.group_by("game_id", "team").agg(pl.col("carries").fill_null(0).sum().alias("team_carries"))
-    share = pl.col("carries") / pl.col("team_carries")
-    return (games.join(team, on=["game_id", "team"], how="left")
-            .sort("player_id", "season", "week")
-            .with_columns(trail_carry_share=share.shift(1).rolling_mean(4, min_samples=2).over("player_id", "season"))
-            .drop("team_carries"))
-
-
-def workhorse_override(rb: pl.DataFrame, *, draws: int, seed: int = 0) -> dict:
-    """The bell-cow RB correlation override (nflverse-data.md 3d, 5.2): the RB matrices
-    re-estimated on qualifying games with trailing carry share >= WORKHORSE_CARRY_SHARE.
-    Bell-cows trade carries for catches with game script (RuYd-Rec about -0.12)."""
-    df = rb.filter(pl.col("trail_carry_share") >= WORKHORSE_CARRY_SHARE)
-    cols = CORRELATION_STATS["RB"]
-    return {
-        "rule": (f"RB games with trailing carry share >= {WORKHORSE_CARRY_SHARE} (mean share of team carries over "
-                 "the player's previous 2-4 games of the season); same methods as the position matrices"),
-        "within": correlation_entry(df, cols, "within", draws=draws, seed=seed),
-        "pooled": correlation_entry(df, cols, "pooled", draws=draws, seed=seed),
     }
 
 
@@ -591,9 +564,6 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
     }
     for kind in ("within", "pooled"):
         correlation[kind] = {p: correlation_entry(qual[p], CORRELATION_STATS[p], kind, draws=draws, seed=0) for p in SKILL}
-    season_ps = ps.filter(pl.col("season").is_in(seasons))
-    rb = qualifying_games(with_trailing_carry_share(games.filter(pl.col("position") == "RB"), season_ps), "RB")
-    correlation["rb_workhorse"] = workhorse_override(rb, draws=draws)
 
     rates = base_rates(qual)
     base = {"source": f"{stamp}; {season_label(seasons)} REG qualifying games (nflverse-data.md section 4)", **rates,
