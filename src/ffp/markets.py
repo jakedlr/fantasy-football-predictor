@@ -1,0 +1,34 @@
+"""Prop Market types: what a sportsbook offers on one player's Scoring Stat in one Game."""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Rung:
+    """One "threshold or more" price in a Ladder: the bet wins when Y >= threshold."""
+
+    threshold: int
+    odds: float  # American odds, vig included
+    book: str
+
+
+@dataclass(frozen=True)
+class MainLine:
+    """The two-sided over/under price. Over wins when Y > line."""
+
+    line: float
+    over_odds: float
+    under_odds: float
+    book: str
+
+
+@dataclass(frozen=True)
+class PropMarket:
+    """A book's offer on one player's Scoring Stat in one Game."""
+
+    player: str  # name as the book spells it
+    stat: str  # Scoring Stat key, e.g. "receiving_yards" (see ffp.scoring.SCORING_STATS)
+    game_id: str  # the book's id for the Game
+    book: str  # "draftkings" or "fanduel"
+    main_line: MainLine | None
+    ladder: tuple[Rung, ...]
