@@ -58,3 +58,15 @@ def test_synthetic_ladder_with_known_vig_recovers_fair_probabilities():
     for t, p in fair.items():
         assert points[t].prob == pytest.approx(p, abs=1e-9)
     assert points[70].prob == pytest.approx(0.55, abs=1e-9)
+
+
+def test_main_line_point_has_weight_3_and_its_fair_over_probability():
+    m = market("draftkings", {40: 0.9, 100: 0.2}, main=(52.5, 0.5), c=0.2)
+
+    points = by_threshold(fair_points([m]))
+
+    main = points[53]  # Over 52.5 means Y >= 53
+    assert main.weight == 3
+    assert main.prob == pytest.approx(0.5, abs=1e-9)
+    assert points[40].weight == 1
+    assert points[100].weight == 1
