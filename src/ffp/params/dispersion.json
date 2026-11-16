@@ -1,0 +1,46 @@
+{
+  "source": "seeded by hand from research/stat-distributions.md (Q2 two-part table, Q4 recommendation table) on 2026-11-16; scripts/build_params.py regenerates it from nflverse",
+  "receiving_yards": {
+    "WR": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 5.0,
+      "pi0_c0": 6.75,
+      "pi0_c1": -2.48,
+      "sd_a": 3.0,
+      "sd_b": 0.622
+    },
+    "TE": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 5.0,
+      "pi0_c0": 6.99,
+      "pi0_c1": -2.71,
+      "sd_a": 2.33,
+      "sd_b": 0.678
+    },
+    "RB": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 10.0,
+      "pi0_c0": 4.28,
+      "pi0_c1": -2.04,
+      "sd_a": 1.86,
+      "sd_b": 0.739
+    }
+  },
+  "receptions": {
+    "WR": {
+      "family": "negative_binomial",
+      "r_a": 0.83,
+      "r_b": 1.85
+    },
+    "TE": {
+      "family": "negative_binomial",
+      "r_a": 1.61,
+      "r_b": 1.45
+    },
+    "RB": {
+      "family": "negative_binomial",
+      "r_a": 1.53,
+      "r_b": 1.07
+    }
+  }
+}

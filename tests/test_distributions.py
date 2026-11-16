@@ -230,3 +230,34 @@ def test_low_probabilities_everywhere_do_not_crash_the_optimizer(xs, ps, main_we
     except FitError:
         return
     assert 1.0 <= fit.mean <= 500.0 and 0 <= fit.pi0 < 1
+
+
+# Poisson: shared by TDs (S3.2) and the Base Rate stats (S3.4).
+
+
+def test_poisson_matches_scipy():
+    from scipy import stats
+
+    from ffp.distributions import Poisson
+
+    d = Poisson(0.4)
+    x = np.arange(-1, 6)
+    np.testing.assert_allclose(d.sf(x), stats.poisson(0.4).sf(x - 1))  # P(Y >= x)
+    assert d.mean == pytest.approx(0.4)
+    u = np.array([0.1, 0.67, 0.671, 0.94, 0.9999])
+    np.testing.assert_array_equal(d.ppf(u), stats.poisson(0.4).ppf(u))
+
+
+def test_poisson_of_zero_is_always_zero():
+    from ffp.distributions import Poisson
+
+    d = Poisson(0.0)
+    assert d.sf(np.array([1]))[0] == 0.0
+    np.testing.assert_array_equal(d.ppf(np.array([0.01, 0.99])), [0, 0])
+
+
+def test_poisson_rejects_a_negative_rate():
+    from ffp.distributions import Poisson
+
+    with pytest.raises(ValueError):
+        Poisson(-0.1)

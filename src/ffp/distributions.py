@@ -278,3 +278,29 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
         raise FitError("no fit within the model's range")
     mu, sd, pi0 = params(result.x)
     return receiving_yards(mu, sd, position, pi0)
+
+
+class Poisson:
+    """Poisson(lam) counts: TDs from an anytime-TD price, and the Base Rate stats.
+
+    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x).
+    """
+
+    def __init__(self, lam: float):
+        if not lam >= 0:
+            raise ValueError(f"invalid Poisson rate {lam}")
+        self.lam = float(lam)
+        self._dist = stats.poisson(self.lam)
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        x = np.ceil(np.asarray(x, dtype=float))
+        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        if self.lam == 0:
+            return np.zeros_like(np.asarray(u, dtype=float))
+        return self._dist.ppf(np.asarray(u, dtype=float))
+
+    @property
+    def mean(self) -> float:
+        return self.lam
