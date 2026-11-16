@@ -9,7 +9,8 @@ import numpy as np
 from scipy import optimize, stats
 from scipy.special import expit, logit
 
-from ffp.fair import FairPoint
+from ffp import params
+from ffp.fair import MAIN_LINE_WEIGHT, FairPoint
 
 
 class FitError(ValueError):
@@ -304,3 +305,133 @@ class Poisson:
     @property
     def mean(self) -> float:
         return self.lam
+
+
+class NegativeBinomial:
+    """Receptions: NB with mean mu and size r, so Var = mu + mu²/r (research Q1b, Q4).
+
+    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x). As r → ∞ it tends to Poisson(mu).
+    """
+
+    def __init__(self, mu: float, r: float):
+        if not (mu > 0 and r > 0):
+            raise ValueError(f"invalid negative binomial parameters mu={mu}, r={r}")
+        self.mu, self.r = float(mu), float(r)
+        self._dist = stats.nbinom(self.r, self.r / (self.r + self.mu))
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        """P(Y >= x); a fractional x is rounded up (Y >= 4.5 means Y >= 5)."""
+        x = np.ceil(np.asarray(x, dtype=float))
+        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        """Smallest integer k with P(Y <= k) >= u."""
+        return self._dist.ppf(np.asarray(u, dtype=float))
+
+    @property
+    def mean(self) -> float:
+        return self.mu
+
+
+# Receptions fit. r is fitted only with this many points besides the Main Line (research Q3:
+# "fix r from r(μ) unless there are ≥3 Rungs"); with fewer it stays on the relation.
+RECEPTIONS_MIN_POINTS_FOR_R = 3
+# Prior sd of ln r around the relation. Weak on purpose: r is pinned only by a full Ladder, and
+# then the Ladder should win. Var − mu = mu²/r, so 0.5 in ln r is ±65% on the excess variance.
+FIT_SIGMA_LN_R = 0.5
+FIT_LAMBDA_R = FIT_TAU**2 / FIT_SIGMA_LN_R**2  # = 0.04
+_REC_MU_RANGE = (0.01, 40.0)  # mu the model allows, catches
+_LN_R_RANGE = (math.log(0.05), math.log(1e4))  # 1e4: Poisson for any practical purpose
+
+
+def receptions_r_relation(mu: float, position: str) -> float:
+    """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+    try:
+        rel = params.load("dispersion")["receptions"][position]
+    except KeyError:
+        raise ValueError(f"no receptions model for position {position!r}") from None
+    return rel["r_a"] * mu ** rel["r_b"]
+
+
+def _receptions_on_relation(mu: float, position: str) -> NegativeBinomial:
+    return NegativeBinomial(mu, receptions_r_relation(mu, position))
+
+
+def _residuals(dist: StatDistribution, x: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """logit p − logit S(x), with S clipped so the logit stays finite."""
+    return target - logit(np.clip(dist.sf(x), _SF_CLIP, 1 - _SF_CLIP))
+
+
+def _fit_receptions_one_point(point: FairPoint, position: str) -> NegativeBinomial:
+    """Root-find mu so P(Y >= threshold) is the one Fair Probability, r = r(mu)."""
+    x, target = np.array([point.threshold]), np.array([logit(point.prob)])
+
+    def error(ln_mu: float) -> float:
+        return -_residuals(_receptions_on_relation(math.exp(ln_mu), position), x, target)[0]
+
+    lo, hi = math.log(_REC_MU_RANGE[0]), math.log(_REC_MU_RANGE[1])
+    if error(lo) * error(hi) > 0:
+        raise FitError(
+            f"P(receptions >= {point.threshold}) = {point.prob} is out of reach for mu in {_REC_MU_RANGE}"
+        )
+    return _receptions_on_relation(math.exp(optimize.brentq(error, lo, hi, xtol=1e-12)), position)
+
+
+def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomial:
+    """Fit a receptions Stat Distribution (negative binomial) to Fair Probabilities.
+
+    Weighted least squares in logit space, as for receiving yards:
+
+        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ_r (ln r − ln r_rel(mu))²
+
+    over theta = (ln mu, ln r), λ_r = τ²/σ_r² with σ_r = FIT_SIGMA_LN_R. r is free
+    only with at least RECEPTIONS_MIN_POINTS_FOR_R points besides the Main Line (the
+    heaviest point, when it has Main Line weight); otherwise r = r_rel(mu) and only
+    mu is fitted. With a single point, mu is root-found to reproduce it exactly.
+    """
+    receptions_r_relation(1.0, position)  # validate before doing any work
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    # The anchor is the heaviest point (the Main Line, when present), as in fit_receiving_yards.
+    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+    start = _fit_receptions_one_point(anchor, position)
+    if len(points) == 1:
+        return start
+
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+    ln_mu_range = np.log(_REC_MU_RANGE)
+    besides_main = len(points) - (anchor.weight >= MAIN_LINE_WEIGHT)
+
+    if besides_main < RECEPTIONS_MIN_POINTS_FOR_R:
+
+        def objective_mu(ln_mu: float) -> float:
+            dist = _receptions_on_relation(math.exp(ln_mu), position)
+            return float(np.sum(w * _residuals(dist, x, target) ** 2))
+
+        result = optimize.minimize_scalar(
+            objective_mu, bounds=tuple(ln_mu_range), method="bounded", options={"xatol": 1e-10}
+        )
+        return _receptions_on_relation(math.exp(result.x), position)
+
+    def objective(theta: np.ndarray) -> float:
+        in_range = ln_mu_range[0] <= theta[0] <= ln_mu_range[1] and _LN_R_RANGE[0] <= theta[1] <= _LN_R_RANGE[1]
+        if not in_range:
+            return math.inf
+        mu = math.exp(theta[0])
+        prior = theta[1] - math.log(receptions_r_relation(mu, position))
+        resid = _residuals(NegativeBinomial(mu, math.exp(theta[1])), x, target)
+        return float(np.sum(w * resid**2) + FIT_LAMBDA_R * prior**2)
+
+    theta0 = np.array([math.log(start.mu), math.log(start.r)])
+    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.3])])
+    result = optimize.minimize(
+        objective,
+        theta0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-8, "fatol": 1e-13, "initial_simplex": simplex, "maxiter": 3000},
+    )
+    if not math.isfinite(result.fun):
+        raise FitError("no receptions fit within the model's range")
+    return NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1]))
