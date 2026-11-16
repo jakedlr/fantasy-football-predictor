@@ -9,7 +9,7 @@ research/sportsbook-markets.md, DraftKings section.
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
-from ..markets import Game, MainLine, PropMarket, Rung
+from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line_copy
 from ..odds import parse_american
 
 BOOK = "draftkings"
@@ -126,19 +126,6 @@ def _team(game: Game | None, venue_role: str | None) -> str | None:
     return {"HomePlayer": game.home, "AwayPlayer": game.away}.get(venue_role)
 
 
-def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
-    """The Ladder sorted by threshold, minus the Rung at the Main Line Over's threshold.
-
-    "Over L" and the Rung "floor(L)+1 or more" are the same event. DK usually
-    copies the Over's odds onto that Rung (O/U 71.5 at −113 → "72+" at −113) but
-    not always (Over 37.5 at −111 vs "38+" at −109). The Main Line already
-    carries the event, so the Rung is dropped either way.
-    """
-    if main_line is not None:
-        same_event = main_line.over_threshold
-        ladder = [r for r in ladder if r.threshold != same_event]
-    return tuple(sorted(ladder, key=lambda r: r.threshold))
-
 
 def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> list[PropMarket]:
     """One Prop Market per player per Game, from a Ladder and an O/U subcategory response.
@@ -165,7 +152,7 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> li
                 game_id=event_id,
                 book=BOOK,
                 main_line=main_line,
-                ladder=_without_main_line_copy(ladders.get(key, []), main_line),
+                ladder=ladder_without_main_line_copy(ladders.get(key, []), main_line),
                 team=_team(game, venue_roles[key]),
             )
         )

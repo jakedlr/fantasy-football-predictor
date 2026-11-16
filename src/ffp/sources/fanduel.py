@@ -10,7 +10,7 @@ import re
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
-from ..markets import Game, MainLine, PropMarket, Rung
+from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line_copy
 
 BOOK = "fanduel"
 
@@ -176,18 +176,6 @@ def _team(game: Game | None, slug: str | None) -> str | None:
     return {_slug(game.home): game.home, _slug(game.away): game.away}.get(slug)
 
 
-def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
-    """The Ladder sorted by threshold, minus the Rung at the Main Line Over's threshold.
-
-    "Over 69.5" and "70+" are the same event, Y >= 70. FD's round Rungs only
-    sometimes land on it (Zay Flowers: Over 69.5 at −113, "70+" at −114). The
-    Main Line already carries the event, so the Rung is dropped.
-    """
-    if main_line is not None:
-        same_event = main_line.over_threshold
-        ladder = [r for r in ladder if r.threshold != same_event]
-    return tuple(sorted(ladder, key=lambda r: r.threshold))
-
 
 def parse_prop_markets(event_tab_json: dict, stat: str) -> list[PropMarket]:
     """One Prop Market per player per Game, from one FanDuel event-page tab.
@@ -220,7 +208,7 @@ def parse_prop_markets(event_tab_json: dict, stat: str) -> list[PropMarket]:
                 game_id=event_id,
                 book=BOOK,
                 main_line=main_line,
-                ladder=_without_main_line_copy(ladders.get(key, []), main_line),
+                ladder=ladder_without_main_line_copy(ladders.get(key, []), main_line),
                 team=_team(game, slugs[key]),
             )
         )

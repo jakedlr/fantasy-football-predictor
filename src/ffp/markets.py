@@ -55,3 +55,18 @@ class PropMarket:
     main_line: MainLine | None
     ladder: tuple[Rung, ...]
     team: str | None = None  # the player's team as the book spells it, when known
+
+
+def ladder_without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
+    """The Ladder sorted by threshold, minus the Rung at the Main Line Over's threshold.
+
+    "Over L" and the Rung "floor(L)+1 or more" are the same event. Books often
+    copy the Over's odds onto that Rung (DK: O/U 71.5 at −113 → "72+" at −113)
+    but not always (DK: Over 37.5 at −111 vs "38+" at −109; FD: Over 69.5 at −113
+    vs "70+" at −114). The Main Line already carries the event, so the Rung is
+    dropped either way.
+    """
+    if main_line is not None:
+        same_event = main_line.over_threshold
+        ladder = [r for r in ladder if r.threshold != same_event]
+    return tuple(sorted(ladder, key=lambda r: r.threshold))
