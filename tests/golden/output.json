@@ -1,0 +1,93 @@
+{
+  "generated_at": "2026-11-15T18:00:00+00:00",
+  "scoring_rules": "espn-league",
+  "assumptions": [
+    "Return TDs and fumble-recovery TDs are not modelled yet; they count as 0 points."
+  ],
+  "players": [
+    {
+      "player": "Zay Flowers",
+      "team": "BAL",
+      "game": "LAC @ BAL",
+      "kickoff": "2026-11-17T01:15:00Z",
+      "position": "WR",
+      "percentiles": {
+        "P5": 1.23,
+        "P25": 5.51,
+        "P50": 9.14,
+        "P75": 13.37,
+        "P95": 20.71
+      },
+      "chance_of_at_least": {
+        "5": 0.7804,
+        "10": 0.4562,
+        "15": 0.2013,
+        "20": 0.0612,
+        "25": 0.0133,
+        "30": 0.002
+      },
+      "flags": [
+        "incomplete: missing receptions"
+      ],
+      "stats": {
+        "receiving_yards": {
+          "mean": 58.3,
+          "p50": 55.0,
+          "books": [
+            "draftkings"
+          ],
+          "rungs": 7
+        }
+      }
+    },
+    {
+      "player": "Ladd McConkey",
+      "team": "LAC",
+      "game": "LAC @ BAL",
+      "kickoff": "2026-11-17T01:15:00Z",
+      "position": "WR",
+      "percentiles": {
+        "P5": 3.04,
+        "P25": 8.86,
+        "P50": 13.12,
+        "P75": 18.49,
+        "P95": 27.93
+      },
+      "chance_of_at_least": {
+        "5": 0.9311,
+        "10": 0.6588,
+        "15": 0.3902,
+        "20": 0.1871,
+        "25": 0.0794,
+        "30": 0.0281
+      },
+      "flags": [],
+      "stats": {
+        "receptions": {
+          "mean": 5.2,
+          "p50": 5.0,
+          "books": [
+            "draftkings",
+            "fanduel"
+          ],
+          "rungs": 9
+        },
+        "receiving_yards": {
+          "mean": 61.7,
+          "p50": 57.0,
+          "books": [
+            "draftkings",
+            "fanduel"
+          ],
+          "rungs": 12
+        }
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "player": "Harrison Butker",
+      "reason": "not supported yet: K"
+    }
+  ]
+}
