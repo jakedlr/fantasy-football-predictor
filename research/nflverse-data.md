@@ -326,6 +326,8 @@ At these sizes, a −2 per fumble lost moves P5 for QBs (P(FL >= 1) = 19%) and h
 
 RB split by trailing carry share: 76% rushing (<35%), 81% (35–55%), 82% (>=55%). It varies much more by player: among RB player-seasons with >=5 TDs, the rushing share has P10/P25/P50/P75/P90 of 0.55/0.70/0.83/1.0/1.0. So for RBs, split an anytime-TD probability using the player's own prop ratio, e.g. the ratio of rushing-yards to receiving-yards lines or a rush-TD market if one exists. Fall back to a shrunk player history and finally to 0.80. For WR/TE, treat the anytime TD as receiving (97–98%). For QBs, anytime TD means rushing TD.
 
+Section 6 replaces this with a per-player share (S4.3).
+
 ## 5. Recommendations for the copula
 
 1. **Stats per position (copula dimensions):**
@@ -343,3 +345,112 @@ RB split by trailing carry share: 76% rushing (<35%), 81% (35–55%), 82% (>=55%
    - QB rushing TDs and INTs are mostly 0/1. Same tie issue.
 4. **Sample sizes:** pooled per position, 2,709 QB, 4,229 RB, 7,130 WR and 3,172 TE player-games. Within-player: 67 QBs / 123 RBs / 211 WRs / 92 TEs with >=6 games in a season. With n >= 2,400, the SE of each rho is about 0.02. Season-to-season noise (0.02–0.10) is larger than sampling error, so differences below about 0.05 aren't worth acting on.
 5. **Validation hook:** the pooled (3a) vs within (3b) choice is the biggest modelling lever found here, at up to 0.12 per pair. Make it a config switch and let the PIT/CRPS backtest decide.
+
+## 6. Per-player rushing TD share (empirical Bayes, S4.3)
+
+The model gets an anytime-TD price (rushing + receiving TDs together) and has to split the Poisson rate. This section picks the split share for each player. Run on 2026-11-16 with `research/scripts/td_split_eb.py` (three modes: default, `--volume`, `--final`). Data: `load_player_stats` 2010–2025, REG + POST, every game a player has a row for (no snap filter). The position is the season's `load_rosters` position (FB → RB), falling back to the stats `position`.
+
+### Method and scoring
+
+- Out of sample, in-season framing (what the runtime faces): for every player-game with at least one rushing or receiving TD in 2016–2025, predict the share from everything before that game, that is, earlier games this season plus earlier seasons. Score the log loss of each TD's rushing/receiving label in nats per TD. Tune on targets from 2016–2020 and report on 2021–2025. A preseason framing (whole season from prior seasons only) ranks the options the same way.
+- The flat baseline is the position share from the five seasons before the target, i.e. what a yearly build ships. For 2025: QB 0.983, RB 0.793, WR 0.038, TE 0.024. These are close to `base_rates.json`, which uses only the snap-qualified games.
+- Two priors were compared:
+  - **EB → position**: `share = (R + k·m) / (N + k)`, as decided in planning.
+  - **EB → volume**: the same formula with `m` replaced by a volume share `v`, built from the player's own carries and targets in the same window.
+
+### Q1. Beta prior per position (marginal likelihood, single player-seasons with ≥1 TD, 2015–2025)
+
+| Pos | player-seasons | TDs | m (90% CI) | k = a+b (90% CI) |
+|---|---|---|---|---|
+| QB | 375 | 1,081 | 0.972 (0.954–0.986) | 6.2 (2.5–∞) |
+| RB | 1,109 | 5,250 | 0.762 (0.741–0.785) | 5.7 (4.7–7.6) |
+| WR | 1,534 | 5,897 | 0.030 (0.024–0.038) | 6.5 (4.3–12) |
+| TE | 806 | 2,351 | 0.016 (0.009–0.023) | 3.5 (1.3–∞) |
+
+The CIs come from a 200-draw bootstrap over players. QB and TE have no stable between-player variance. For TEs it is almost all Taysom Hill (47 of 2,132 TE TDs in the targets).
+
+Tuned for prediction, the shrinkage toward the position share is a little stronger: QB 15, RB 8, WR 12. That fits shares that drift from season to season. TE is unstable (anything from 15 to 1000, depending on which years are in the tuning set). **One k per position toward the position share is not the right model.** The RB prior clearly depends on something observable: the player's rush/receive mix of opportunities. The expected-TD share from volume fixes this:
+
+```
+v = (ρr·C + κ·m) / (ρr·C + ρt·T + κ)        # volume share, shrunk to m when volume is thin
+share = (R + k·v) / (N + k)                  # TD history, shrunk to v
+```
+
+- `C`, `T`: carries and targets in the window.
+- `R`, `N`: rushing TDs and rushing + receiving TDs in the window.
+- `ρr`, `ρt`: the position's rushing TDs per carry and receiving TDs per target, from the same seasons as `m`. For 2020–2024: QB 0.048 / 0.093, RB 0.032 / 0.029, WR 0.043 / 0.049, TE 0.092 / 0.053.
+- `κ`: pseudo expected-TDs toward the position share. `k`: pseudo-TDs toward `v`.
+
+Volume explains most of the spread between players. The volume share on its own (k → ∞) already beats EB → position at every position. The TD history then adds a little for RB/WR. The bootstrap-optimal k with κ = 1: QB ∞ (90% CI 30–∞), RB 40 (20–75), WR 50 (30–∞), TE ∞ (100–∞). The loss curves are flat from k = 20 to ∞ (within 0.003 nats/TD), so **one setting for all positions: κ = 2, k = 30.**
+
+### Q2. Window (in-season framing, test 2021–2025, loss per TD; gain vs flat in parentheses)
+
+EB → position (k tuned per row):
+
+| Window | QB | RB | WR | TE |
+|---|---|---|---|---|
+| flat position share | 0.0844 | 0.5146 | 0.1633 | 0.1302 |
+| this season to date only | 0.0804 | 0.4978 | 0.1524 | 0.1122 |
+| last season only | 0.0787 | 0.5010 | 0.1548 | 0.1265 |
+| to date + last season | 0.0781 | 0.4906 | 0.1474 | 0.1132 |
+| **to date + last 2 seasons** | 0.0799 | 0.4897 | 0.1448 | 0.1023 |
+| to date + last 3 seasons | 0.0801 | 0.4932 | 0.1445 | 0.1042 |
+| to date + 6 seasons, decay 0.75 | 0.0776 | 0.4890 | 0.1443 | 0.1009 |
+
+EB → volume (κ, k tuned per row):
+
+| Window | QB | RB | WR | TE |
+|---|---|---|---|---|
+| to date + last season | 0.0775 | 0.4755 | 0.1327 | 0.0791 |
+| **to date + last 2 seasons** | 0.0782 | 0.4762 | 0.1334 | 0.0772 |
+| to date + last 3 seasons | 0.0787 | 0.4787 | 0.1348 | 0.0781 |
+| to date + 6 seasons, decay 0.5 | 0.0778 | 0.4762 | 0.1338 | 0.0762 |
+| last 2 seasons, **no current season** | 0.0786 | 0.4864 | 0.1397 | 0.0829 |
+
+Windows from "to date + 1 season" to "6 seasons with decay" are within about 0.003 nats of each other. **Use this season to date + the previous 2 seasons, unweighted.** It is simple and never worse than about 0.002 nats from the best row. Leaving out the current season costs 0.005–0.010 nats/TD (RB/WR/TE), which matters for the runtime data source (Q4).
+
+### Recommended model (to date + 2 seasons, κ = 2, k = 30), test 2021–2025
+
+| Pos | test TDs | flat | EB → position | **EB → volume** | gain vs flat |
+|---|---|---|---|---|---|
+| QB | 567 | 0.0844 | 0.0799 (k=15) | 0.0803 | +0.004 (5%) |
+| RB | 2,427 | 0.5146 | 0.4897 (k=8) | **0.4783** | +0.036 (7%) |
+| WR | 2,704 | 0.1633 | 0.1448 (k=12) | **0.1342** | +0.029 (18%) |
+| TE | 1,070 | 0.1302 | 0.1023 (k=100) | **0.0771** | +0.053 (41%) |
+| all | 6,768 | 0.2774 | 0.2563 | **0.2441** | +0.033 (12%) |
+
+Calibration is good. RB bins of predicted vs realised share: 0.51/0.46, 0.66/0.69, 0.76/0.75, 0.82/0.83, 0.87/0.88, 0.92/0.95. WR bins: 0.008/0.008, 0.029/0.035, 0.056/0.060, 0.12/0.14, and 0.30/0.35 (65 TDs), so WR shares are slightly under-predicted at the high end.
+
+Examples going into 2026 week 11 (2024 + 2025 + 2026 weeks 1–10):
+
+| Player | R/N | share |
+|---|---|---|
+| Derrick Henry | 43/46 | 0.93 |
+| Saquon Barkley | 28/32 | 0.87 |
+| Bijan Robinson | 27/33 | 0.81 |
+| Alvin Kamara | 10/14 | 0.73 |
+| Christian McCaffrey | 20/32 | 0.67 |
+| De'Von Achane | 14/24 | 0.67 |
+| Taysom Hill (TE) | 7/7 | 0.72 |
+| Travis Kelce | 1/12 | 0.036 |
+| Ja'Marr Chase | 0/32 | 0.007 |
+| Josh Allen | 41/42 | 0.98 |
+
+If only the planned EB → position is built, use the same window with k: QB 15, RB 8, WR 12, TE 15–100 (unstable; 30 is a reasonable pick). TE gets only about half of the TE gain that way, and almost all of it is Taysom Hill: without him, EB → position on TEs equals flat (0.079), while the volume prior gives 0.072.
+
+### Q3. Edge cases
+
+- **No history** (no carries, targets or TDs in the window): `v = m`, `share = m`. This applies to rookies and to the 6–10% of TDs scored by players with 0 TDs in the window. Those players usually still have carries or targets, so `v` already moves them off `m`.
+- **Position changers:** count the player's history at every position, and take `m`, `ρr` and `ρt` from the runtime (roster) position. Only 0.1–0.7% of TDs belong to players with history at another position. On those TDs, keeping the history beats dropping it (QB 0.74 vs 0.85, WR 0.43 vs 0.69, TE 0.78 vs 1.54 nats/TD; RB 0.59 vs 0.60). Note that the `position` column in `load_player_stats` is the player's *current* position on every row (Cordarrelle Patterson is "RB" in 2013), so it can't detect changes. `load_rosters` has the position per season (94 skill players changed position 2012–2026).
+- **QBs:** receiving TDs are trick plays (21 against 1,379 rushing since 2010). A volume of 0 targets gives `v` ≈ 0.99–1.0. The model matches the position share for them at no cost, so QBs keep the same code path.
+- **2-pt conversions:** keep them out of the counts. There are 666 rush+rec 2-pts against about 14,600 TDs in 2015–2025 (4.6%), at about 0.25 per starter-season, so they add no information. Splitting 2-pts with the same share is fine: the position 2-pt rushing shares are close to the TD shares (QB 0.92 vs 0.97, RB 0.73 vs 0.78, WR 0.011 vs 0.03, TE 0.008 vs 0.017).
+- **Game types:** include POST games in the history. They are the same kind of opportunity.
+
+### Q4. What the runtime needs
+
+- **Table:** `nflreadpy.load_player_stats([s-2, s-1, s])`, the weekly level (the default). Columns: `player_id` (= the gsis_id the runtime already resolves players to via `load_rosters_weekly`, see `src/ffp/players.py`), `season`, `week`, `season_type`, `rushing_tds`, `receiving_tds`, `carries`, `targets`. Fill nulls with 0. Sum per `player_id` over all rows, from season s-2 through the latest week of s. The only per-player aggregates are `R`, `N`, `C`, `T`.
+- **Constants (build time, `base_rates.json`):** `m` per position (the existing `td_rushing_share`), plus `ρr` and `ρt` per position (rushing TDs per carry, receiving TDs per target, same seasons and filter as `m`), plus `κ = 2`, `k = 30` and `window_seasons = 2`. One nuance: for `m`, `ρr` and `ρt` the evaluation used all player-games of the position. `base_rates.json` uses the snap-qualified games, so `m` is about 0.01 different there (RB 0.801 vs 0.793). That is negligible.
+- **Fetch at runtime, don't precompute the counts.** The current season to date is worth 0.005–0.010 nats/TD (see "no current season" above), and a build-time file goes stale every week. nflverse updates the weekly stats file within about a day of each game: on 2026-11-15 12 of 14 week-10 Games were in it, on 2026-11-16 13. Reading 2026 takes 0.4 s, cached by nflreadpy. Follow the `load_roster(season, fetch=...)` pattern so tests use a CSV fixture. The fetch needs two guards:
+  - Before week 1 the current season's file doesn't exist yet: `load_player_stats(2027)` raises `ConnectionError` with a 404. Treat that as no current-season rows.
+  - Any other fetch failure: fall back to `share = m` and log it, the same way a missing book is handled.
+- A hybrid (prior seasons precomputed at build time, current season fetched) saves two small downloads but adds a second source to keep in sync. It isn't worth it.
