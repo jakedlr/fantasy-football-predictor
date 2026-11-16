@@ -85,3 +85,18 @@ def test_team_comes_from_venue_role():
     markets = rec_yds_markets()
     assert markets["Zay Flowers"].team == "BAL Ravens"  # HomePlayer
     assert markets["Quentin Johnston"].team == "LA Chargers"  # AwayPlayer
+
+
+def test_ladder_drops_the_rung_that_duplicates_the_main_line_over():
+    # Zay Flowers O/U 71.5 Over −113; DK repeats it in the Ladder as "72+" at −113.
+    zay = rec_yds_markets()["Zay Flowers"]
+    assert [r.threshold for r in zay.ladder] == [
+        20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180
+    ]
+
+
+def test_ladder_keeps_floor_plus_one_rung_whose_odds_differ_from_the_over():
+    # Tre Harris O/U 37.5 Over −111, but his "38+" Rung is −109: not a copy, so it stays.
+    tre = rec_yds_markets()["Tre Harris"]
+    assert tre.main_line.over_odds == -111.0
+    assert Rung(38, -109.0, "draftkings") in tre.ladder

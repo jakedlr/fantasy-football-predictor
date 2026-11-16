@@ -1,5 +1,6 @@
 """DraftKings sportscontent API responses → Games and Prop Markets."""
 
+import math
 from datetime import datetime, timezone
 
 from ..markets import Game, MainLine, PropMarket, Rung
@@ -39,6 +40,18 @@ def _team(game: Game | None, venue_role: str | None) -> str | None:
     if game is None:
         return None
     return {"HomePlayer": game.home, "AwayPlayer": game.away}.get(venue_role)
+
+
+def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
+    """The Ladder sorted by threshold, minus the Rung DK copies from the Main Line Over.
+
+    DK lists Over L as a Rung at floor(L)+1 with the same odds (O/U 71.5 at
+    −113 → "72+" at −113). Keeping it would count one price twice.
+    """
+    if main_line is not None:
+        copy = (math.floor(main_line.line) + 1, main_line.over_odds)
+        ladder = [r for r in ladder if (r.threshold, r.odds) != copy]
+    return tuple(sorted(ladder, key=lambda r: r.threshold))
 
 
 def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> list[PropMarket]:
@@ -83,7 +96,7 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> li
             game_id=event_id,
             book=BOOK,
             main_line=main_lines.get((player, event_id)),
-            ladder=tuple(sorted(ladder, key=lambda r: r.threshold)),
+            ladder=_without_main_line_copy(ladder, main_lines.get((player, event_id))),
             team=_team(games.get(event_id), venue_roles[(player, event_id)]),
         )
         for (player, event_id), ladder in rungs.items()
