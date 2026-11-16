@@ -16,6 +16,10 @@ _Avoid_: Scoring format, scoring system, settings
 Scoring Rules defined for one specific league instead of a standard preset.
 _Avoid_: League settings
 
+**Base Rate**:
+The historical per-game frequency of a Scoring Stat that no book offers, such as fumbles lost or 2-point conversions.
+_Avoid_: Default rate, prior
+
 ## Markets
 
 **Game**:
@@ -41,6 +45,14 @@ _Avoid_: Milestone, alt line, step
 **Fair Probability**:
 A probability implied by a price after the book's vig is removed.
 _Avoid_: No-vig probability, true odds, devigged odds
+
+**Snapshot**:
+The saved raw prices from one run, kept so the run can be backtested later.
+_Avoid_: Cache, log
+
+**Backtest**:
+Scoring past Score Distributions against what the players actually scored, to check calibration.
+_Avoid_: Validation, evaluation
 
 ## Distributions
 
