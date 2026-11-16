@@ -54,13 +54,26 @@ def _odds(sel: dict) -> float:
     return parse_american(sel["displayOdds"]["american"])
 
 
+# TD scorer selections that are Rungs of "rush_rec_tds", by outcomeType: "N or more TDs".
+# "First Scorer" (and Last TD, which we never fetch) is not a "N or more" event, so it is not a Rung.
+TD_SCORER_THRESHOLDS = {"Anytime Scorer": 1, "To Score 2 Or More": 2, "To Score 3 Or More": 3}
+
+
+def _threshold(sel: dict) -> int | None:
+    """A Ladder selection's N in "Y >= N": milestoneValue, or a TD scorer's outcomeType."""
+    if "milestoneValue" in sel:
+        return int(sel["milestoneValue"])
+    return TD_SCORER_THRESHOLDS.get(sel.get("outcomeType"))
+
+
 def _ladders(ladder_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key, list[Rung]]:
-    """Each player's Rungs: milestoneValue N means Y >= N."""
+    """Each player's Rungs: milestoneValue N, or a TD scorer's "N or more", means Y >= N."""
     rungs: dict[Key, list[Rung]] = {}
     for key, venue_role, sel in _player_selections(ladder_json):
-        if "milestoneValue" not in sel:
+        threshold = _threshold(sel)
+        if threshold is None:
             continue
-        rungs.setdefault(key, []).append(Rung(int(sel["milestoneValue"]), _odds(sel), BOOK))
+        rungs.setdefault(key, []).append(Rung(threshold, _odds(sel), BOOK))
         venue_roles.setdefault(key, venue_role)
     return rungs
 
@@ -119,12 +132,17 @@ def _team(game: Game | None, venue_role: str | None) -> str | None:
 
 
 
-def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> list[PropMarket]:
+def parse_prop_markets(ladder_json: dict, main_line_json: dict | None, stat: str) -> list[PropMarket]:
     """One Prop Market per player per Game, from a Ladder and an O/U subcategory response.
 
     A player in only one response gets main_line None or an empty ladder.
     Started Games are excluded.
+
+    Touchdowns ("rush_rec_tds") have no O/U: pass main_line_json None and, as the
+    Ladder, the TD Scorer response (merged with 3+ TDs when fetched). Its anytime,
+    "2 or more" and "3 or more" prices become Rungs 1, 2 and 3.
     """
+    main_line_json = main_line_json or {}
     games = {g.game_id: g for g in parse_games(main_line_json) + parse_games(ladder_json)}
     venue_roles: dict[Key, str | None] = {}
     ladders = _ladders(ladder_json, venue_roles)
