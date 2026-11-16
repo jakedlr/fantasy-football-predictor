@@ -72,3 +72,25 @@ def test_methods_shade_longshot_differently():
 def test_unknown_method():
     with pytest.raises(ValueError):
         devig(-110, -110, "magic")
+
+
+@pytest.mark.parametrize(
+    "price, expected",
+    [
+        ("−260", 260 / 360),  # DraftKings sends U+2212 MINUS SIGN
+        ("-260", 260 / 360),
+        (-260, 260 / 360),
+        ("+150", 100 / 250),
+        ("150", 100 / 250),
+        (150, 100 / 250),
+        (" −800 ", 800 / 900),
+    ],
+)
+def test_american_to_implied_parses_strings(price, expected):
+    assert american_to_implied(price) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("bad", ["", "abc", "−50"])
+def test_american_to_implied_rejects_bad_strings(bad):
+    with pytest.raises(ValueError):
+        american_to_implied(bad)

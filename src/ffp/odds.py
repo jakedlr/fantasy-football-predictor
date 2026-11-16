@@ -5,8 +5,24 @@ import math
 DEVIG_METHODS = ("multiplicative", "additive", "power", "shin")
 
 
-def american_to_implied(odds: float) -> float:
-    """Implied probability of American odds, vig included."""
+def parse_american(price: str | float) -> float:
+    """American odds as a number, from an int, float or string.
+
+    Strings may use ASCII "-" or the Unicode minus "−" (U+2212) that
+    DraftKings sends, and an optional leading "+".
+    """
+    if isinstance(price, str):
+        text = price.strip().replace("−", "-")
+        try:
+            return float(text)
+        except ValueError:
+            raise ValueError(f"invalid American odds: {price!r}") from None
+    return float(price)
+
+
+def american_to_implied(odds: str | float) -> float:
+    """Implied probability q of American odds, vig included."""
+    odds = parse_american(odds)
     if -100 < odds < 100:
         raise ValueError(f"invalid American odds: {odds}")
     if odds < 0:
