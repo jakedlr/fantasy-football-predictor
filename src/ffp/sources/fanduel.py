@@ -13,17 +13,18 @@ from ..markets import Game
 BOOK = "fanduel"
 
 
-def _kickoff(open_date: str) -> str:
-    """FD's "2026-11-17T01:21:00.000Z" as "2026-11-17T01:21:00Z"."""
+def _kickoff(open_date: str) -> datetime:
+    """FD's "2026-11-17T01:21:00.000Z" as a UTC datetime, to the second."""
     whole_seconds = open_date.rstrip("Z").split(".")[0]
-    moment = datetime.fromisoformat(whole_seconds).replace(tzinfo=timezone.utc)
-    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromisoformat(whole_seconds).replace(tzinfo=timezone.utc)
 
 
-def parse_games(page_json: dict) -> list[Game]:
+def parse_games(page_json: dict, now: datetime | None = None) -> list[Game]:
     """The Games listed in a FanDuel league page or event-page tab.
 
-    Futures and specials (no " @ " in the name) are not Games.
+    Futures and specials (no " @ " in the name) are not Games. A Game is
+    started when FD flags it inPlay or, given `now`, once its kickoff has
+    passed: the league page's events carry no inPlay flag.
     """
     games = []
     for event in page_json.get("attachments", {}).get("events", {}).values():
@@ -31,14 +32,15 @@ def parse_games(page_json: dict) -> list[Game]:
         if len(teams) != 2:
             continue
         away, home = teams
+        kickoff = _kickoff(event["openDate"])
         games.append(
             Game(
                 game_id=str(event["eventId"]),
                 away=away,
                 home=home,
-                kickoff=_kickoff(event["openDate"]),
+                kickoff=kickoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 book=BOOK,
-                started=bool(event.get("inPlay")),
+                started=bool(event.get("inPlay")) or (now is not None and kickoff <= now),
             )
         )
     return games
