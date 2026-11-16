@@ -98,14 +98,16 @@ def _team(game: Game | None, venue_role: str | None) -> str | None:
 
 
 def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
-    """The Ladder sorted by threshold, minus the Rung DK copies from the Main Line Over.
+    """The Ladder sorted by threshold, minus the Rung at the Main Line Over's threshold.
 
-    DK lists Over L as a Rung at floor(L)+1 with the same odds (O/U 71.5 at
-    −113 → "72+" at −113). Keeping it would count one price twice.
+    "Over L" and the Rung "floor(L)+1 or more" are the same event. DK usually
+    copies the Over's odds onto that Rung (O/U 71.5 at −113 → "72+" at −113) but
+    not always (Over 37.5 at −111 vs "38+" at −109). The Main Line already
+    carries the event, so the Rung is dropped either way.
     """
     if main_line is not None:
-        copy = (math.floor(main_line.line) + 1, main_line.over_odds)
-        ladder = [r for r in ladder if (r.threshold, r.odds) != copy]
+        same_event = math.floor(main_line.line) + 1
+        ladder = [r for r in ladder if r.threshold != same_event]
     return tuple(sorted(ladder, key=lambda r: r.threshold))
 
 

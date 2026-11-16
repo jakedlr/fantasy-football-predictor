@@ -95,11 +95,12 @@ def test_ladder_drops_the_rung_that_duplicates_the_main_line_over():
     ]
 
 
-def test_ladder_keeps_floor_plus_one_rung_whose_odds_differ_from_the_over():
-    # Tre Harris O/U 37.5 Over −111, but his "38+" Rung is −109: not a copy, so it stays.
+def test_ladder_drops_floor_plus_one_rung_even_when_its_odds_differ_from_the_over():
+    # Tre Harris O/U 37.5 Over −111 and "38+" at −109 price the same event (Y >= 38).
+    # The Main Line already carries it (with extra weight), so the Rung is dropped.
     tre = rec_yds_markets()["Tre Harris"]
     assert tre.main_line.over_odds == -111.0
-    assert Rung(38, -109.0, "draftkings") in tre.ladder
+    assert 38 not in [r.threshold for r in tre.ladder]
 
 
 def without_player(response: dict, player: str) -> dict:
