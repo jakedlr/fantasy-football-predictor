@@ -7,6 +7,7 @@ research/sportsbook-markets.md, FanDuel section.
 """
 
 import re
+from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from ..markets import Game, MainLine, PropMarket, Rung
@@ -14,10 +15,12 @@ from ..markets import Game, MainLine, PropMarket, Rung
 BOOK = "fanduel"
 
 # Scoring Stat → the stem of FD's market types for it. "PLAYER_X_<stem>_<tier>" is the
-# Main Line, "PLAYER_X_ALT_<stem>_<tier>" the Ladder. Rushing yards ("RUSHING_YARDS",
-# rushing-props tab) and passing yards ("PASSING_YARDS", passing-props tab) follow the
-# same pattern.
+# Main Line, "PLAYER_X_ALT_<stem>_<tier>" the Ladder. Rushing yards ("RUSHING_YARDS")
+# and passing yards ("PASSING_YARDS") follow the same pattern; add them here and in TABS.
 MARKET_STEMS = {"receiving_yards": "RECEIVING_YARDS"}
+
+# Scoring Stat → the event-page tab slug (the `tab=` query value) that holds its markets.
+TABS = {"receiving_yards": "receiving-props"}
 
 # (player name as FD spells it, FD event id)
 Key = tuple[str, str]
@@ -109,17 +112,23 @@ def _slug(team: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", team.lower()).strip("_")
 
 
-def _ladders(markets: list[dict], ladder_key: str, slugs: dict[Key, str | None]) -> dict[Key, list[Rung]]:
+def _markets_of(markets: list[dict], key: str) -> Iterator[tuple[str, list[dict]]]:
+    """(event id, active runners) for each market whose type normalises to `key`."""
+    for market in markets:
+        if market_key(market.get("marketType", "")) == key:
+            yield str(market.get("eventId")), _active_runners(market)
+
+
+def _ladders(
+    markets: list[dict], ladder_key: str, slugs: dict[Key, str | None]
+) -> dict[Key, list[Rung]]:
     """Each player's Rungs, merged over tiers: "N+" means Y >= N.
 
     A threshold seen twice for one player and Game keeps its first price.
     """
     rungs: dict[Key, dict[int, Rung]] = {}
-    for market in markets:
-        if market_key(market.get("marketType", "")) != ladder_key:
-            continue
-        event_id = str(market.get("eventId"))
-        for runner in _active_runners(market):
+    for event_id, runners in _markets_of(markets, ladder_key):
+        for runner in runners:
             match = _RUNG.match(runner.get("runnerName", ""))
             if match is None:
                 continue
@@ -130,29 +139,32 @@ def _ladders(markets: list[dict], ladder_key: str, slugs: dict[Key, str | None])
     return {key: list(by_threshold.values()) for key, by_threshold in rungs.items()}
 
 
-def _main_lines(markets: list[dict], main_key: str, slugs: dict[Key, str | None]) -> dict[Key, MainLine]:
-    """Each player's Main Line: an Over and an Under at one line in one market."""
+def _main_lines(
+    markets: list[dict], main_key: str, slugs: dict[Key, str | None]
+) -> dict[Key, MainLine]:
+    """Each player's Main Line: one player's Over and Under at one line in one market."""
     main_lines: dict[Key, MainLine] = {}
-    for market in markets:
-        if market_key(market.get("marketType", "")) != main_key:
-            continue
-        sides: dict[str, tuple[float, float]] = {}
-        player = None
-        slug = None
-        for runner in _active_runners(market):
+    for event_id, runners in _markets_of(markets, main_key):
+        sides: dict[str, tuple[str, float, float, str | None]] = {}
+        for runner in runners:
             match = _OVER_UNDER.match(runner.get("runnerName", ""))
-            if match is None:
-                continue
-            player = match["player"]
-            slug = _logo_slug(runner)
-            sides[match["side"]] = (float(runner["handicap"]), _odds(runner))
-        if set(sides) != {"Over", "Under"} or sides["Over"][0] != sides["Under"][0]:
+            if match is not None:
+                sides[match["side"]] = (
+                    match["player"],
+                    float(runner["handicap"]),
+                    _odds(runner),
+                    _logo_slug(runner),
+                )
+        if set(sides) != {"Over", "Under"}:
             continue
-        key = (player, str(market.get("eventId")))
-        if key in main_lines:
+        (player, line, over_odds, slug), (under_player, under_line, under_odds, _) = (
+            sides["Over"],
+            sides["Under"],
+        )
+        key = (player, event_id)
+        if (under_player, under_line) != (player, line) or key in main_lines:
             continue
-        line = sides["Over"][0]
-        main_lines[key] = MainLine(line, sides["Over"][1], sides["Under"][1], BOOK)
+        main_lines[key] = MainLine(line, over_odds, under_odds, BOOK)
         slugs.setdefault(key, slug)
     return main_lines
 

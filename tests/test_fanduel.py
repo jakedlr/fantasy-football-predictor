@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ffp.markets import Game, MainLine, PropMarket, Rung
-from ffp.sources.fanduel import parse_games, parse_prop_markets, props_posted
+from ffp.sources.fanduel import MARKET_STEMS, TABS, parse_games, parse_prop_markets, props_posted
 
 FIXTURES = Path(__file__).resolve().parents[1] / "research" / "fixtures"
 
@@ -131,7 +131,9 @@ def test_away_player_team_comes_from_logo_slug():
 LOGO = "https://assets.sportsbook.fanduel.com/images/team/nfl/{}_jersey.png"
 
 
-def runner(name: str, odds: int, *, handicap: float = 0, team: str = "denver_broncos", **extra) -> dict:
+def runner(
+    name: str, odds: int, *, handicap: float = 0, team: str = "denver_broncos", **extra
+) -> dict:
     return {
         "runnerName": name,
         "handicap": handicap,
@@ -153,7 +155,9 @@ def fd_market(market_id: str, market_type: str, runners: list[dict], event_id: i
     }
 
 
-def ladder_market(market_id: str, player: str, rungs: dict[int, int], tier: str = "LOW", **kw) -> dict:
+def ladder_market(
+    market_id: str, player: str, rungs: dict[int, int], tier: str = "LOW", **kw
+) -> dict:
     runners = [runner(f"{player} {n}+ Yards", odds, **kw) for n, odds in rungs.items()]
     return fd_market(market_id, f"PLAYER_X_ALT_RECEIVING_YARDS_{tier}", runners)
 
@@ -212,7 +216,8 @@ def test_started_game_excluded():
 
 
 def test_not_posted_tab_gives_no_prop_markets():
-    assert parse_prop_markets(load("fd_nfl_event_receiving_tab_not_posted.json"), "receiving_yards") == []
+    not_posted = load("fd_nfl_event_receiving_tab_not_posted.json")
+    assert parse_prop_markets(not_posted, "receiving_yards") == []
 
 
 def test_suspended_runner_ignored():
@@ -226,6 +231,11 @@ def test_main_line_needs_both_sides():
     market = main_line_market("1", "Evan Engram", 34.5, -115, -105)
     market["runners"].pop()
     assert parse_one(market) == []
+
+
+def test_every_parseable_stat_names_its_tab():
+    assert TABS["receiving_yards"] == "receiving-props"
+    assert set(TABS) == set(MARKET_STEMS)
 
 
 def test_unknown_stat_rejected():
