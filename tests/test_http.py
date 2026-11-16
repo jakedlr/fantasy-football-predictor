@@ -1,11 +1,12 @@
 """Paced, cached JSON fetching (S2.1). Copied from prizepicks-optimizer's tests/test_sources.py, trimmed."""
 
+import logging
 import os
 import time
 
 import pytest
 
-from ffp.sources.http import FetchError, Http
+from ffp.sources.http import FetchError, Http, redact
 
 
 class FakeFetch:
@@ -221,3 +222,59 @@ def test_a_host_asking_for_a_long_wait_fails_at_once(tmp_path):
     with pytest.raises(FetchError, match=r"^rate-limited: HTTP 429 from \S+, asked to wait 60s$"):
         http.get_json(URL)
     assert fetch.calls == [URL] and slept == []
+
+
+# --- the FanDuel app key stays out of logs and errors ---------------------------
+
+KEY = "NotARealAppKey123"
+FD_URL = f"https://fd.example/api/event-page?_ak={KEY}&eventId=1&tab=receiving-props"
+
+
+def logged(caplog):
+    return [r.getMessage() for r in caplog.records]
+
+
+def test_requests_are_logged_without_the_app_key(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    http, _, _ = paced(tmp_path, fetch=FakeFetch({FD_URL: pushes_back(retry_after="1")}))
+    http.get_json(FD_URL)
+    http.get_json(FD_URL)  # cache hit
+    messages = logged(caplog)
+    assert len(messages) >= 3 and all(KEY not in m for m in messages)
+    assert any("eventId=1&tab=receiving-props" in m for m in messages)
+
+
+@pytest.mark.parametrize("answer", [(500, b"{}"), (200, b"<html>"), (429, b"{}", {"Retry-After": "60"}),
+                                    (403, b"{}")])
+def test_fetch_errors_never_carry_the_app_key(tmp_path, caplog, answer):
+    caplog.set_level(logging.DEBUG)
+    http, _, _ = paced(tmp_path, fetch=FakeFetch({FD_URL: answer}))
+    with pytest.raises(FetchError) as raised:
+        http.get_json(FD_URL)
+    assert KEY not in str(raised.value) and "_ak=" in str(raised.value)
+    assert KEY not in repr(raised.value.__cause__) and KEY not in repr(raised.value.__context__)
+    assert all(KEY not in m for m in logged(caplog))
+
+
+def test_a_network_error_naming_the_url_does_not_leak_the_app_key(tmp_path):
+    def fetch(url):
+        raise ConnectionError(f"Failed to perform, curl: (7) for {url}")
+
+    with pytest.raises(FetchError) as raised:
+        Http(tmp_path, fetch=fetch, sleep=no_sleep).get_json(FD_URL)
+    assert KEY not in str(raised.value) and "ConnectionError" in str(raised.value)
+    assert raised.value.__cause__ is None and raised.value.__suppress_context__
+
+
+def test_scrapling_logs_its_request_urls_without_the_app_key(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    Http(tmp_path)  # any Http quiets and redacts the scrapling logger
+    scrapling = logging.getLogger("scrapling")
+    assert not scrapling.isEnabledFor(logging.INFO)
+    scrapling.warning("Fetched (%s) <GET %s>", 200, FD_URL)
+    assert logged(caplog) == [f"Fetched (200) <GET {FD_URL.replace(KEY, 'REDACTED')}>"]
+
+
+def test_redact_hides_secret_query_values_wherever_they_appear():
+    assert redact(f"see {FD_URL} and ?key=abc") == (
+        "see https://fd.example/api/event-page?_ak=REDACTED&eventId=1&tab=receiving-props and ?key=REDACTED")
