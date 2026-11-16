@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ffp.scoring import DEFAULT_RULES, load_rules, score
+from ffp.scoring import DEFAULT_RULES, SCORING_STATS, load_rules, score
 
 SCORING_DIR = Path(__file__).resolve().parents[1] / "scoring"
 
@@ -56,3 +56,12 @@ def test_unknown_scoring_stat_is_rejected(tmp_path):
     path = write_rules(tmp_path, {"name": "custom", "offense": {"receptions": 1, "longest_reception": 1}})
     with pytest.raises(ValueError, match="longest_reception"):
         load_rules(path)
+
+
+def test_missing_offense_stats_default_to_zero(tmp_path):
+    path = write_rules(tmp_path, {"name": "td-only", "offense": {"receiving_tds": 6}})
+    rules = load_rules(path)
+    assert set(rules.offense) == set(SCORING_STATS)
+    assert rules.offense["receptions"] == 0
+    # Only the TD scores: 1 * 6 = 6
+    assert score(WR_LINE, rules) == pytest.approx(6)

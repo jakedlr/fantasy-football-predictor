@@ -64,7 +64,8 @@ def load_rules(name_or_path, scoring_dir=Path("scoring")):
     for stat in data["offense"]:
         if stat not in SCORING_STATS:
             raise ValueError(f"{path}: unknown Scoring Stat {stat!r} in offense")
-    return ScoringRules(name=data["name"], offense=data["offense"])
+    offense = {stat: data["offense"].get(stat, 0) for stat in SCORING_STATS}
+    return ScoringRules(name=data["name"], offense=offense)
 
 
 def score(stat_line, rules):
