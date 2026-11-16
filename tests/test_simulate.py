@@ -32,8 +32,8 @@ class DiscreteDist:
 REC_YDS = DiscreteDist([0, 20, 40, 60, 80, 100, 150], [0.1, 0.1, 0.2, 0.2, 0.2, 0.1, 0.1])
 RECEPTIONS = DiscreteDist([0, 2, 4, 6, 8], [0.1, 0.2, 0.3, 0.3, 0.1])
 
-SCORING_DIR = Path(__file__).resolve().parents[1] / "scoring"
-ESPN = load_rules("espn-league", scoring_dir=SCORING_DIR)
+ESPN_FILE = Path(__file__).resolve().parents[1] / "src" / "ffp" / "rules" / "espn-league.json"
+ESPN = load_rules(ESPN_FILE)  # the bundled file by path, so a local scoring/ copy can't change it
 
 
 def test_same_seed_gives_identical_percentiles():

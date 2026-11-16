@@ -1,11 +1,12 @@
 """Player names -> Score Distributions: Prop Markets -> Fair Probabilities -> Stat Distributions -> simulation."""
 
 import json
+import re
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
-from ffp.distributions import fit_receiving_yards
+from ffp.distributions import FitError, StatDistribution, fit_receiving_yards
 from ffp.fair import fair_points
 from ffp.markets import Game, PropMarket
 from ffp.names import normalize_name
@@ -24,9 +25,29 @@ SPRINT_1_FLAGS = (
 NO_MARKETS = "no Prop Markets found for this player"
 
 
+# A list marker ("- ", "* ", "1. ") with an optional task checkbox ("[ ] ", "[x] "), or a bare marker.
+_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+[.)])(?:\s+|$)(?:\[[ xX]\](?:\s+|$))?")
+# A thematic break or front-matter fence: "---", "***", "___", "- - -", ...
+_RULE = re.compile(r"^(?:([-*_])\s*){3,}$")
+_EMPHASIS = re.compile(r"[*_`]")
+
+
 def read_input(path: Path) -> list[str]:
-    """Player names from INPUT.md, one per line; blank lines are ignored."""
-    return [line.strip() for line in Path(path).read_text().splitlines() if line.strip()]
+    """Player names from INPUT.md, one per line.
+
+    Blank lines, Markdown headings, horizontal rules and YAML front matter are
+    ignored; list markers, task checkboxes and emphasis (**, _, `) are stripped,
+    so a plain list and a Markdown list both work.
+    """
+    lines = [line.strip() for line in Path(path).read_text().splitlines()]
+    if lines and lines[0] == "---" and "---" in lines[1:]:  # YAML front matter
+        lines = lines[lines.index("---", 1) + 1 :]
+    names = []
+    for line in lines:
+        if not line or line.startswith("#") or _RULE.match(line):
+            continue
+        names.append(_EMPHASIS.sub("", _LIST_MARKER.sub("", line)).strip())
+    return [name for name in names if name]
 
 
 def load_fixture_markets(fixtures: Path) -> tuple[list[PropMarket], dict[str, Game]]:
@@ -55,15 +76,23 @@ def predict(
         if not player_markets:
             skipped.append(SkippedPlayer(name, NO_MARKETS))
             continue
-        results.append(_player_result(name, player_markets, games, rules))
+        # Only a fit failure skips the player; any other error is a bug or bad configuration and stops the run.
+        try:
+            receiving_yards = fit_receiving_yards(fair_points(player_markets), SPRINT_1_POSITION)
+        except FitError as error:
+            skipped.append(SkippedPlayer(name, f"could not fit receiving yards: {error}"))
+            continue
+        results.append(_player_result(name, player_markets, receiving_yards, games, rules))
     return results, skipped
 
 
 def _player_result(
-    name: str, markets: list[PropMarket], games: dict[str, Game], rules: ScoringRules
+    name: str,
+    markets: list[PropMarket],
+    receiving_yards: StatDistribution,
+    games: dict[str, Game],
+    rules: ScoringRules,
 ) -> PlayerResult:
-    points = fair_points(markets)
-    receiving_yards = fit_receiving_yards(points, SPRINT_1_POSITION)
     scores = simulate_scores({"receiving_yards": receiving_yards}, rules)
     game = games.get(markets[0].game_id)
     return PlayerResult(

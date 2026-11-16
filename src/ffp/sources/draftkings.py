@@ -6,7 +6,6 @@ Pure functions over already-fetched JSON. A subcategory response is flat:
 research/sportsbook-markets.md, DraftKings section.
 """
 
-import math
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
@@ -74,20 +73,50 @@ def _ladders(ladder_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key,
     return rungs
 
 
+def _is_main(sel: dict) -> bool:
+    return bool(sel.get("main")) or "MainPointLine" in (sel.get("tags") or ())
+
+
+def _main_pair(sels: list[dict]) -> list[dict]:
+    """The selections that make up a player's Main Line.
+
+    Those DK marks as main. If DK marks none and the player has exactly one
+    Over/Under pair at one line, that pair is the Main Line. With several
+    unmarked pairs there's no telling which is main, so there's none.
+    """
+    marked = [s for s in sels if _is_main(s)]
+    if marked:
+        return marked
+    if sorted(s["outcomeType"] for s in sels) == ["Over", "Under"] and len(
+        {float(s["points"]) for s in sels}
+    ) == 1:
+        return sels
+    return []
+
+
 def _main_lines(main_line_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key, MainLine]:
-    """Each player's Main Line, where the response has both the Over and the Under."""
-    sides: dict[Key, dict] = {}
+    """Each player's Main Line, where the response has both its Over and its Under.
+
+    Only selections DK marks as the main line count; alternate Over/Under pairs
+    at other lines are ignored so they can't mix into the Main Line.
+    """
+    by_player: dict[Key, list[dict]] = {}
+    roles: dict[Key, str | None] = {}
     for key, venue_role, sel in _player_selections(main_line_json):
-        if sel.get("outcomeType") not in ("Over", "Under"):
-            continue
-        entry = sides.setdefault(key, {"line": float(sel["points"])})
-        entry[sel["outcomeType"]] = _odds(sel)
-        venue_roles.setdefault(key, venue_role)
-    return {
-        key: MainLine(entry["line"], entry["Over"], entry["Under"], BOOK)
-        for key, entry in sides.items()
-        if "Over" in entry and "Under" in entry
-    }
+        if sel.get("outcomeType") in ("Over", "Under"):
+            by_player.setdefault(key, []).append(sel)
+            roles.setdefault(key, venue_role)
+
+    main_lines = {}
+    for key, sels in by_player.items():
+        entry = {}
+        for sel in _main_pair(sels):
+            entry.setdefault("line", float(sel["points"]))
+            entry[sel["outcomeType"]] = _odds(sel)
+        if "Over" in entry and "Under" in entry:
+            main_lines[key] = MainLine(entry["line"], entry["Over"], entry["Under"], BOOK)
+            venue_roles.setdefault(key, roles[key])
+    return main_lines
 
 
 def _team(game: Game | None, venue_role: str | None) -> str | None:
@@ -106,7 +135,7 @@ def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> t
     carries the event, so the Rung is dropped either way.
     """
     if main_line is not None:
-        same_event = math.floor(main_line.line) + 1
+        same_event = main_line.over_threshold
         ladder = [r for r in ladder if r.threshold != same_event]
     return tuple(sorted(ladder, key=lambda r: r.threshold))
 

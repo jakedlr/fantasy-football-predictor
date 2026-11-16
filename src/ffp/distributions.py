@@ -12,6 +12,14 @@ from scipy.special import expit, logit
 from ffp.fair import FairPoint
 
 
+class FitError(ValueError):
+    """The Fair Probabilities can't be fitted: none given, out of the model's reach, or no convergence.
+
+    A problem with one player's market data, unlike a plain ValueError for a bad
+    argument such as an unknown position.
+    """
+
+
 class StatDistribution(Protocol):
     """Probability distribution of one Scoring Stat. Methods accept and return numpy arrays."""
 
@@ -107,11 +115,20 @@ def _receiving_params(position: str) -> _ReceivingYardsParams:
         raise ValueError(f"no receiving-yards model for position {position!r} (WR, TE)") from None
 
 
-def receiving_yards(mu: float, sd: float, position: str) -> HurdleShiftedGamma:
+def receiving_yards_pi0_relation(mu: float, position: str) -> float:
+    """P(0 yards) from the overall mean when there's nothing better: expit(c0 + c1 ln mu)."""
+    p = _receiving_params(position)
+    return float(expit(p.c0 + p.c1 * math.log(mu)))
+
+
+def receiving_yards(
+    mu: float, sd: float, position: str, pi0: float | None = None
+) -> HurdleShiftedGamma:
     """Receiving-yards Stat Distribution for a WR or TE with overall mean mu.
 
-    sd is the sd of the continuous nonzero part. Without a receptions model,
-    pi0 = expit(c0 + c1 ln mu). The nonzero part must then have mean
+    sd is the sd of the continuous nonzero part. pi0 = P(0 yards) defaults to the
+    relation expit(c0 + c1 ln mu) (see `receiving_yards_pi0_relation`); the fit
+    passes its own. The nonzero part must then have mean
     mu / (1 − pi0); the gamma's continuous mean m is solved so the discretised,
     zero-truncated nonzero mean hits that exactly, making the returned
     distribution's mean exactly mu.
@@ -120,10 +137,13 @@ def receiving_yards(mu: float, sd: float, position: str) -> HurdleShiftedGamma:
     monotone: for WRs it bottoms out near m ≈ 30 at mu ≈ 18, so an m below that
     has no consistent pi0 and an m above it has two.
     """
-    p = _receiving_params(position)
+    _receiving_params(position)
     if mu <= 0 or sd <= 0:
         raise ValueError(f"invalid parameters mu={mu}, sd={sd}")
-    pi0 = float(expit(p.c0 + p.c1 * math.log(mu)))
+    if pi0 is None:
+        pi0 = receiving_yards_pi0_relation(mu, position)
+    if not 0 <= pi0 < 1:
+        raise ValueError(f"invalid parameter pi0={pi0}")
     target = mu / (1 - pi0)
 
     def nonzero_mean_error(m: float) -> float:
@@ -137,23 +157,34 @@ def receiving_yards(mu: float, sd: float, position: str) -> HurdleShiftedGamma:
         if abs(err) < 1e-11 * target:
             return HurdleShiftedGamma(m, sd, pi0, RECEIVING_YARDS_SHIFT)
         m = max(m - err, m / 2)
-    raise ValueError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
+    raise FitError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
 
 
 # Fit settings, research/stat-distributions.md Q3.
 FIT_TAU = 0.10  # logit noise of a devigged Rung
 FIT_SIGMA_P = 0.15  # prior sd of ln sd around the dispersion relation
 FIT_LAMBDA = FIT_TAU**2 / FIT_SIGMA_P**2  # ≈ 0.44, weight of the prior against Σ wᵢ rᵢ²
+# Prior sd of logit pi0 around the pi0 relation. Wide on purpose (review finding 2): a
+# Ladder starts at 5+ or more and says little about P(0), so the relation is only a
+# starting point, and the Main Line must win when they disagree. Sprint 3 replaces
+# the relation with P(0 receptions) from the receptions market.
+FIT_SIGMA_PI0 = 0.5
+FIT_LAMBDA_PI0 = FIT_TAU**2 / FIT_SIGMA_PI0**2  # = 0.04
 MAIN_LINE_ONLY_KAPPA = 0.93  # book-implied sd ≈ 0.93 × the nflverse-proxy relation
 _SF_CLIP = 1e-12
-_MU_RANGE = (1.0, 500.0)  # bracket for the Main-Line-only root-find, yards
+_MU_RANGE = (1.0, 500.0)  # mu the model allows, yards: the root-find bracket and the fit's bounds
+_PI0_MAX = 1 - 1e-6  # keeps 1 − pi0 away from 0 in the fit
 
 
-def receiving_yards_sd_relation(mu: float, position: str) -> float:
-    """sd of the nonzero part from the dispersion relation: a·m^b, m = mu / (1 − pi0(mu))."""
+def receiving_yards_sd_relation(mu: float, position: str, pi0: float | None = None) -> float:
+    """sd of the nonzero part from the dispersion relation: a·m^b, m = mu / (1 − pi0).
+
+    pi0 defaults to the pi0 relation at mu.
+    """
     p = _receiving_params(position)
-    m = mu / (1 - expit(p.c0 + p.c1 * math.log(mu)))
-    return p.a * m**p.b
+    if pi0 is None:
+        pi0 = receiving_yards_pi0_relation(mu, position)
+    return p.a * (mu / (1 - pi0)) ** p.b
 
 
 def _logit_sf(dist: HurdleShiftedGamma, x: np.ndarray) -> np.ndarray:
@@ -174,7 +205,7 @@ def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
 
     lo, hi = math.log(_MU_RANGE[0]), math.log(_MU_RANGE[1])
     if error(lo) * error(hi) > 0:
-        raise ValueError(
+        raise FitError(
             f"P(Y >= {point.threshold}) = {point.prob} is out of reach for mu in {_MU_RANGE}"
         )
     return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
@@ -183,38 +214,67 @@ def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
 def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
     """Fit a WR/TE receiving-yards Stat Distribution to Fair Probabilities.
 
-    Two parameters, (ln mu, ln sd), by weighted least squares in logit space plus
-    a Gaussian prior on ln sd centred on the dispersion relation:
+    Three parameters, theta = (ln mu, ln sd, δ) with logit pi0 = logit pi0_rel(mu) + δ,
+    by weighted least squares in logit space plus Gaussian priors on ln sd (centred
+    on the dispersion relation) and on δ (centred on 0, i.e. on the pi0 relation):
 
-        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ (ln sd − ln sd_rel(mu))²,  λ = τ²/σ_p²
+        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ (ln sd − ln sd_rel(mu, pi0))² + λ₀ δ²
 
-    S(x) = P(Y >= x) of the discretised distribution, which already evaluates the
-    continuous part at x − ½ (the 0.5 continuity correction). pi0 is not fitted:
-    it follows from mu (see `receiving_yards`). With a single point (a Main Line
-    only), sd is fixed at 0.93·sd_rel(mu) and mu is root-found to reproduce it.
+    with λ = τ²/σ_p² and λ₀ = τ²/σ_π0². The δ prior is wide, so a Main Line that
+    the pi0 relation can't reach (a low-volume player) moves pi0 instead of being
+    missed. S(x) = P(Y >= x) of the discretised distribution, which already
+    evaluates the continuous part at x − ½ (the 0.5 continuity correction).
+
+    With a single point (a Main Line only), pi0 stays on its relation, sd is fixed
+    at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
     """
     _receiving_params(position)  # validate before doing any work
     if not points:
-        raise ValueError("no Fair Probabilities to fit")
-    # The 1-point fit on the heaviest point (the Main Line, when present) is the
-    # fallback and the starting point for the full fit.
-    start = _fit_main_line_only(max(points, key=lambda p: p.weight), position)
+        raise FitError("no Fair Probabilities to fit")
+    # The 1-point fit is the fallback and the starting point for the full fit. Its
+    # anchor is the heaviest point (the Main Line, when present); among equal
+    # weights, the one nearest 50%, not an extreme Rung such as "10+" at −2000.
+    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+    start = _fit_main_line_only(anchor, position)
     if len(points) == 1:
         return start
 
     x = np.array([p.threshold for p in points], dtype=float)
     target = logit(np.array([p.prob for p in points]))
     w = np.array([p.weight for p in points], dtype=float)
+    ln_mu_range = np.log(_MU_RANGE)
+
+    def params(theta: np.ndarray) -> tuple[float, float, float]:
+        mu, sd = math.exp(theta[0]), math.exp(theta[1])
+        pi0 = float(expit(logit(receiving_yards_pi0_relation(mu, position)) + theta[2]))
+        return mu, sd, pi0
 
     def objective(theta: np.ndarray) -> float:
-        mu, sd = np.exp(theta)
-        resid = target - _logit_sf(receiving_yards(mu, sd, position), x)
-        prior = theta[1] - math.log(receiving_yards_sd_relation(mu, position))
-        return float(np.sum(w * resid**2) + FIT_LAMBDA * prior**2)
+        # Outside the model's range the objective is +inf, which Nelder-Mead steps away from
+        # (review finding 5: at tiny mu, pi0 rounds to 1 and the distribution can't be built).
+        if not ln_mu_range[0] <= theta[0] <= ln_mu_range[1] or abs(theta[1]) > 20:
+            return math.inf
+        mu, sd, pi0 = params(theta)
+        if pi0 > _PI0_MAX:
+            return math.inf
+        try:
+            dist = receiving_yards(mu, sd, position, pi0)
+        except ValueError:  # FitError included: the nonzero mean did not converge
+            return math.inf
+        resid = target - _logit_sf(dist, x)
+        sd_prior = theta[1] - math.log(receiving_yards_sd_relation(mu, position, pi0))
+        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + FIT_LAMBDA_PI0 * theta[2] ** 2)
 
-    theta0 = np.log([start.mean, receiving_yards_sd_relation(start.mean, position)])
+    theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0])
+    # Explicit steps: the default simplex steps 5% of each coordinate, i.e. ~0 for δ = 0.
+    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.1, 0.5])])
     result = optimize.minimize(
-        objective, theta0, method="Nelder-Mead", options={"xatol": 1e-7, "fatol": 1e-12}
+        objective,
+        theta0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-7, "fatol": 1e-12, "initial_simplex": simplex, "maxiter": 3000},
     )
-    mu, sd = np.exp(result.x)
-    return receiving_yards(float(mu), float(sd), position)
+    if not math.isfinite(result.fun):
+        raise FitError("no fit within the model's range")
+    mu, sd, pi0 = params(result.x)
+    return receiving_yards(mu, sd, position, pi0)

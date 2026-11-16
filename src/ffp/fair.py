@@ -62,7 +62,7 @@ def _market_points(market: PropMarket, prior_c: float) -> list[FairPoint]:
     ]
     if ml is not None:
         points.append(
-            FairPoint(math.floor(ml.line) + 1, apply_logit_shift(q_over, c), MAIN_LINE_WEIGHT)
+            FairPoint(ml.over_threshold, apply_logit_shift(q_over, c), MAIN_LINE_WEIGHT)
         )
     return points
 

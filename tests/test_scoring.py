@@ -5,7 +5,8 @@ import pytest
 
 from ffp.scoring import DEFAULT_RULES, SCORING_STATS, load_rules, score
 
-SCORING_DIR = Path(__file__).resolve().parents[1] / "scoring"
+# The bundled default by path, so a scoring/espn-league.json in the working directory can't change it.
+ESPN_FILE = Path(__file__).resolve().parents[1] / "src" / "ffp" / "rules" / "espn-league.json"
 
 # A WR stat line: 6 receptions, 85 receiving yards, 1 receiving TD, 1 fumble lost.
 WR_LINE = {"receptions": 6, "receiving_yards": 85, "receiving_tds": 1, "fumbles_lost": 1}
@@ -33,7 +34,7 @@ def test_reception_presets_score_wr_line(preset, expected):
 def test_espn_league_scores_wr_line():
     # Full PPR: 6 * 1 receptions = 6; 85 * 0.1 = 8.5 rec yds; 1 * 6 = 6 rec TD; 1 * -2 = -2 fumble
     # 6 + 8.5 + 6 - 2 = 18.5
-    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    rules = load_rules(ESPN_FILE)
     assert rules.name == "espn-league"
     assert score(WR_LINE, rules) == pytest.approx(18.5)
 
@@ -42,7 +43,7 @@ def test_espn_league_scores_qb_line():
     qb_line = {"passing_yards": 275, "passing_tds": 2, "passing_interceptions": 1, "rushing_yards": 20}
     # 275 * 0.04 = 11 pass yds; 2 * 4 = 8 pass TD; 1 * -2 = -2 INT; 20 * 0.1 = 2 rush yds
     # 11 + 8 - 2 + 2 = 19
-    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    rules = load_rules(ESPN_FILE)
     assert score(qb_line, rules) == pytest.approx(19)
 
 
@@ -68,7 +69,7 @@ def test_missing_offense_stats_default_to_zero(tmp_path):
 
 
 def test_espn_league_kicker_and_dst_sections_load():
-    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    rules = load_rules(ESPN_FILE)
     assert rules.kicker["pat_made"] == 1
     assert rules.kicker["fg_missed"] == -1
     assert rules.kicker["fg_made_by_distance"][-1] == {"min": 60, "max": None, "points": 6}
@@ -105,3 +106,49 @@ def test_numpy_samples_score_elementwise():
     # Sample 2: 10 * 1 + 120 * 0.1 + 2 * 6 + 0 * -2 = 10 + 12 + 12 = 34
     assert isinstance(points, np.ndarray)
     np.testing.assert_allclose(points, [0, 18.5, 34])
+
+
+def test_default_rules_load_from_any_working_directory(tmp_path, monkeypatch):
+    # Review finding: "espn-league" was only found from the repo root.
+    monkeypatch.chdir(tmp_path)
+    rules = load_rules(DEFAULT_RULES)
+    assert rules.name == "espn-league"
+    assert rules.offense["receptions"] == 1
+
+
+def test_a_local_scoring_file_overrides_the_bundled_one(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "scoring").mkdir()
+    (tmp_path / "scoring" / "espn-league.json").write_text(
+        '{"name": "espn-league", "offense": {"receptions": 0.5}}'
+    )
+    assert load_rules("espn-league").offense["receptions"] == 0.5
+
+
+def test_a_bare_name_is_looked_up_in_scoring_dir(tmp_path):
+    # Review finding: no test used a scoring_dir different from the bundled one.
+    write_rules(tmp_path, {"name": "my-league", "offense": {"receptions": 0.25}}, name="my-league")
+    assert load_rules("my-league", scoring_dir=tmp_path).offense["receptions"] == 0.25
+
+
+def test_a_bare_name_ignores_a_same_named_file_in_the_working_directory(tmp_path, monkeypatch):
+    # Review finding: a notes file named "espn-league" took over the default lookup.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "espn-league").write_text("not JSON")
+    assert load_rules("espn-league").name == "espn-league"
+
+
+def test_a_missing_path_names_only_that_path(tmp_path):
+    # Review finding: the error listed made-up candidates like scoring/leagues/my.json.json.
+    missing = str(tmp_path / "leagues" / "my.json")
+    with pytest.raises(ValueError) as raised:
+        load_rules(missing)
+    message = str(raised.value)
+    assert missing in message
+    assert ".json.json" not in message and "rules" not in message
+
+
+def test_a_json_name_in_the_working_directory_is_read_as_a_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    write_rules(tmp_path, {"name": "here", "offense": {"receptions": 2}}, name="here")
+    assert load_rules("here.json").offense["receptions"] == 2
