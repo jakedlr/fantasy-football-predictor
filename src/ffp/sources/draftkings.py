@@ -1,12 +1,22 @@
-"""DraftKings sportscontent API responses → Games and Prop Markets."""
+"""DraftKings sportscontent API responses → Games and Prop Markets.
+
+Pure functions over already-fetched JSON. A subcategory response is flat:
+`events[]` are Games, `markets[]` join to an event on `eventId`, and
+`selections[]` join to a market on `marketId`. See
+research/sportsbook-markets.md, DraftKings section.
+"""
 
 import math
+from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from ..markets import Game, MainLine, PropMarket, Rung
 from ..odds import parse_american
 
 BOOK = "draftkings"
+
+# (player name as DK spells it, DK event id)
+Key = tuple[str, str]
 
 
 def _kickoff(start_event_date: str) -> str:
@@ -35,15 +45,56 @@ def parse_games(subcategory_json: dict) -> list[Game]:
     return games
 
 
+def _player_selections(response: dict) -> Iterator[tuple[Key, str | None, dict]]:
+    """(key, venueRole, selection) for each selection that names a player.
+
+    D/ST and "No Touchdown Scorer" selections have no participants and are skipped.
+    """
+    event_of_market = {m["id"]: m["eventId"] for m in response.get("markets", [])}
+    for sel in response.get("selections", []):
+        event_id = event_of_market.get(sel.get("marketId"))
+        if event_id is None or not sel.get("participants"):
+            continue
+        player = sel["participants"][0]
+        yield (player["name"], event_id), player.get("venueRole"), sel
+
+
+def _odds(sel: dict) -> float:
+    return parse_american(sel["displayOdds"]["american"])
+
+
+def _ladders(ladder_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key, list[Rung]]:
+    """Each player's Rungs: milestoneValue N means Y >= N."""
+    rungs: dict[Key, list[Rung]] = {}
+    for key, venue_role, sel in _player_selections(ladder_json):
+        if "milestoneValue" not in sel:
+            continue
+        rungs.setdefault(key, []).append(Rung(int(sel["milestoneValue"]), _odds(sel), BOOK))
+        venue_roles.setdefault(key, venue_role)
+    return rungs
+
+
+def _main_lines(main_line_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key, MainLine]:
+    """Each player's Main Line, where the response has both the Over and the Under."""
+    sides: dict[Key, dict] = {}
+    for key, venue_role, sel in _player_selections(main_line_json):
+        if sel.get("outcomeType") not in ("Over", "Under"):
+            continue
+        entry = sides.setdefault(key, {"line": float(sel["points"])})
+        entry[sel["outcomeType"]] = _odds(sel)
+        venue_roles.setdefault(key, venue_role)
+    return {
+        key: MainLine(entry["line"], entry["Over"], entry["Under"], BOOK)
+        for key, entry in sides.items()
+        if "Over" in entry and "Under" in entry
+    }
+
+
 def _team(game: Game | None, venue_role: str | None) -> str | None:
     """The player's team: DK gives only "HomePlayer"/"AwayPlayer", never a team name."""
     if game is None:
         return None
     return {"HomePlayer": game.home, "AwayPlayer": game.away}.get(venue_role)
-
-
-def _started(game: Game | None) -> bool:
-    return game is not None and game.started
 
 
 def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
@@ -59,54 +110,32 @@ def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> t
 
 
 def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> list[PropMarket]:
-    """One Prop Market per player per Game, from a Ladder and an O/U subcategory response."""
-    event_of_market = {m["id"]: m["eventId"] for m in ladder_json.get("markets", [])}
-    rungs: dict[tuple[str, str], list[Rung]] = {}
-    venue_roles: dict[tuple[str, str], str | None] = {}
-    games = {g.game_id: g for g in parse_games(ladder_json)}
-    for sel in ladder_json.get("selections", []):
-        if "milestoneValue" not in sel or not sel.get("participants"):
-            continue
-        event_id = event_of_market.get(sel["marketId"])
-        if event_id is None:
-            continue
-        player = sel["participants"][0]["name"]
-        rung = Rung(int(sel["milestoneValue"]), parse_american(sel["displayOdds"]["american"]), BOOK)
-        rungs.setdefault((player, event_id), []).append(rung)
-        venue_roles[(player, event_id)] = sel["participants"][0].get("venueRole")
+    """One Prop Market per player per Game, from a Ladder and an O/U subcategory response.
 
-    event_of_ou_market = {m["id"]: m["eventId"] for m in main_line_json.get("markets", [])}
-    sides: dict[tuple[str, str], dict] = {}
-    for sel in main_line_json.get("selections", []):
-        if sel.get("outcomeType") not in ("Over", "Under") or not sel.get("participants"):
-            continue
-        event_id = event_of_ou_market.get(sel["marketId"])
-        if event_id is None:
-            continue
-        player = sel["participants"][0]["name"]
-        entry = sides.setdefault((player, event_id), {"line": float(sel["points"])})
-        entry[sel["outcomeType"]] = parse_american(sel["displayOdds"]["american"])
-        venue_roles.setdefault((player, event_id), sel["participants"][0].get("venueRole"))
-    for g in parse_games(main_line_json):
-        games.setdefault(g.game_id, g)
+    A player in only one response gets main_line None or an empty ladder.
+    Started Games are excluded.
+    """
+    games = {g.game_id: g for g in parse_games(main_line_json) + parse_games(ladder_json)}
+    venue_roles: dict[Key, str | None] = {}
+    ladders = _ladders(ladder_json, venue_roles)
+    main_lines = _main_lines(main_line_json, venue_roles)
 
-    main_lines = {
-        key: MainLine(entry["line"], entry["Over"], entry["Under"], BOOK)
-        for key, entry in sides.items()
-        if "Over" in entry and "Under" in entry
-    }
-
-    keys = list(rungs) + [key for key in main_lines if key not in rungs]
-    keys = [(player, event_id) for player, event_id in keys if not _started(games.get(event_id))]
-    return [
-        PropMarket(
-            player=player,
-            stat=stat,
-            game_id=event_id,
-            book=BOOK,
-            main_line=main_lines.get((player, event_id)),
-            ladder=_without_main_line_copy(rungs.get((player, event_id), []), main_lines.get((player, event_id))),
-            team=_team(games.get(event_id), venue_roles[(player, event_id)]),
+    markets = []
+    for key in list(ladders) + [k for k in main_lines if k not in ladders]:
+        player, event_id = key
+        game = games.get(event_id)
+        if game is not None and game.started:
+            continue
+        main_line = main_lines.get(key)
+        markets.append(
+            PropMarket(
+                player=player,
+                stat=stat,
+                game_id=event_id,
+                book=BOOK,
+                main_line=main_line,
+                ladder=_without_main_line_copy(ladders.get(key, []), main_line),
+                team=_team(game, venue_roles[key]),
+            )
         )
-        for player, event_id in keys
-    ]
+    return markets
