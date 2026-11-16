@@ -9,8 +9,10 @@ from ffp.players import (
     PlayerError,
     RosterEntry,
     UnknownPlayerError,
+    UnknownTeamError,
     load_roster,
     resolve_player,
+    team_code_from_book_name,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -77,6 +79,46 @@ def test_team_hint_on_a_unique_name_still_checks_the_team(roster):
     assert resolve_player("Ja'Marr Chase (CIN)", roster).gsis_id == "00-0036900"
     with pytest.raises(UnknownPlayerError, match="CIN"):
         resolve_player("Ja'Marr Chase (PIT)", roster)
+
+
+FULL_NAMES = {
+    "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens",
+    "BUF": "Buffalo Bills", "CAR": "Carolina Panthers", "CHI": "Chicago Bears",
+    "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns", "DAL": "Dallas Cowboys",
+    "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars",
+    "KC": "Kansas City Chiefs", "LA": "Los Angeles Rams", "LAC": "Los Angeles Chargers",
+    "LV": "Las Vegas Raiders", "MIA": "Miami Dolphins", "MIN": "Minnesota Vikings",
+    "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
+    "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers",
+    "SEA": "Seattle Seahawks", "SF": "San Francisco 49ers", "TB": "Tampa Bay Buccaneers",
+    "TEN": "Tennessee Titans", "WAS": "Washington Commanders",
+}
+
+
+@pytest.mark.parametrize("code, full_name", sorted(FULL_NAMES.items()))
+def test_team_code_from_fanduel_full_name_and_from_code(code, full_name):
+    assert team_code_from_book_name(full_name) == code
+    assert team_code_from_book_name(code) == code
+    assert team_code_from_book_name(full_name.split()[-1]) == code  # nickname alone
+
+
+@pytest.mark.parametrize("book_name, code", [
+    # DraftKings spells a Game's teams "<code> <nickname>" (research/fixtures/dk_nfl_league.json)
+    ("BAL Ravens", "BAL"), ("LA Chargers", "LAC"), ("LA Rams", "LA"), ("NY Giants", "NYG"),
+    ("NY Jets", "NYJ"), ("WAS Commanders", "WAS"), ("SF 49ers", "SF"), ("JAX Jaguars", "JAX"),
+    # other common abbreviations
+    ("LAR", "LA"), ("JAC", "JAX"), ("WSH", "WAS"), ("ARZ", "ARI"), ("LVR", "LV"),
+    ("  bal  ravens ", "BAL"),
+])
+def test_team_code_from_draftkings_name(book_name, code):
+    assert team_code_from_book_name(book_name) == code
+
+
+@pytest.mark.parametrize("book_name", ["", "Springfield Isotopes", "XYZ", "Dallas Eagles"])
+def test_unknown_team_name_raises(book_name):
+    with pytest.raises(UnknownTeamError):
+        team_code_from_book_name(book_name)
 
 
 def test_player_errors_share_a_value_error_base():

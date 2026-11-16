@@ -101,6 +101,95 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     return Player(entry.gsis_id, entry.name, entry.position, entry.team)
 
 
+# nflverse team code -> (city as FanDuel spells it, nickname). DraftKings spells a
+# team "<short city> <nickname>", e.g. "LA Chargers", "NY Jets", "BAL Ravens".
+TEAMS: dict[str, tuple[str, str]] = {
+    "ARI": ("Arizona", "Cardinals"),
+    "ATL": ("Atlanta", "Falcons"),
+    "BAL": ("Baltimore", "Ravens"),
+    "BUF": ("Buffalo", "Bills"),
+    "CAR": ("Carolina", "Panthers"),
+    "CHI": ("Chicago", "Bears"),
+    "CIN": ("Cincinnati", "Bengals"),
+    "CLE": ("Cleveland", "Browns"),
+    "DAL": ("Dallas", "Cowboys"),
+    "DEN": ("Denver", "Broncos"),
+    "DET": ("Detroit", "Lions"),
+    "GB": ("Green Bay", "Packers"),
+    "HOU": ("Houston", "Texans"),
+    "IND": ("Indianapolis", "Colts"),
+    "JAX": ("Jacksonville", "Jaguars"),
+    "KC": ("Kansas City", "Chiefs"),
+    "LA": ("Los Angeles", "Rams"),
+    "LAC": ("Los Angeles", "Chargers"),
+    "LV": ("Las Vegas", "Raiders"),
+    "MIA": ("Miami", "Dolphins"),
+    "MIN": ("Minnesota", "Vikings"),
+    "NE": ("New England", "Patriots"),
+    "NO": ("New Orleans", "Saints"),
+    "NYG": ("New York", "Giants"),
+    "NYJ": ("New York", "Jets"),
+    "PHI": ("Philadelphia", "Eagles"),
+    "PIT": ("Pittsburgh", "Steelers"),
+    "SEA": ("Seattle", "Seahawks"),
+    "SF": ("San Francisco", "49ers"),
+    "TB": ("Tampa Bay", "Buccaneers"),
+    "TEN": ("Tennessee", "Titans"),
+    "WAS": ("Washington", "Commanders"),
+}
+
+# Abbreviations other sites use for the same teams.
+_OTHER_CODES = {"LAR": "LA", "JAC": "JAX", "WSH": "WAS", "ARZ": "ARI", "LVR": "LV"}
+
+# City prefixes a book may share between two teams ("LA Rams", "NY Jets").
+_SHARED_PREFIXES = {"LA": {"LA", "LAC"}, "NY": {"NYG", "NYJ"}}
+
+_BY_NICKNAME = {nickname.lower(): code for code, (_, nickname) in TEAMS.items()}
+
+
+class UnknownTeamError(ValueError):
+    """A team name or code that isn't one of the 32 NFL teams."""
+
+
+def _team_code_from_word(word: str) -> str | None:
+    upper = word.upper()
+    if upper in TEAMS:
+        return upper
+    if upper in _OTHER_CODES:
+        return _OTHER_CODES[upper]
+    return _BY_NICKNAME.get(word.lower())
+
+
+def team_code_from_book_name(name: str) -> str:
+    """The nflverse team code for a team as a book or a person spells it.
+
+    Accepts a code ("BAL", also "LAR"/"JAC"/"WSH"/"ARZ"/"LVR"), a nickname
+    ("Ravens"), DraftKings' "BAL Ravens" / "LA Chargers" and FanDuel's
+    "Baltimore Ravens" / "Los Angeles Chargers". Note nflverse's Rams are "LA".
+    """
+    words = name.split()
+    if len(words) == 1:
+        code = _team_code_from_word(words[0])
+        if code is not None:
+            return code
+    elif len(words) > 1:
+        code = _BY_NICKNAME.get(words[-1].lower())
+        prefix = " ".join(words[:-1])
+        if code is not None and _prefix_fits(prefix, code):
+            return code
+    raise UnknownTeamError(f'"{name}" is not an NFL team')
+
+
+def _prefix_fits(prefix: str, code: str) -> bool:
+    """Whether the words before the nickname name the same team."""
+    upper = prefix.upper()
+    if code in _SHARED_PREFIXES.get(upper, ()):
+        return True
+    if _OTHER_CODES.get(upper, upper) == code:
+        return True
+    return prefix.lower() == TEAMS[code][0].lower()
+
+
 _TEAM_HINT = re.compile(r"^(?P<name>.*?)\s*\(\s*(?P<team>[^()]*?)\s*\)\s*$")
 
 
