@@ -1,5 +1,6 @@
 """Prop Market types: what a sportsbook offers on one player's Scoring Stat in one Game."""
 
+import math
 from dataclasses import dataclass
 
 
@@ -20,6 +21,15 @@ class MainLine:
     over_odds: float
     under_odds: float
     book: str
+
+    @property
+    def over_threshold(self) -> int:
+        """The Over as a "threshold or more" event: Over 71.5 wins exactly when Y >= 72.
+
+        Scoring Stats are whole numbers, so the Over and the Rung at this threshold
+        are the same event.
+        """
+        return math.floor(self.line) + 1
 
 
 @dataclass(frozen=True)

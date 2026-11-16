@@ -6,7 +6,6 @@ Pure functions over already-fetched JSON. A subcategory response is flat:
 research/sportsbook-markets.md, DraftKings section.
 """
 
-import math
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
@@ -106,7 +105,7 @@ def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> t
     carries the event, so the Rung is dropped either way.
     """
     if main_line is not None:
-        same_event = math.floor(main_line.line) + 1
+        same_event = main_line.over_threshold
         ladder = [r for r in ladder if r.threshold != same_event]
     return tuple(sorted(ladder, key=lambda r: r.threshold))
 
