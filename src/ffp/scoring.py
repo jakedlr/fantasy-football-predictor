@@ -81,17 +81,31 @@ PRESETS = {
 BUNDLED_RULES_DIR = Path(__file__).parent / "rules"
 
 
+def _is_path(name_or_path: str | Path) -> bool:
+    """A Path, or a string with a directory part or a .json suffix; anything else is a bare name."""
+    if isinstance(name_or_path, Path):
+        return True
+    path = Path(name_or_path)
+    return path.name != name_or_path or path.suffix == ".json"
+
+
 def load_rules(name_or_path: str | Path, scoring_dir: Path = Path("scoring")) -> ScoringRules:
-    """Look up Scoring Rules by preset name, JSON file path, `<scoring_dir>/<name>.json`
-    (relative to the working directory, so a local file overrides a bundled one), or
-    the bundled `ffp/rules/<name>.json`."""
+    """Look up Scoring Rules by preset name, by JSON file path, or by bare name.
+
+    A path (a Path, or a string with a directory part or a .json suffix) is read as
+    given. A bare name is looked up as `<scoring_dir>/<name>.json` (relative to the
+    working directory, so a local file overrides a bundled one), then as the bundled
+    `ffp/rules/<name>.json`.
+    """
     if name_or_path in PRESETS:
         return PRESETS[name_or_path]
-    candidates = [
-        Path(name_or_path),
-        Path(scoring_dir) / f"{name_or_path}.json",
-        BUNDLED_RULES_DIR / f"{name_or_path}.json",
-    ]
+    if _is_path(name_or_path):
+        candidates = [Path(name_or_path)]
+    else:
+        candidates = [
+            Path(scoring_dir) / f"{name_or_path}.json",
+            BUNDLED_RULES_DIR / f"{name_or_path}.json",
+        ]
     path = next((c for c in candidates if c.is_file()), None)
     if path is None:
         raise ValueError(

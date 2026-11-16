@@ -88,3 +88,18 @@ def test_an_error_that_is_not_a_fit_failure_stops_the_run(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="no receiving-yards model for position 'RB'"):
         main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--output-dir", str(tmp_path)])
     assert not (tmp_path / "OUTPUT.md").exists()
+
+
+def test_other_common_markdown_is_not_part_of_names(tmp_path):
+    # Review finding: checkboxes, bold, rules, front matter and a lone "-" became player names.
+    from ffp.predict import read_input
+
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text(
+        "---\ntitle: Week 11\n---\n"
+        "- [ ] Zay Flowers\n- [x] Tre Harris\n**Mark Andrews**\n* _Quentin Johnston_\n"
+        "---\n***\n-\n1.\n- `Derrick Henry`\n"
+    )
+    assert read_input(input_md) == [
+        "Zay Flowers", "Tre Harris", "Mark Andrews", "Quentin Johnston", "Derrick Henry"
+    ]

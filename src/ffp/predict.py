@@ -25,21 +25,28 @@ SPRINT_1_FLAGS = (
 NO_MARKETS = "no Prop Markets found for this player"
 
 
-_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+# A list marker ("- ", "* ", "1. ") with an optional task checkbox ("[ ] ", "[x] "), or a bare marker.
+_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+[.)])(?:\s+|$)(?:\[[ xX]\](?:\s+|$))?")
+# A thematic break or front-matter fence: "---", "***", "___", "- - -", ...
+_RULE = re.compile(r"^(?:([-*_])\s*){3,}$")
+_EMPHASIS = re.compile(r"[*_`]")
 
 
 def read_input(path: Path) -> list[str]:
     """Player names from INPUT.md, one per line.
 
-    Blank lines and Markdown headings are ignored, and list markers ("- ", "* ", "1. ")
-    are stripped, so a plain list and a Markdown list both work.
+    Blank lines, Markdown headings, horizontal rules and YAML front matter are
+    ignored; list markers, task checkboxes and emphasis (**, _, `) are stripped,
+    so a plain list and a Markdown list both work.
     """
+    lines = [line.strip() for line in Path(path).read_text().splitlines()]
+    if lines and lines[0] == "---" and "---" in lines[1:]:  # YAML front matter
+        lines = lines[lines.index("---", 1) + 1 :]
     names = []
-    for line in Path(path).read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+    for line in lines:
+        if not line or line.startswith("#") or _RULE.match(line):
             continue
-        names.append(_LIST_MARKER.sub("", line).strip())
+        names.append(_EMPHASIS.sub("", _LIST_MARKER.sub("", line)).strip())
     return [name for name in names if name]
 
 
