@@ -24,7 +24,11 @@ DELAY = (3.5, 5.0)  # seconds paused after each live request to a host (research
 log = logging.getLogger(__name__)
 
 # Query parameters that carry app keys (FanDuel's _ak): their values never reach a log or an error (PLAN S2.1).
-_SECRET = re.compile(r"(?i)([?&](?:_ak|ak|apikey|api_key|key|token)=)[^&#\s'\"<>]*")
+# Query parameters that carry app keys or credentials (e.g. FanDuel's _ak, PLAN S2.1).
+SECRET_QUERY_PARAMS = frozenset({"_ak", "ak", "apikey", "api_key", "key", "token"})
+_SECRET = re.compile(
+    r"(?i)([?&](?:" + "|".join(sorted(SECRET_QUERY_PARAMS)) + r")=)[^&#\s'\"<>]*"
+)
 
 
 def redact(text: str) -> str:

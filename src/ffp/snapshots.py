@@ -21,9 +21,8 @@ from pathlib import Path
 from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
 from ffp.fair import FairPoint
+from ffp.sources.http import SECRET_QUERY_PARAMS
 
-# Query parameters that carry app keys or credentials (e.g. FanDuel's _ak, PLAN S2.1).
-SECRET_QUERY_PARAMS = frozenset({"_ak", "ak", "apikey", "api_key", "key", "token"})
 
 
 def redact_url(url: str) -> str:
