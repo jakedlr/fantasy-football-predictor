@@ -5,7 +5,7 @@ import pytest
 
 from ffp.scoring import DEFAULT_RULES, SCORING_STATS, load_rules, score
 
-SCORING_DIR = Path(__file__).resolve().parents[1] / "scoring"
+SCORING_DIR = Path(__file__).resolve().parents[1] / "src" / "ffp" / "rules"
 
 # A WR stat line: 6 receptions, 85 receiving yards, 1 receiving TD, 1 fumble lost.
 WR_LINE = {"receptions": 6, "receiving_yards": 85, "receiving_tds": 1, "fumbles_lost": 1}
@@ -105,3 +105,20 @@ def test_numpy_samples_score_elementwise():
     # Sample 2: 10 * 1 + 120 * 0.1 + 2 * 6 + 0 * -2 = 10 + 12 + 12 = 34
     assert isinstance(points, np.ndarray)
     np.testing.assert_allclose(points, [0, 18.5, 34])
+
+
+def test_default_rules_load_from_any_working_directory(tmp_path, monkeypatch):
+    # Review finding: "espn-league" was only found from the repo root.
+    monkeypatch.chdir(tmp_path)
+    rules = load_rules(DEFAULT_RULES)
+    assert rules.name == "espn-league"
+    assert rules.offense["receptions"] == 1
+
+
+def test_a_local_scoring_file_overrides_the_bundled_one(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "scoring").mkdir()
+    (tmp_path / "scoring" / "espn-league.json").write_text(
+        '{"name": "espn-league", "offense": {"receptions": 0.5}}'
+    )
+    assert load_rules("espn-league").offense["receptions"] == 0.5

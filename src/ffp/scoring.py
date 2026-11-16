@@ -77,17 +77,27 @@ PRESETS = {
 }
 
 
+# Custom Scoring Rules shipped with the package (the default league lives here).
+BUNDLED_RULES_DIR = Path(__file__).parent / "rules"
+
+
 def load_rules(name_or_path: str | Path, scoring_dir: Path = Path("scoring")) -> ScoringRules:
-    """Look up Scoring Rules by preset name, JSON file path, or `<scoring_dir>/<name>.json`."""
+    """Look up Scoring Rules by preset name, JSON file path, `<scoring_dir>/<name>.json`
+    (relative to the working directory, so a local file overrides a bundled one), or
+    the bundled `ffp/rules/<name>.json`."""
     if name_or_path in PRESETS:
         return PRESETS[name_or_path]
-    path = Path(name_or_path)
-    if not path.is_file():
-        path = Path(scoring_dir) / f"{name_or_path}.json"
-    if not path.is_file():
+    candidates = [
+        Path(name_or_path),
+        Path(scoring_dir) / f"{name_or_path}.json",
+        BUNDLED_RULES_DIR / f"{name_or_path}.json",
+    ]
+    path = next((c for c in candidates if c.is_file()), None)
+    if path is None:
         raise ValueError(
             f"unknown Scoring Rules {str(name_or_path)!r}: not a preset "
-            f"({', '.join(PRESETS)}), not a file, and {path} does not exist"
+            f"({', '.join(PRESETS)}), and none of these exist: "
+            + ", ".join(str(c) for c in candidates)
         )
     return _custom_rules(path)
 

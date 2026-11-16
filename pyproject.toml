@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ffp = ["scoring/*.json"]
+ffp = ["rules/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
