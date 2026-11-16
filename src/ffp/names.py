@@ -7,9 +7,10 @@ _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
 
 def _clean(text: str) -> str:
-    """Lowercase, strip accents and punctuation, collapse whitespace."""
+    """Lowercase, strip accents, hyphens to spaces, drop other punctuation, collapse whitespace."""
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c)).lower()
+    text = text.replace("-", " ")
     text = re.sub(r"[^a-z0-9\s]", "", text)
     return " ".join(text.split())
 
