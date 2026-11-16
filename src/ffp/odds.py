@@ -21,9 +21,12 @@ def parse_american(price: str | float) -> float:
     if isinstance(price, str):
         text = price.strip().replace("−", "-")
         try:
-            return float(text)
+            value = float(text)
         except ValueError:
             raise ValueError(f"invalid American odds: {price!r}") from None
+        if not math.isfinite(value):
+            raise ValueError(f"invalid American odds: {price!r}")
+        return value
     return float(price)
 
 

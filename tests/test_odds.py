@@ -190,3 +190,9 @@ def test_calibrated_c_lowers_a_rung():
     c = calibrate_logit_shift(q_over, q_under)
     q_rung = american_to_implied("−260")
     assert apply_logit_shift(q_rung, c) < q_rung
+
+
+@pytest.mark.parametrize("text", ["nan", "inf", "-inf", "−inf", "+infinity"])
+def test_parse_american_rejects_non_finite_strings(text):
+    with pytest.raises(ValueError):
+        parse_american(text)
