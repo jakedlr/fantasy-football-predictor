@@ -1,0 +1,28 @@
+[project]
+name = "ffp"
+version = "0.1.0"
+description = "NFL fantasy Score Distributions from sportsbook prop prices"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+ffp = "ffp.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ffp = ["scoring/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["live: hits real sportsbook endpoints; run with -m live"]
+addopts = "-m 'not live'"
