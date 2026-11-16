@@ -73,3 +73,15 @@ def test_ladder_rungs_for_named_player_mean_threshold_or_more():
     thresholds = [r.threshold for r in zay.ladder]
     assert thresholds == sorted(thresholds)
     assert len(rec_yds_markets()) == 13
+
+
+def test_main_line_comes_from_ou_response():
+    assert rec_yds_markets()["Zay Flowers"].main_line == MainLine(
+        line=71.5, over_odds=-113.0, under_odds=-111.0, book="draftkings"
+    )
+
+
+def test_team_comes_from_venue_role():
+    markets = rec_yds_markets()
+    assert markets["Zay Flowers"].team == "BAL Ravens"  # HomePlayer
+    assert markets["Quentin Johnston"].team == "LA Chargers"  # AwayPlayer
