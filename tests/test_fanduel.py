@@ -241,3 +241,34 @@ def test_every_parseable_stat_names_its_tab():
 def test_unknown_stat_rejected():
     with pytest.raises(ValueError, match="fumbles_lost"):
         parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "fumbles_lost")
+
+
+# --- receptions (S3.1) -------------------------------------------------------------
+
+
+def receptions() -> list[PropMarket]:
+    return parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "receptions")
+
+
+def test_receptions_come_from_the_receiving_tab():
+    assert TABS["receptions"] == TABS["receiving_yards"] == "receiving-props"
+
+
+def test_receptions_ladder_and_main_line_for_named_player():
+    # PLAYER_X_RECEPTIONS_HIGH: Over/Under 5.5 at −130/−102; ALT: 4+..12+, 6+ at −132.
+    zay = next(m for m in receptions() if m.player == "Zay Flowers")
+    assert zay.stat == "receptions"
+    assert zay.team == "Baltimore Ravens"
+    assert zay.main_line == MainLine(5.5, -130.0, -102.0, "fanduel")
+    assert [(r.threshold, r.odds) for r in zay.ladder] == [
+        (4, -600.0), (5, -260.0), (7, 144.0), (8, 240.0), (9, 410.0),
+        (10, 680.0), (11, 1000.0), (12, 1500.0),
+    ]  # 6+ is the Main Line Over's event and is dropped
+
+
+def test_receptions_do_not_mix_with_receiving_yards():
+    hibner = next(m for m in receptions() if m.player == "Matthew Hibner")
+    assert hibner.main_line.line == 0.5
+    assert [r.threshold for r in hibner.ladder] == [2, 3]  # 1+ is the Over 0.5 event
+    yards = parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "receiving_yards")
+    assert {m.player for m in receptions()} == {m.player for m in yards}

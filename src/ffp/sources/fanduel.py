@@ -17,10 +17,10 @@ BOOK = "fanduel"
 # Scoring Stat → the stem of FD's market types for it. "PLAYER_X_<stem>_<tier>" is the
 # Main Line, "PLAYER_X_ALT_<stem>_<tier>" the Ladder. Rushing yards ("RUSHING_YARDS")
 # and passing yards ("PASSING_YARDS") follow the same pattern; add them here and in TABS.
-MARKET_STEMS = {"receiving_yards": "RECEIVING_YARDS"}
+MARKET_STEMS = {"receiving_yards": "RECEIVING_YARDS", "receptions": "RECEPTIONS"}
 
 # Scoring Stat → the event-page tab slug (the `tab=` query value) that holds its markets.
-TABS = {"receiving_yards": "receiving-props"}
+TABS = {"receiving_yards": "receiving-props", "receptions": "receiving-props"}
 
 # (player name as FD spells it, FD event id)
 Key = tuple[str, str]
