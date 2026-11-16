@@ -4,6 +4,7 @@ An INPUT.md line is resolved to a canonical Player keyed on the nflverse
 gsis_id; the Player's team then finds the next Game in the schedule.
 """
 
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -68,15 +69,27 @@ def load_roster(season: int, fetch: Fetch) -> list[RosterEntry]:
 
 
 def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
-    """The Player an INPUT.md line names."""
-    key = normalize_name(text)
+    """The Player an INPUT.md line names.
+
+    `text` is a player name, optionally followed by a team hint: "Name (TEAM)".
+    Names compare by `normalize_name`; only QB/RB/WR/TE count. The hint keeps
+    only the players on that team.
+    """
+    name, team = _split_team_hint(text)
+    key = normalize_name(name)
     matches = [
         entry
         for entry in roster
         if entry.position in SUPPORTED_POSITIONS and normalize_name(entry.name) == key
     ]
+    if team is not None:
+        on_team = [entry for entry in matches if entry.team == team]
+        if not on_team and matches:
+            found = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in matches)
+            raise UnknownPlayerError(f'no "{name}" on {team}; found {found}')
+        matches = on_team
     if not matches:
-        raise UnknownPlayerError(f'no QB/RB/WR/TE named "{text}" on a current NFL roster')
+        raise UnknownPlayerError(f'no QB/RB/WR/TE named "{name}" on a current NFL roster')
     if len(matches) > 1:
         candidates = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in matches)
         raise AmbiguousPlayerError(
@@ -86,3 +99,14 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
         )
     entry = matches[0]
     return Player(entry.gsis_id, entry.name, entry.position, entry.team)
+
+
+_TEAM_HINT = re.compile(r"^(?P<name>.*?)\s*\(\s*(?P<team>[^()]*?)\s*\)\s*$")
+
+
+def _split_team_hint(text: str) -> tuple[str, str | None]:
+    """("Name", "TEAM") from "Name (TEAM)"; ("Name", None) without a hint."""
+    match = _TEAM_HINT.match(text.strip())
+    if match is None:
+        return text.strip(), None
+    return match["name"], match["team"].upper()

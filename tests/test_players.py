@@ -63,6 +63,22 @@ def test_ambiguous_name_raises_and_lists_candidates(roster):
     assert "(TEAM)" in message
 
 
+@pytest.mark.parametrize("text, gsis_id", [
+    ("Josh Johnson (BAL)", "00-0099999"),
+    ("Josh Johnson (ari)", "00-0026300"),
+    ("Josh Johnson  ( ARI )", "00-0026300"),
+])
+def test_team_hint_breaks_the_tie(roster, text, gsis_id):
+    roster = [*roster, JOSH_JOHNSON_QB, JOSH_JOHNSON_RB]
+    assert resolve_player(text, roster).gsis_id == gsis_id
+
+
+def test_team_hint_on_a_unique_name_still_checks_the_team(roster):
+    assert resolve_player("Ja'Marr Chase (CIN)", roster).gsis_id == "00-0036900"
+    with pytest.raises(UnknownPlayerError, match="CIN"):
+        resolve_player("Ja'Marr Chase (PIT)", roster)
+
+
 def test_player_errors_share_a_value_error_base():
     assert issubclass(UnknownPlayerError, PlayerError)
     assert issubclass(AmbiguousPlayerError, PlayerError)
