@@ -299,6 +299,11 @@ def base_rates(qual: dict[str, pl.DataFrame]) -> dict:
         "td_rushing_share": {p: round(total(p, pl.col("rushing_tds")) / total(p, pl.col("rushing_tds") + pl.col("receiving_tds")), 3) for p in SKILL},
         "carries_per_game": {p: round(total(p, pl.col("carries")) / n[p], 3) for p in ("WR", "TE")},
         "n_games": n,
+        "qb_sacks_per_game": round(total("QB", pl.col("sacks_suffered")) / n["QB"], 3),
+        "qb_sacks_per_attempt": round(total("QB", pl.col("sacks_suffered")) / total("QB", pl.col("attempts")), 4),
+        "qb_fumbles_lost_per_carry": round(total("QB", pl.col("rushing_fumbles_lost")) / total("QB", pl.col("carries")), 4),
+        "yards_per_carry": {p: (round(total(p, pl.col("rushing_yards")) / c, 3) if (c := total(p, pl.col("carries"))) else None)
+                            for p in SKILL},
     }
 
 
@@ -562,7 +567,13 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
 
     rates = base_rates(qual)
     base = {"source": f"{stamp}; {season_label(seasons)} REG qualifying games (nflverse-data.md section 4)", **rates,
-            "carries_per_game_note": "mean carries per qualifying game (WR/TE), for expected touches when there is no rushing market"}
+            "carries_per_game_note": ("mean carries per qualifying game (WR/TE), for expected touches when there is no "
+                                      "rushing market; QB/RB have no entry on purpose (see yards_per_carry)"),
+            "yards_per_carry_note": ("pooled rushing yards / carries per position, to turn a rushing-yards mean into "
+                                     "expected carries when there is no rush-attempts market (FanDuel has none)"),
+            "qb_sacks_note": ("QB fumbles lost (S4.4) = qb_fumbles_lost_per_sack x expected sacks (qb_sacks_per_attempt x "
+                              "expected pass attempts, else qb_sacks_per_game) + qb_fumbles_lost_per_carry x expected "
+                              "carries; sacks_suffered and attempts from nflverse player_stats")}
 
     dgames = skill_games(ps.filter(pl.col("season").is_in(dispersion_seasons)),
                          snaps.filter(pl.col("season").is_in(dispersion_seasons)), raw.players, recover_zeros=True)

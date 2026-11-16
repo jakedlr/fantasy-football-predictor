@@ -178,22 +178,31 @@ def test_base_rates_hand_computed():
 
     qual = {
         "QB": pos("QB", [{"sacks_suffered": 4.0, "sack_fumbles_lost": 1.0, "fumbles_lost_total": 1.0,
-                          "passing_2pt_conversions": 1.0, "rushing_tds": 1.0}, {"carries": 2.0}]),
-        "RB": pos("RB", [{"carries": 18.0, "receptions": 2.0, "fumbles_lost_total": 1.0, "rushing_tds": 3.0,
-                          "receiving_tds": 1.0, "rushing_2pt_conversions": 1.0}]),
-        "WR": pos("WR", [{"carries": 1.0, "receptions": 4.0, "fumbles_lost_total": 1.0, "receiving_tds": 1.0},
+                          "passing_2pt_conversions": 1.0, "rushing_tds": 1.0, "attempts": 30.0},
+                         {"carries": 2.0, "rushing_yards": 10.0, "rushing_fumbles_lost": 1.0, "fumbles_lost_total": 1.0,
+                          "attempts": 20.0}]),
+        "RB": pos("RB", [{"carries": 18.0, "rushing_yards": 72.0, "receptions": 2.0, "fumbles_lost_total": 1.0,
+                          "rushing_tds": 3.0, "receiving_tds": 1.0, "rushing_2pt_conversions": 1.0}]),
+        "WR": pos("WR", [{"carries": 1.0, "rushing_yards": 6.0, "receptions": 4.0, "fumbles_lost_total": 1.0,
+                          "receiving_tds": 1.0},
                          {"receptions": 5.0, "receiving_2pt_conversions": 1.0}]),
         "TE": pos("TE", [{"receptions": 4.0, "receiving_tds": 2.0}]),
     }
     r = bp.base_rates(qual)
     assert r["fumbles_lost_per_touch"] == {"RB": 0.05, "WR": 0.1, "TE": 0.0}
     assert r["qb_fumbles_lost_per_sack"] == 0.25
-    assert r["fumbles_lost_per_game"] == {"QB": 0.5, "RB": 1.0, "WR": 0.5, "TE": 0.0}
+    assert r["fumbles_lost_per_game"] == {"QB": 1.0, "RB": 1.0, "WR": 0.5, "TE": 0.0}
     assert r["rush_rec_2pt_per_game"] == {"QB": 0.0, "RB": 1.0, "WR": 0.5, "TE": 0.0}
     assert r["pass_2pt_per_game"] == {"QB": 0.5}
     assert r["td_rushing_share"] == {"QB": 1.0, "RB": 0.75, "WR": 0.0, "TE": 0.0}
     assert r["carries_per_game"] == {"WR": 0.5, "TE": 0.0}
     assert r["n_games"] == {"QB": 2, "RB": 1, "WR": 2, "TE": 1}
+    # Sprint 4: QB fumbles = sack fumbles + rush-attempt fumbles (S4.4), and carries from a
+    # rushing-yards mean where there is no rush-attempts market (FanDuel has none).
+    assert r["qb_sacks_per_game"] == 2.0
+    assert r["qb_sacks_per_attempt"] == 0.08
+    assert r["qb_fumbles_lost_per_carry"] == 0.5
+    assert r["yards_per_carry"] == {"QB": 5.0, "RB": 4.0, "WR": 6.0, "TE": None}  # TE: no carries
 
 
 # ---------------------------------------------------------------- dispersion
