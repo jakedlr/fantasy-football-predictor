@@ -364,7 +364,9 @@ def proxy_sample(games: pl.DataFrame, totals: pl.DataFrame, position: str, stat:
 
 
 def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[str, float]) -> dict:
-    out: dict = {"receiving_yards": {}, "receptions": {}}
+    """Fitted relations per position; sample sizes go under a separate "n_games" key so
+    each relation entry holds only its family and parameters."""
+    out: dict = {"receiving_yards": {}, "receptions": {}, "n_games": {"receiving_yards": {}, "receptions": {}}}
     for pos in ("WR", "TE", "RB"):
         df = proxy_sample(games, totals, pos, "receiving_yards", "targets", RECEIVING_YARDS_MIN_MU[pos])
         mu, y = df["mu"].to_numpy(), df["receiving_yards"].to_numpy()
@@ -373,11 +375,12 @@ def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[st
         out["receiving_yards"][pos] = {
             "family": "hurdle_shifted_gamma", "shift": shifts[pos],
             "pi0_c0": round(c0, 3), "pi0_c1": round(c1, 3), "sd_a": round(a, 3), "sd_b": round(b, 3),
-            "n_games": df.height,
         }
+        out["n_games"]["receiving_yards"][pos] = df.height
         df = proxy_sample(games, totals, pos, "receptions", "targets", RECEPTIONS_MIN_MU[pos])
         r_a, r_b = fit_nb_relation(df["mu"].to_numpy(), df["receptions"].to_numpy())
-        out["receptions"][pos] = {"family": "negative_binomial", "r_a": round(r_a, 3), "r_b": round(r_b, 3), "n_games": df.height}
+        out["receptions"][pos] = {"family": "negative_binomial", "r_a": round(r_a, 3), "r_b": round(r_b, 3)}
+        out["n_games"]["receptions"][pos] = df.height
     return out
 
 

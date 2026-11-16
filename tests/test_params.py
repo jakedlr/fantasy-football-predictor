@@ -2,13 +2,16 @@ import numpy as np
 import pytest
 
 from ffp import params
+from ffp.scoring import SCORING_STATS
 
 
 @pytest.mark.parametrize("kind", ["within", "pooled"])
-@pytest.mark.parametrize("position", ["WR", "TE"])
+@pytest.mark.parametrize("position", ["QB", "RB", "WR", "TE"])
 def test_correlation_matrices_are_valid(position, kind):
     stats, r = params.correlation(position, kind)
-    assert stats[:3] == ["receptions", "receiving_yards", "receiving_tds"]
+    assert set(stats) <= set(SCORING_STATS)
+    if position in ("WR", "TE"):
+        assert stats[:3] == ["receptions", "receiving_yards", "receiving_tds"]
     assert r.shape == (len(stats), len(stats))
     np.testing.assert_allclose(r, r.T)
     np.testing.assert_allclose(np.diag(r), 1.0)
@@ -24,8 +27,8 @@ def test_default_correlation_is_within_player():
 def test_unknown_kind_and_position_are_rejected():
     with pytest.raises(ValueError, match="kind"):
         params.correlation("WR", "tiered")
-    with pytest.raises(ValueError, match="QB"):
-        params.correlation("QB")
+    with pytest.raises(ValueError, match="K"):
+        params.correlation("K")
 
 
 def test_every_params_file_records_its_source():

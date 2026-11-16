@@ -1,46 +1,58 @@
 {
-  "source": "seeded by hand from research/stat-distributions.md (Q2 two-part table, Q4 recommendation table) on 2026-11-16; scripts/build_params.py regenerates it from nflverse",
+  "source": "scripts/build_params.py on 2026-11-15 from nflverse (CC-BY 4.0) via nflreadpy; fit on 2015-2021 REG+POST with zero-stat games recovered from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); receiving-yards shift is an input, not fitted",
   "receiving_yards": {
     "WR": {
       "family": "hurdle_shifted_gamma",
       "shift": 5.0,
-      "pi0_c0": 6.75,
-      "pi0_c1": -2.48,
-      "sd_a": 3.0,
-      "sd_b": 0.622
+      "pi0_c0": 7.421,
+      "pi0_c1": -2.645,
+      "sd_a": 3.233,
+      "sd_b": 0.603
     },
     "TE": {
       "family": "hurdle_shifted_gamma",
       "shift": 5.0,
-      "pi0_c0": 6.99,
-      "pi0_c1": -2.71,
-      "sd_a": 2.33,
-      "sd_b": 0.678
+      "pi0_c0": 7.268,
+      "pi0_c1": -2.785,
+      "sd_a": 1.975,
+      "sd_b": 0.716
     },
     "RB": {
       "family": "hurdle_shifted_gamma",
       "shift": 10.0,
-      "pi0_c0": 4.28,
-      "pi0_c1": -2.04,
-      "sd_a": 1.86,
-      "sd_b": 0.739
+      "pi0_c0": 4.498,
+      "pi0_c1": -2.1,
+      "sd_a": 1.772,
+      "sd_b": 0.75
     }
   },
   "receptions": {
     "WR": {
       "family": "negative_binomial",
-      "r_a": 0.83,
-      "r_b": 1.85
+      "r_a": 0.907,
+      "r_b": 1.799
     },
     "TE": {
       "family": "negative_binomial",
-      "r_a": 1.61,
-      "r_b": 1.45
+      "r_a": 2.106,
+      "r_b": 1.238
     },
     "RB": {
       "family": "negative_binomial",
-      "r_a": 1.53,
-      "r_b": 1.07
+      "r_a": 1.658,
+      "r_b": 1.018
+    }
+  },
+  "n_games": {
+    "receiving_yards": {
+      "WR": 10771,
+      "TE": 3672,
+      "RB": 5771
+    },
+    "receptions": {
+      "WR": 9656,
+      "TE": 3398,
+      "RB": 5064
     }
   }
 }
