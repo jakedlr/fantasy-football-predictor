@@ -1,0 +1,42 @@
+from pathlib import Path
+
+import numpy as np
+
+from ffp.scoring import load_rules
+from ffp.simulate import simulate_scores
+
+
+class DiscreteDist:
+    """Test-double Stat Distribution over explicit integer values with an explicit pmf."""
+
+    def __init__(self, values, pmf):
+        self.values = np.asarray(values, dtype=float)
+        self.pmf = np.asarray(pmf, dtype=float)
+        self.cdf = np.cumsum(self.pmf)
+
+    def sf(self, x):
+        x = np.asarray(x)
+        return np.array([self.pmf[self.values >= xi].sum() for xi in np.ravel(x)]).reshape(x.shape)
+
+    def ppf(self, u):
+        idx = np.searchsorted(self.cdf, np.asarray(u), side="left")
+        return self.values[np.minimum(idx, len(self.values) - 1)]
+
+    @property
+    def mean(self):
+        return float((self.values * self.pmf).sum())
+
+
+# Receiving yards: 0 with 10%, then a spread of values up to 150.
+REC_YDS = DiscreteDist([0, 20, 40, 60, 80, 100, 150], [0.1, 0.1, 0.2, 0.2, 0.2, 0.1, 0.1])
+RECEPTIONS = DiscreteDist([0, 2, 4, 6, 8], [0.1, 0.2, 0.3, 0.3, 0.1])
+
+SCORING_DIR = Path(__file__).resolve().parents[1] / "scoring"
+ESPN = load_rules("espn-league", scoring_dir=SCORING_DIR)
+
+
+def test_same_seed_gives_identical_percentiles():
+    dists = {"receiving_yards": REC_YDS, "receptions": RECEPTIONS}
+    a = simulate_scores(dists, ESPN, n=5_000, seed=123)
+    b = simulate_scores(dists, ESPN, n=5_000, seed=123)
+    assert a.percentiles() == b.percentiles()
