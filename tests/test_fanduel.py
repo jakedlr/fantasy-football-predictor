@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from ffp.markets import Game, MainLine, PropMarket, Rung
 from ffp.sources.fanduel import parse_games, parse_prop_markets, props_posted
 
@@ -116,3 +118,116 @@ def test_fixture_player_full_ladder_and_main_line():
         ),
         team="Baltimore Ravens",
     )
+
+
+def test_away_player_team_comes_from_logo_slug():
+    # Runners carry no team field; ".../los_angeles_chargers_jersey.png" is the only signal.
+    markets = rec_yds_markets()
+    assert markets["Omarion Hampton"].team == "Los Angeles Chargers"
+    assert markets["Mark Andrews"].team == "Baltimore Ravens"
+    assert {m.team for m in markets.values()} == {"Los Angeles Chargers", "Baltimore Ravens"}
+
+
+LOGO = "https://assets.sportsbook.fanduel.com/images/team/nfl/{}_jersey.png"
+
+
+def runner(name: str, odds: int, *, handicap: float = 0, team: str = "denver_broncos", **extra) -> dict:
+    return {
+        "runnerName": name,
+        "handicap": handicap,
+        "runnerStatus": "ACTIVE",
+        "logo": LOGO.format(team),
+        "isPlayerSelection": True,
+        "winRunnerOdds": {"americanDisplayOdds": {"americanOdds": odds, "americanOddsInt": odds}},
+        **extra,
+    }
+
+
+def fd_market(market_id: str, market_type: str, runners: list[dict], event_id: int = 999) -> dict:
+    return {
+        "marketId": market_id,
+        "eventId": event_id,
+        "marketType": market_type,
+        "marketStatus": "OPEN",
+        "runners": runners,
+    }
+
+
+def ladder_market(market_id: str, player: str, rungs: dict[int, int], tier: str = "LOW", **kw) -> dict:
+    runners = [runner(f"{player} {n}+ Yards", odds, **kw) for n, odds in rungs.items()]
+    return fd_market(market_id, f"PLAYER_X_ALT_RECEIVING_YARDS_{tier}", runners)
+
+
+def main_line_market(market_id: str, player: str, line: float, over: int, under: int, **kw) -> dict:
+    runners = [
+        runner(f"{player} Over", over, handicap=line, **kw),
+        runner(f"{player} Under", under, handicap=line, **kw),
+    ]
+    return fd_market(market_id, "PLAYER_X_RECEIVING_YARDS_MEDIUM", runners)
+
+
+def parse_one(*markets: dict, event: dict | None = None) -> list[PropMarket]:
+    return parse_prop_markets(page(event or fd_event(), markets=markets), "receiving_yards")
+
+
+def test_threshold_and_player_parsed_from_runner_names_with_punctuation():
+    names = ["Ja'Marr Chase", "Amon-Ra St. Brown", "Marvin Harrison Jr.", "Michael Pittman Jr"]
+    markets = parse_one(
+        *(ladder_market(str(i), name, {70: -150, 100: 200}) for i, name in enumerate(names))
+    )
+    assert [m.player for m in markets] == names
+    for m in markets:
+        assert [(r.threshold, r.odds) for r in m.ladder] == [(70, -150.0), (100, 200.0)]
+
+
+def test_tier_buckets_merge_into_one_ladder_without_duplicate_thresholds():
+    markets = parse_one(
+        ladder_market("1", "Courtland Sutton", {60: -200, 70: -130}, tier="LOW"),
+        ladder_market("2", "Courtland Sutton", {70: -130, 80: 110, 90: 160}, tier="MEDIUM"),
+        ladder_market("3", "Courtland Sutton", {100: 220}, tier="HIGH"),
+    )
+    [sutton] = markets
+    assert [r.threshold for r in sutton.ladder] == [60, 70, 80, 90, 100]
+    assert sutton.team == "Denver Broncos"
+
+
+def test_rungs_sorted_by_threshold():
+    [m] = parse_one(ladder_market("1", "Troy Franklin", {100: 300, 20: -500, 50: -110}))
+    assert [r.threshold for r in m.ladder] == [20, 50, 100]
+
+
+def test_main_line_without_ladder_still_gives_prop_market():
+    [m] = parse_one(main_line_market("1", "Evan Engram", 34.5, -115, -105))
+    assert m.main_line == MainLine(34.5, -115.0, -105.0, "fanduel")
+    assert m.ladder == ()
+    assert (m.player, m.game_id, m.team) == ("Evan Engram", "999", "Denver Broncos")
+
+
+def test_started_game_excluded():
+    markets = parse_one(
+        ladder_market("1", "Courtland Sutton", {60: -200}),
+        event=fd_event(in_play=True),
+    )
+    assert markets == []
+
+
+def test_not_posted_tab_gives_no_prop_markets():
+    assert parse_prop_markets(load("fd_nfl_event_receiving_tab_not_posted.json"), "receiving_yards") == []
+
+
+def test_suspended_runner_ignored():
+    market = ladder_market("1", "Courtland Sutton", {60: -200, 70: -130})
+    market["runners"][1]["runnerStatus"] = "SUSPENDED"
+    [m] = parse_one(market)
+    assert [r.threshold for r in m.ladder] == [60]
+
+
+def test_main_line_needs_both_sides():
+    market = main_line_market("1", "Evan Engram", 34.5, -115, -105)
+    market["runners"].pop()
+    assert parse_one(market) == []
+
+
+def test_unknown_stat_rejected():
+    with pytest.raises(ValueError, match="fumbles_lost"):
+        parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "fumbles_lost")
