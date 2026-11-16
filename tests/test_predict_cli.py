@@ -31,17 +31,26 @@ def test_predicts_receiving_yards_score_percentiles_for_a_wr(tmp_path):
     assert zay["stats"]["receiving_yards"]["books"] == ["draftkings", "fanduel"]
     p = zay["percentiles"]
     assert p["P5"] < p["P25"] < p["P50"] < p["P75"] < p["P95"]
-    # Main Line 71.5 yds is near the median, so P50 is about 7 points under 0.1/yd.
-    assert 5.5 < p["P50"] < 8.5
+    # Full PPR: ~5.5 receptions (1 pt each) + ~72 yds (0.1/yd) + ~0.3 TDs (6 pts) is ~14.5 points.
+    assert 11 < p["P50"] < 18
     assert "Zay Flowers" in markdown
 
 
-def test_sprint_2_flags_its_simplifications(tmp_path):
-    _, data = run_predict(tmp_path, ["Mark Andrews"])
+def test_a_te_with_every_market_has_no_flags_and_every_stat(tmp_path):
+    markdown, data = run_predict(tmp_path, ["Mark Andrews"])
     [andrews] = data["players"]
-    assert andrews["position"] == "TE"  # resolved, no longer assumed WR
-    assert not any("position assumed" in f for f in andrews["flags"])
-    assert any("receiving yards only" in f for f in andrews["flags"])
+    assert andrews["position"] == "TE"
+    assert andrews["flags"] == []
+    assert {"receptions", "receiving_yards", "receiving_tds", "rushing_tds"} <= set(andrews["stats"])
+    assert "rushing yards are not modelled yet" in markdown  # listed once, under Assumptions
+
+
+def test_the_correlation_option_is_accepted(tmp_path):
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    for kind in ("within", "pooled"):
+        assert main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
+                     "--correlation", kind, "--output-dir", str(tmp_path)]) == 0
 
 
 def test_blank_lines_are_ignored_and_unknown_players_are_skipped(tmp_path):
@@ -61,24 +70,24 @@ def test_markdown_list_and_heading_markers_are_not_part_of_names(tmp_path):
     assert read_input(input_md) == ["Zay Flowers", "Tre Harris", "Mark Andrews", "Quentin Johnston"]
 
 
-def test_a_player_whose_fit_fails_is_skipped_and_the_rest_are_still_written(tmp_path, monkeypatch):
+def test_a_failed_fit_is_flagged_and_every_player_is_still_written(tmp_path, monkeypatch):
     # Review finding: one unfittable player aborted the whole run with no output.
     import ffp.predict
     from ffp.distributions import FitError
 
     real_fit = ffp.predict.fit_receiving_yards
 
-    def fit_or_fail(points, position):
+    def fit_or_fail(points, position, **kwargs):
         if position == "TE":  # Mark Andrews
             raise FitError("out of reach")
-        return real_fit(points, position)
+        return real_fit(points, position, **kwargs)
 
     monkeypatch.setattr(ffp.predict, "fit_receiving_yards", fit_or_fail)
     _, data = run_predict(tmp_path, ["Mark Andrews", "Zay Flowers"])
-    assert [r["player"] for r in data["players"]] == ["Zay Flowers"]
-    assert data["skipped"] == [
-        {"player": "Mark Andrews", "reason": "could not fit receiving yards: out of reach"}
-    ]
+    assert [r["player"] for r in data["players"]] == ["Mark Andrews", "Zay Flowers"]
+    [andrews, zay] = data["players"]
+    assert "incomplete: could not fit receiving yards (out of reach)" in andrews["flags"]
+    assert zay["flags"] == []
 
 
 def test_an_error_that_is_not_a_fit_failure_stops_the_run(tmp_path, monkeypatch):
@@ -155,8 +164,9 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     assert [r["name"] for r in manifest["responses"]] == ["fd_league"]
     assert "SECRET" not in (run_dir / "manifest.json").read_text()
     fair = json.loads((run_dir / "fair_points.json").read_text())["fair_points"]
-    assert [(f["player"], f["player_id"], f["stat"], f["game_id"]) for f in fair] == [
-        ("Zay Flowers", "00-0039064", "receiving_yards", "2026_10_LAC_BAL")
+    assert sorted((f["player"], f["player_id"], f["stat"], f["game_id"]) for f in fair) == [
+        ("Zay Flowers", "00-0039064", stat, "2026_10_LAC_BAL")
+        for stat in ("receiving_yards", "receptions", "rush_rec_tds")
     ]
 
 

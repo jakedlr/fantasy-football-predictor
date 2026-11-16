@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from ffp.markets import Game, MainLine, PropMarket, Rung
@@ -40,7 +41,8 @@ def run(names, nflverse, books, now=BEFORE_MNF, **kwargs):
 
 def test_fixture_books_are_draftkings_and_fanduel(books):
     assert [b.book for b in books] == ["draftkings", "fanduel"]
-    assert all(b.markets for b in books)
+    for book in books:
+        assert {m.stat for m in book.markets} == {"receiving_yards", "receptions", "rush_rec_tds"}, book.book
 
 
 def test_a_wr_is_resolved_to_his_team_position_and_next_game(nflverse, books):
@@ -54,13 +56,18 @@ def test_a_wr_is_resolved_to_his_team_position_and_next_game(nflverse, books):
 def test_both_books_fit_one_stat_distribution(nflverse, books):
     # S2.5: DK and FD Rungs at different thresholds go into one fit, Main Lines weighted x3.
     seen = {}
-    [zay], _ = run(["Zay Flowers"], nflverse, books, on_fair_points=lambda t, pts: seen.update({t.name: pts}))
+    [zay], _ = run(
+        ["Zay Flowers"], nflverse, books,
+        on_fair_points=lambda t, stat, pts: seen.update({(t.name, stat): pts}),
+    )
     detail = zay.stats["receiving_yards"]
     assert detail.books == ["draftkings", "fanduel"]
-    dk_rungs = sum(len(m.ladder) for m in books[0].markets if m.player == "Zay Flowers")
-    fd_rungs = sum(len(m.ladder) for m in books[1].markets if m.player == "Zay Flowers")
-    assert detail.rungs == dk_rungs + fd_rungs
-    points = seen["Zay Flowers"]
+
+    def rungs(book):
+        return sum(len(m.ladder) for m in book.markets if m.player == "Zay Flowers" and m.stat == "receiving_yards")
+
+    assert detail.rungs == rungs(books[0]) + rungs(books[1])
+    points = seen[("Zay Flowers", "receiving_yards")]
     # DK O/U 71.5 -> Y >= 72 and FD O/U 69.5 -> Y >= 70, each weighted 3 (merged with any Rung there).
     by_threshold = {p.threshold: p.weight for p in points}
     assert by_threshold[72] >= 3 and by_threshold[70] >= 3
@@ -211,7 +218,7 @@ def test_a_book_whose_response_does_not_parse_is_left_out(nflverse, caplog):
     # Finding 2: a parse error in one book crashed the whole run.
     books = _live(_FakeHttp(garble=["/subcategories/"]), nflverse)
     assert [b.book for b in books] == ["fanduel"]
-    assert "DraftKings left out" in caplog.text
+    assert "DraftKings" in caplog.text and "left out" in caplog.text
 
 
 def test_one_failed_fanduel_event_keeps_the_others(nflverse, caplog):
@@ -226,3 +233,118 @@ def test_one_failed_fanduel_event_keeps_the_others(nflverse, caplog):
     fd = next(b for b in books if b.book == "fanduel")
     assert fd.markets  # the good event's markets survive
     assert "999" in caplog.text
+
+
+
+# Sprint 3: every WR/TE Scoring Stat, correlated.
+
+SPRINT_3_STATS = {"receptions", "receiving_yards", "receiving_tds", "rushing_tds", "fumbles_lost",
+                  "rushing_2pt", "receiving_2pt"}
+
+
+def _capture_simulation(monkeypatch):
+    import ffp.predict
+
+    calls = []
+    real = ffp.predict.simulate_scores
+
+    def spy(stat_dists, rules, **kwargs):
+        calls.append((dict(stat_dists), kwargs))
+        return real(stat_dists, rules, **kwargs)
+
+    monkeypatch.setattr(ffp.predict, "simulate_scores", spy)
+    return calls
+
+
+def test_a_wr_with_every_market_gets_every_scoring_stat(nflverse, books, monkeypatch):
+    calls = _capture_simulation(monkeypatch)
+    [zay], [] = run(["Zay Flowers"], nflverse, books)
+    [(dists, kwargs)] = calls
+    assert set(dists) == SPRINT_3_STATS
+    assert {"receptions", "receiving_yards", "receiving_tds", "rushing_tds"} <= set(zay.stats)
+    assert not any(f.startswith("incomplete") for f in zay.flags)
+    assert not any("receiving yards only" in f for f in zay.flags)
+    # Receiving yards' P(0) is the receptions' P(0): no catch, no yards (research Q4).
+    p_no_catch = 1 - dists["receptions"].sf(np.array([1]))[0]
+    assert dists["receiving_yards"].pi0 == pytest.approx(p_no_catch, rel=1e-9)
+    # TDs are split by the WR's rushing share; together they keep the anytime price's rate.
+    from ffp import params
+
+    share = params.load("base_rates")["td_rushing_share"]["WR"]
+    total = dists["rushing_tds"].mean + dists["receiving_tds"].mean
+    assert dists["rushing_tds"].mean == pytest.approx(share * total)
+
+
+def test_the_simulation_is_correlated_with_the_chosen_matrix(nflverse, books, monkeypatch):
+    # S3.6: the config selects the matrix.
+    from ffp import params
+
+    for kind in ("within", "pooled"):
+        calls = _capture_simulation(monkeypatch)
+        run(["Mark Andrews"], nflverse, books, correlation=kind)
+        [(_, kwargs)] = calls
+        stats, matrix = kwargs["corr"]
+        expected_stats, expected = params.correlation("TE", kind)
+        assert list(stats) == expected_stats
+        np.testing.assert_array_equal(matrix, expected)
+
+
+def _only(stat_markets, *, stats):
+    """The fixture books with only these stats' markets."""
+    return [BookOdds(b.book, b.games, [m for m in b.markets if m.stat in stats]) for b in stat_markets]
+
+
+def test_a_wr_with_no_receptions_market_is_flagged_incomplete(nflverse, books, monkeypatch):
+    # S3.5
+    calls = _capture_simulation(monkeypatch)
+    [zay], [] = run(["Zay Flowers"], nflverse, _only(books, stats={"receiving_yards", "rush_rec_tds"}))
+    assert "incomplete: missing receptions" in zay.flags
+    [(dists, _)] = calls
+    assert "receptions" not in dists
+    # Without receptions, the yards P(0) is fitted from the yards markets as before.
+    assert dists["receiving_yards"].pi0 > 0
+
+
+def test_a_wr_with_no_td_market_is_flagged_incomplete(nflverse, books):
+    [zay], [] = run(["Zay Flowers"], nflverse, _only(books, stats={"receiving_yards", "receptions"}))
+    assert "incomplete: missing touchdowns" in zay.flags
+    assert "receiving_tds" not in zay.stats
+
+
+def test_a_wr_with_only_a_td_market_is_predicted_and_flagged(nflverse, books):
+    [zay], [] = run(["Zay Flowers"], nflverse, _only(books, stats={"rush_rec_tds"}))
+    assert "incomplete: missing receptions" in zay.flags
+    assert "incomplete: missing receiving yards" in zay.flags
+
+
+def test_one_failed_fit_flags_that_stat_and_keeps_the_rest(nflverse, books, monkeypatch):
+    import ffp.predict
+    from ffp.distributions import FitError
+
+    def fail(points, position):
+        raise FitError("out of reach")
+
+    monkeypatch.setattr(ffp.predict, "fit_receptions", fail)
+    [zay], [] = run(["Zay Flowers"], nflverse, books)
+    assert "incomplete: could not fit receptions (out of reach)" in zay.flags
+    assert "receiving_yards" in zay.stats
+
+
+def test_a_player_whose_every_fit_fails_is_skipped(nflverse, books, monkeypatch):
+    import ffp.predict
+    from ffp.distributions import FitError
+
+    def fail(*args, **kwargs):
+        raise FitError("out of reach")
+
+    for name in ("fit_receptions", "fit_receiving_yards", "fit_touchdowns"):
+        monkeypatch.setattr(ffp.predict, name, fail)
+    results, [skip] = run(["Zay Flowers"], nflverse, books)
+    assert results == []
+    assert skip.reason.startswith("could not fit any of its markets")
+
+
+def test_fair_points_are_reported_per_stat(nflverse, books):
+    seen = []
+    run(["Zay Flowers"], nflverse, books, on_fair_points=lambda t, stat, pts: seen.append(stat))
+    assert sorted(seen) == ["receiving_yards", "receptions", "rush_rec_tds"]

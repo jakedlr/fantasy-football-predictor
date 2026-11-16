@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ffp import predict as pipeline
 from ffp.markets import parse_utc
+from ffp.params import CORRELATION_KINDS
 from ffp.players import load_roster, load_schedule
 from ffp.report import write_json, write_markdown
 from ffp.scoring import DEFAULT_RULES, load_rules
@@ -30,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--now",
         type=parse_utc,
         help="predict as if it were this time (ISO 8601, UTC unless an offset is given); default: now",
+    )
+    predict.add_argument(
+        "--correlation",
+        choices=CORRELATION_KINDS,
+        help="latent correlation matrix for the copula: within-player-season (default) or pooled",
     )
     predict.add_argument(
         "--scoring", default=DEFAULT_RULES, help=f"Scoring Rules preset or file (default {DEFAULT_RULES})"
@@ -79,14 +85,15 @@ def main(argv: list[str] | None = None) -> int:
         books = []  # nobody to price: don't touch the sportsbooks
 
     results, unfitted = pipeline.predict(
-        targets, books, rules, on_fair_points=_fair_points_saver(snapshot)
+        targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation
     )
     order = {name: i for i, name in reversed(list(enumerate(names)))}
     skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))
 
     generated_at = datetime.now(timezone.utc)
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    common = dict(rules_name=rules.name, generated_at=generated_at, assumptions=rules.assumptions)
+    assumptions = [*rules.assumptions, *pipeline.MODEL_ASSUMPTIONS]
+    common = dict(rules_name=rules.name, generated_at=generated_at, assumptions=assumptions)
     write_markdown(results, skipped, path=args.output_dir / "OUTPUT.md", **common)
     write_json(results, skipped, path=args.output_dir / "output.json", **common)
     where = f"; snapshot in {snapshot.run_dir}" if snapshot else ""
@@ -124,11 +131,11 @@ def _fair_points_saver(snapshot):
     if snapshot is None:
         return None
 
-    def save(target: pipeline.Target, points) -> None:
+    def save(target: pipeline.Target, stat: str, points) -> None:
         try:
             snapshot.save_fair_points(
                 target.player.name,
-                pipeline.STAT,
+                stat,
                 points,
                 game_id=target.game.game_id,
                 player_id=target.player.gsis_id,
