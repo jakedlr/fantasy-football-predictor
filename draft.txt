@@ -1,0 +1,35 @@
+PART 1:
+
+I'm thinking about starting a project that will make predictions on how players will score in fantasy football will
+score based on their betting odds. For example, on FanDuel, Ja'Marr Chase has -800 odds of 50+ yards, -420 odds of
+60+ yards, -260 odds of 70+ yards, etc; this data could be deviged and then used to create a distribution of yards.
+We could create these distributions for all positive and negative point events for a player's fantasy score, and
+then aggregate them into a distribution of the player's total fantasy score.
+
+A few questions immediately come to mind for me regarding this idea. Deploy subagents to look into each of these on opus 5.5 light: 
+
+1. Are all events impacting a player's score offered as bets, and are all (or at least most of the players being actively started) offered as bets?
+
+2. How do we devig these bets? They're all one-sided/unbalanced. Use gh search repos and gh search code to find 3-5 highly starred repositories solving this question
+and deploy subagents (on opus 5.5 light) to shallow clone and read through these repos. Also search online for approaches.
+
+3. How do we handle correlated events when aggregating score? For example, receptions and receiving yards both score points and are likely strongly correlated,
+but rushing yards and receptions are likely less correlated. Perhaps we could use some supervised learning model based off historic data. Look into github repos to see
+if anyone has worked on anything like this before (same approach as Q2) and look into NFL data online to confirm that we would indeed be able to access historic data
+to use in this approach. The end goal here is to get scoring percentiles for players (e.g. 5% chance of 5+ points, 15% chance of 6+ points, 50% chance of 10+ points, etc),
+so try to find approaches for this.
+
+Create a new file RESEARCH.md for your findings
+
+PART 2:
+I want to start drafting how we might approach this. Deploy subagents to research how we might approach any unclear parts of the project so that we can determine ahead of time
+the entire approach.
+
+Refer to and first read RESEARCH.md for previously researched topics. Apply agile/scrum concepts (split work into sprints and work incrementally and iteratively)
+and test driven development principles (follow red-green-refactor loops). Deploy subagents for isolated pieces of the project.
+
+I want to start drafting the first few stages of this project. For now, I want to take input from an INPUT.md file that will exclusively contain
+names of players separated by newlines. For each of these players, pull data from fanduel/draftkings on the odds of all of their events impacting scoring.
+We already did this in ~/claude-projects/prizepicks-optimizer, so refer to that repo for how to approach this.
+Devig these odds and then create distributions for each of these events. Then use supervised learning based off of nflverse data to model correlation between events
+and create an odds distribution of each player's 5%, 25%, 50%, 75%, and 95% scores. Output this distribution for every player in the input.
