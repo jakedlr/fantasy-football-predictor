@@ -455,3 +455,46 @@ def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomi
     if not math.isfinite(result.fun):
         raise FitError("no receptions fit within the model's range")
     return NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1]))
+
+
+_TD_LAMBDA_MAX = 20.0  # bracket for the root-find when there is no anytime point
+
+
+def fit_touchdowns(points: Sequence[FairPoint]) -> Poisson:
+    """Rush + rec TDs as a Poisson from the anytime-TD Fair Probability: λ = −ln(1 − p).
+
+    Only the lowest threshold is used, normally the anytime ("1+") point; the 2+ and 3+
+    points don't move λ. Poisson has one parameter, so one price pins it (research Q3),
+    and the anytime price is the one to trust: it is the shortest and most traded, while
+    2+/3+ are longshots devigged with a one-sided prior vig that leaves their heavier
+    hold in (on the MNF fixtures their Fair Probability sits ≈ 0.3 pp above Poisson's
+    P(2+) for nearly every longshot). Pooling them would fit that vig, not the player.
+    They stay a check: research found Poisson matches observed P(2+) within 0.5 pp.
+
+    Without an anytime point (only 2+ offered), λ is root-found so P(Y >= k) matches the
+    lowest threshold k.
+    """
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    lowest = min(points, key=lambda p: p.threshold)
+    if lowest.threshold <= 1:
+        return Poisson(-math.log1p(-lowest.prob))
+
+    def error(lam: float) -> float:
+        return float(Poisson(lam).sf(np.array([lowest.threshold]))[0]) - lowest.prob
+
+    if error(_TD_LAMBDA_MAX) < 0:
+        raise FitError(f"P(TDs >= {lowest.threshold}) = {lowest.prob} is out of reach")
+    return Poisson(optimize.brentq(error, 0.0, _TD_LAMBDA_MAX, xtol=1e-14))
+
+
+def split_touchdowns(td: Poisson, rushing_share: float) -> tuple[Poisson, Poisson]:
+    """(rushing TDs, receiving TDs): Poisson(λ·share) and Poisson(λ·(1 − share)).
+
+    Exact by Poisson thinning: if each TD is independently rushing with probability
+    `share`, the two counts are independent Poissons. The share is the position's
+    Base Rate td_rushing_share (WR 3.3%, TE 2.2%), passed in by the caller.
+    """
+    if not 0 <= rushing_share <= 1:
+        raise ValueError(f"invalid rushing share {rushing_share}")
+    return Poisson(td.lam * rushing_share), Poisson(td.lam * (1 - rushing_share))
