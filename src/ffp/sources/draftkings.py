@@ -42,6 +42,10 @@ def _team(game: Game | None, venue_role: str | None) -> str | None:
     return {"HomePlayer": game.home, "AwayPlayer": game.away}.get(venue_role)
 
 
+def _started(game: Game | None) -> bool:
+    return game is not None and game.started
+
+
 def _without_main_line_copy(ladder: list[Rung], main_line: MainLine | None) -> tuple[Rung, ...]:
     """The Ladder sorted by threshold, minus the Rung DK copies from the Main Line Over.
 
@@ -82,6 +86,9 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> li
         player = sel["participants"][0]["name"]
         entry = sides.setdefault((player, event_id), {"line": float(sel["points"])})
         entry[sel["outcomeType"]] = parse_american(sel["displayOdds"]["american"])
+        venue_roles.setdefault((player, event_id), sel["participants"][0].get("venueRole"))
+    for g in parse_games(main_line_json):
+        games.setdefault(g.game_id, g)
 
     main_lines = {
         key: MainLine(entry["line"], entry["Over"], entry["Under"], BOOK)
@@ -89,6 +96,8 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> li
         if "Over" in entry and "Under" in entry
     }
 
+    keys = list(rungs) + [key for key in main_lines if key not in rungs]
+    keys = [(player, event_id) for player, event_id in keys if not _started(games.get(event_id))]
     return [
         PropMarket(
             player=player,
@@ -96,8 +105,8 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict, stat: str) -> li
             game_id=event_id,
             book=BOOK,
             main_line=main_lines.get((player, event_id)),
-            ladder=_without_main_line_copy(ladder, main_lines.get((player, event_id))),
+            ladder=_without_main_line_copy(rungs.get((player, event_id), []), main_lines.get((player, event_id))),
             team=_team(games.get(event_id), venue_roles[(player, event_id)]),
         )
-        for (player, event_id), ladder in rungs.items()
+        for player, event_id in keys
     ]
