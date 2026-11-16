@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
-from ffp.distributions import fit_receiving_yards
+from ffp.distributions import FitError, StatDistribution, fit_receiving_yards
 from ffp.fair import fair_points
 from ffp.markets import Game, PropMarket
 from ffp.names import normalize_name
@@ -69,18 +69,23 @@ def predict(
         if not player_markets:
             skipped.append(SkippedPlayer(name, NO_MARKETS))
             continue
+        # Only a fit failure skips the player; any other error is a bug or bad configuration and stops the run.
         try:
-            results.append(_player_result(name, player_markets, games, rules))
-        except ValueError as error:  # includes distributions.FitError
+            receiving_yards = fit_receiving_yards(fair_points(player_markets), SPRINT_1_POSITION)
+        except FitError as error:
             skipped.append(SkippedPlayer(name, f"could not fit receiving yards: {error}"))
+            continue
+        results.append(_player_result(name, player_markets, receiving_yards, games, rules))
     return results, skipped
 
 
 def _player_result(
-    name: str, markets: list[PropMarket], games: dict[str, Game], rules: ScoringRules
+    name: str,
+    markets: list[PropMarket],
+    receiving_yards: StatDistribution,
+    games: dict[str, Game],
+    rules: ScoringRules,
 ) -> PlayerResult:
-    points = fair_points(markets)
-    receiving_yards = fit_receiving_yards(points, SPRINT_1_POSITION)
     scores = simulate_scores({"receiving_yards": receiving_yards}, rules)
     game = games.get(markets[0].game_id)
     return PlayerResult(

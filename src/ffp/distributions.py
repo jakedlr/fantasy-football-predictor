@@ -12,6 +12,14 @@ from scipy.special import expit, logit
 from ffp.fair import FairPoint
 
 
+class FitError(ValueError):
+    """The Fair Probabilities can't be fitted: none given, out of the model's reach, or no convergence.
+
+    A problem with one player's market data, unlike a plain ValueError for a bad
+    argument such as an unknown position.
+    """
+
+
 class StatDistribution(Protocol):
     """Probability distribution of one Scoring Stat. Methods accept and return numpy arrays."""
 
@@ -137,7 +145,7 @@ def receiving_yards(mu: float, sd: float, position: str) -> HurdleShiftedGamma:
         if abs(err) < 1e-11 * target:
             return HurdleShiftedGamma(m, sd, pi0, RECEIVING_YARDS_SHIFT)
         m = max(m - err, m / 2)
-    raise ValueError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
+    raise FitError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
 
 
 # Fit settings, research/stat-distributions.md Q3.
@@ -174,7 +182,7 @@ def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
 
     lo, hi = math.log(_MU_RANGE[0]), math.log(_MU_RANGE[1])
     if error(lo) * error(hi) > 0:
-        raise ValueError(
+        raise FitError(
             f"P(Y >= {point.threshold}) = {point.prob} is out of reach for mu in {_MU_RANGE}"
         )
     return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
@@ -195,7 +203,7 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
     """
     _receiving_params(position)  # validate before doing any work
     if not points:
-        raise ValueError("no Fair Probabilities to fit")
+        raise FitError("no Fair Probabilities to fit")
     # The 1-point fit on the heaviest point (the Main Line, when present) is the
     # fallback and the starting point for the full fit.
     start = _fit_main_line_only(max(points, key=lambda p: p.weight), position)

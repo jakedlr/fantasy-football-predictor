@@ -153,3 +153,16 @@ def test_fit_rejects_other_positions():
 def test_fit_rejects_no_points():
     with pytest.raises(ValueError):
         fit_receiving_yards([], "WR")
+
+
+def test_fit_failures_are_fit_errors_but_an_unknown_position_is_not():
+    # predict skips a player only on FitError, so a bad position must not be one.
+    from ffp.distributions import FitError
+
+    with pytest.raises(FitError):
+        fit_receiving_yards([], "WR")
+    with pytest.raises(FitError):
+        fit_receiving_yards([FairPoint(400, 0.999, 3.0)], "WR")  # out of reach for mu <= 500
+    with pytest.raises(ValueError) as raised:
+        fit_receiving_yards([FairPoint(30, 0.5, 3.0)], "RB")
+    assert not isinstance(raised.value, FitError)

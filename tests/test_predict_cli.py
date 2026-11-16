@@ -59,12 +59,13 @@ def test_markdown_list_and_heading_markers_are_not_part_of_names(tmp_path):
 def test_a_player_whose_fit_fails_is_skipped_and_the_rest_are_still_written(tmp_path, monkeypatch):
     # Review finding: one unfittable player aborted the whole run with no output.
     import ffp.predict
+    from ffp.distributions import FitError
 
     real_fit = ffp.predict.fit_receiving_yards
 
     def fit_or_fail(points, position):
         if points[0].threshold == 6:  # Derrick Henry's Main Line 5.5 -> Y >= 6 is his lowest point
-            raise ValueError("out of reach")
+            raise FitError("out of reach")
         return real_fit(points, position)
 
     monkeypatch.setattr(ffp.predict, "fit_receiving_yards", fit_or_fail)
@@ -73,3 +74,17 @@ def test_a_player_whose_fit_fails_is_skipped_and_the_rest_are_still_written(tmp_
     assert data["skipped"] == [
         {"player": "Derrick Henry", "reason": "could not fit receiving yards: out of reach"}
     ]
+
+
+def test_an_error_that_is_not_a_fit_failure_stops_the_run(tmp_path, monkeypatch):
+    # Review finding: every ValueError (e.g. a position with no model) became a quiet per-player skip.
+    import pytest
+
+    import ffp.predict
+
+    monkeypatch.setattr(ffp.predict, "SPRINT_1_POSITION", "RB")
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    with pytest.raises(ValueError, match="no receiving-yards model for position 'RB'"):
+        main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--output-dir", str(tmp_path)])
+    assert not (tmp_path / "OUTPUT.md").exists()
