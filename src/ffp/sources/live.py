@@ -97,7 +97,10 @@ def _merge(responses: list[dict]) -> dict:
             if isinstance(value, list):
                 merged.setdefault(key, []).extend(value)
     if "events" in merged:
-        merged["events"] = list({e["id"]: e for e in reversed(merged["events"])}.values())[::-1]
+        events: dict = {}
+        for event in merged["events"]:
+            events.setdefault(event["id"], event)
+        merged["events"] = list(events.values())
     return merged
 
 
