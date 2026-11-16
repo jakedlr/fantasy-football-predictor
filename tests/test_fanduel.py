@@ -2,8 +2,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ffp.markets import Game
-from ffp.sources.fanduel import parse_games, props_posted
+from ffp.markets import Game, MainLine, PropMarket, Rung
+from ffp.sources.fanduel import parse_games, parse_prop_markets, props_posted
 
 FIXTURES = Path(__file__).resolve().parents[1] / "research" / "fixtures"
 
@@ -81,3 +81,38 @@ def test_tab_with_only_game_lines_has_no_props_posted():
 def test_tab_with_player_markets_has_props_posted():
     for tab in ("receiving", "rushing", "passing", "td_scorer"):
         assert props_posted(load(f"fd_nfl_event_{tab}_tab.json")) is True, tab
+
+
+def rec_yds_markets() -> dict[str, PropMarket]:
+    markets = parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "receiving_yards")
+    return {m.player: m for m in markets}
+
+
+def test_fixture_player_full_ladder_and_main_line():
+    # Hand-read from the fixture: "Zay Flowers - Receiving Yds" (O/U 69.5, −113/−113) and
+    # "Zay Flowers - Alt Receiving Yds" (30+ … 150+). "70+" (−114) is the Over's event,
+    # Y >= 70, so the Main Line carries it and the Rung is dropped.
+    zay = rec_yds_markets()["Zay Flowers"]
+    assert zay == PropMarket(
+        player="Zay Flowers",
+        stat="receiving_yards",
+        game_id="36275768",
+        book="fanduel",
+        main_line=MainLine(69.5, -113.0, -113.0, "fanduel"),
+        ladder=tuple(
+            Rung(threshold, odds, "fanduel")
+            for threshold, odds in [
+                (30, -1100.0),
+                (40, -500.0),
+                (50, -290.0),
+                (60, -182.0),
+                (80, 130.0),
+                (90, 188.0),
+                (100, 260.0),
+                (110, 360.0),
+                (125, 580.0),
+                (150, 1100.0),
+            ]
+        ),
+        team="Baltimore Ravens",
+    )
