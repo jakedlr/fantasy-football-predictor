@@ -1,0 +1,107 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from ffp.scoring import DEFAULT_RULES, SCORING_STATS, load_rules, score
+
+SCORING_DIR = Path(__file__).resolve().parents[1] / "scoring"
+
+# A WR stat line: 6 receptions, 85 receiving yards, 1 receiving TD, 1 fumble lost.
+WR_LINE = {"receptions": 6, "receiving_yards": 85, "receiving_tds": 1, "fumbles_lost": 1}
+
+
+def test_standard_preset_scores_wr_line():
+    # 85 * 0.1 = 8.5 rec yds; 1 * 6 = 6 rec TD; 6 * 0 = 0 receptions; 1 * -2 = -2 fumble
+    # 8.5 + 6 + 0 - 2 = 12.5
+    assert score(WR_LINE, load_rules("standard")) == pytest.approx(12.5)
+
+
+@pytest.mark.parametrize(
+    "preset, expected",
+    [
+        # 12.5 (standard total) + 6 * 0.5 receptions = 15.5
+        ("half-ppr", 15.5),
+        # 12.5 (standard total) + 6 * 1 receptions = 18.5
+        ("ppr", 18.5),
+    ],
+)
+def test_reception_presets_score_wr_line(preset, expected):
+    assert score(WR_LINE, load_rules(preset)) == pytest.approx(expected)
+
+
+def test_espn_league_scores_wr_line():
+    # Full PPR: 6 * 1 receptions = 6; 85 * 0.1 = 8.5 rec yds; 1 * 6 = 6 rec TD; 1 * -2 = -2 fumble
+    # 6 + 8.5 + 6 - 2 = 18.5
+    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    assert rules.name == "espn-league"
+    assert score(WR_LINE, rules) == pytest.approx(18.5)
+
+
+def test_espn_league_scores_qb_line():
+    qb_line = {"passing_yards": 275, "passing_tds": 2, "passing_interceptions": 1, "rushing_yards": 20}
+    # 275 * 0.04 = 11 pass yds; 2 * 4 = 8 pass TD; 1 * -2 = -2 INT; 20 * 0.1 = 2 rush yds
+    # 11 + 8 - 2 + 2 = 19
+    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    assert score(qb_line, rules) == pytest.approx(19)
+
+
+def write_rules(tmp_path, data, name="custom"):
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_unknown_scoring_stat_is_rejected(tmp_path):
+    path = write_rules(tmp_path, {"name": "custom", "offense": {"receptions": 1, "longest_reception": 1}})
+    with pytest.raises(ValueError, match="longest_reception"):
+        load_rules(path)
+
+
+def test_missing_offense_stats_default_to_zero(tmp_path):
+    path = write_rules(tmp_path, {"name": "td-only", "offense": {"receiving_tds": 6}})
+    rules = load_rules(path)
+    assert set(rules.offense) == set(SCORING_STATS)
+    assert rules.offense["receptions"] == 0
+    # Only the TD scores: 1 * 6 = 6
+    assert score(WR_LINE, rules) == pytest.approx(6)
+
+
+def test_espn_league_kicker_and_dst_sections_load():
+    rules = load_rules(DEFAULT_RULES, scoring_dir=SCORING_DIR)
+    assert rules.kicker["pat_made"] == 1
+    assert rules.kicker["fg_missed"] == -1
+    assert rules.kicker["fg_made_by_distance"][-1] == {"min": 60, "max": None, "points": 6}
+    assert rules.dst["sacks"] == 1
+    assert rules.dst["punt_return_tds"] == 6
+    assert rules.dst["points_allowed_tiers"][0] == {"min": 0, "max": 0, "points": 5}
+    assert rules.dst["yards_allowed_tiers"][-1] == {"min": 550, "max": None, "points": -7}
+    assert any("18-27" in a for a in rules.assumptions)
+
+
+def test_kicker_and_dst_do_not_affect_offense_score(tmp_path):
+    data = {"name": "k-heavy", "offense": {"receiving_tds": 6}, "kicker": {"pat_made": 100}, "dst": {"sacks": 100}}
+    rules = load_rules(write_rules(tmp_path, data))
+    # Only the TD scores: 1 * 6 = 6, even if the stat line carries K/DST-looking keys
+    assert score({**WR_LINE, "pat_made": 1, "sacks": 1}, rules) == pytest.approx(6)
+
+
+def test_unknown_rules_name_errors(tmp_path):
+    with pytest.raises(ValueError, match="no-such-league"):
+        load_rules("no-such-league", scoring_dir=tmp_path)
+
+
+def test_numpy_samples_score_elementwise():
+    import numpy as np
+    samples = {
+        "receptions": np.array([0, 6, 10]),
+        "receiving_yards": np.array([0.0, 85.0, 120.0]),
+        "receiving_tds": np.array([0, 1, 2]),
+        "fumbles_lost": np.array([0, 1, 0]),
+    }
+    points = score(samples, load_rules("ppr"))
+    # Sample 0: all zeros = 0
+    # Sample 1: the WR line under ppr = 18.5
+    # Sample 2: 10 * 1 + 120 * 0.1 + 2 * 6 + 0 * -2 = 10 + 12 + 12 = 34
+    assert isinstance(points, np.ndarray)
+    np.testing.assert_allclose(points, [0, 18.5, 34])

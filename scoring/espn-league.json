@@ -1,0 +1,67 @@
+{
+  "name": "espn-league",
+  "description": "The user's ESPN league. Full PPR, 4-pt pass TD, -2 INT, -2 fumble lost.",
+  "offense": {
+    "passing_yards": 0.04,
+    "passing_tds": 4,
+    "passing_interceptions": -2,
+    "passing_2pt": 2,
+    "rushing_yards": 0.1,
+    "rushing_tds": 6,
+    "rushing_2pt": 2,
+    "receptions": 1,
+    "receiving_yards": 0.1,
+    "receiving_tds": 6,
+    "receiving_2pt": 2,
+    "fumbles_lost": -2
+  },
+  "kicker": {
+    "pat_made": 1,
+    "fg_missed": -1,
+    "fg_made_by_distance": [
+      {"min": 0, "max": 39, "points": 3},
+      {"min": 40, "max": 49, "points": 4},
+      {"min": 50, "max": 59, "points": 5},
+      {"min": 60, "max": null, "points": 6}
+    ]
+  },
+  "dst": {
+    "sacks": 1,
+    "interceptions": 2,
+    "fumble_recoveries": 2,
+    "safeties": 2,
+    "blocked_kicks": 2,
+    "interception_return_tds": 6,
+    "fumble_return_tds": 6,
+    "kickoff_return_tds": 6,
+    "punt_return_tds": 6,
+    "blocked_kick_return_tds": 6,
+    "points_allowed_tiers": [
+      {"min": 0, "max": 0, "points": 5},
+      {"min": 1, "max": 6, "points": 4},
+      {"min": 7, "max": 13, "points": 3},
+      {"min": 14, "max": 17, "points": 1},
+      {"min": 18, "max": 27, "points": 0},
+      {"min": 28, "max": 34, "points": -1},
+      {"min": 35, "max": 45, "points": -3},
+      {"min": 46, "max": null, "points": -5}
+    ],
+    "yards_allowed_tiers": [
+      {"min": 0, "max": 99, "points": 5},
+      {"min": 100, "max": 199, "points": 3},
+      {"min": 200, "max": 299, "points": 2},
+      {"min": 300, "max": 349, "points": 0},
+      {"min": 350, "max": 399, "points": -1},
+      {"min": 400, "max": 449, "points": -3},
+      {"min": 450, "max": 499, "points": -5},
+      {"min": 500, "max": 549, "points": -6},
+      {"min": 550, "max": null, "points": -7}
+    ]
+  },
+  "assumptions": [
+    "D/ST points-allowed tier 18-27 (0 pts) is not shown on the league page; assumed to be the ESPN default.",
+    "D/ST yards-allowed tier 300-349 (0 pts) is not shown on the league page; assumed to be the ESPN default.",
+    "D/ST yards-allowed tiers 450-499 (-5), 500-549 (-6) and 550+ (-7) are not shown on the league page; assumed to be ESPN defaults.",
+    "Return TDs and fumble-recovery TDs scored by offensive players are not modelled yet; they count as 0 points."
+  ]
+}
