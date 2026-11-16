@@ -145,7 +145,11 @@ class ScipyDist:
         self.frozen = frozen
 
     def sf(self, x):
-        return self.frozen.sf(np.asarray(x, dtype=float))
+        """P(Y >= x), the protocol's meaning; scipy's sf is P(Y > x), which differs for counts."""
+        x = np.asarray(x, dtype=float)
+        if isinstance(self.frozen.dist, sps.rv_discrete):
+            return self.frozen.sf(np.ceil(x) - 1)
+        return self.frozen.sf(x)
 
     def ppf(self, u):
         return self.frozen.ppf(np.asarray(u, dtype=float))
@@ -223,16 +227,14 @@ def test_receiving_yards_and_tds_are_zero_whenever_receptions_are_zero(make):
     assert no_catch.any()
     assert np.all(samples["receiving_yards"][no_catch] == 0)
     assert np.all(samples["receiving_tds"][no_catch] == 0)
-    # Games with a catch keep the copula's draw: the copula draws first from the rng.
+    # Games with a catch keep the copula's ordering: they are re-ranked among themselves,
+    # so a higher copula draw never gives fewer yards.
     u = correlated_uniforms(WR_STATS, WR_R, 20_000, np.random.default_rng(16))
-    for s in ("receiving_yards", "receiving_tds"):
-        np.testing.assert_array_equal(samples[s][~no_catch], dists[s].ppf(u[s])[~no_catch])
+    order = np.argsort(u["receiving_yards"][~no_catch])
+    assert np.all(np.diff(samples["receiving_yards"][~no_catch][order]) >= 0)
 
 
 def test_the_rec_zero_rule_keeps_a_wr_yards_marginal_close_when_pi0_is_p_rec_zero():
-    # Measured (200k draws): for this WR the rule fires in 0.9% of samples, P(yards = 0)
-    # goes 0.013 -> 0.021 and KS ~ 0.008. For a TE2 (mu_rec 1.5) it fires in ~10%,
-    # P(yards = 0) goes 0.30 -> 0.39 and KS ~ 0.09, so no such bound holds there.
     dists = discrete_wr()
     joint = sample_joint(dists, 40_000, np.random.default_rng(20), corr=(WR_STATS, WR_R))
     indep = sample_stats(dists, 40_000, np.random.default_rng(21))
@@ -308,3 +310,41 @@ def test_config_selects_the_correlation_matrix(monkeypatch, kind, expected):
 def test_bundled_matrices_drive_a_simulation(position, kind):
     result = simulate_scores(discrete_wr(), ESPN, n=2_000, seed=1, corr=params.correlation(position, kind))
     assert result.percentile(5) < result.percentile(95)
+
+
+
+def te2(td_lam=0.15):
+    """A backup TE: mu_rec 1.5 (r from the TE relation), yards pi0 = P(receptions = 0)."""
+    rec = nb(1.5, 1.61 * 1.5**1.45)
+    return {
+        "receptions": rec,
+        "receiving_yards": receiving_yards(15.0, 15.0, "TE", pi0=float(rec.frozen.pmf(0))),
+        "receiving_tds": Poisson(td_lam),
+    }
+
+
+def test_the_no_catch_coupling_keeps_a_te2s_marginals():
+    # Copula review: zeroing yards and TDs after the copula pushed a TE2's P(yards = 0) from
+    # 0.30 to 0.39 (KS 0.09) and his mean yards down 7%. The coupling instead puts every
+    # no-catch game on each stat's own zero mass and re-ranks the catch games into the rest.
+    dists = te2()
+    joint = sample_joint(dists, 100_000, np.random.default_rng(30), corr=(WR_STATS, WR_R))
+    indep = sample_stats(dists, 100_000, np.random.default_rng(31))
+    no_catch = joint["receptions"] == 0
+    assert no_catch.mean() == pytest.approx(0.30, abs=0.01)
+    assert np.all(joint["receiving_yards"][no_catch] == 0) and np.all(joint["receiving_tds"][no_catch] == 0)
+    for stat in ("receiving_yards", "receiving_tds"):
+        assert sps.ks_2samp(joint[stat], indep[stat]).statistic < 0.01, stat
+    assert joint["receiving_yards"].mean() == pytest.approx(dists["receiving_yards"].mean, rel=0.02)
+    assert (joint["receiving_tds"] >= 1).mean() == pytest.approx(1 - np.exp(-0.15), abs=0.005)
+    # ...and the dependence survives.
+    assert sps.spearmanr(joint["receptions"], joint["receiving_yards"]).statistic > 0.6
+
+
+def test_a_td_rate_too_high_for_the_no_catch_games_still_keeps_them_at_zero():
+    # P(TD = 0) = e^-1.5 = 0.22 is below P(receptions = 0) = 0.30: the TD marginal can't be
+    # kept exactly, but the structural rule still holds and nothing breaks.
+    joint = sample_joint(te2(td_lam=1.5), 50_000, np.random.default_rng(32), corr=(WR_STATS, WR_R))
+    no_catch = joint["receptions"] == 0
+    assert np.all(joint["receiving_tds"][no_catch] == 0)
+    assert (joint["receiving_tds"] == 0).mean() >= no_catch.mean()

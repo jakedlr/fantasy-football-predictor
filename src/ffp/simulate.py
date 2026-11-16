@@ -100,7 +100,45 @@ def sample_joint(
     matrix = copula.validate(stats_all, corr[1])
     names, sub = copula.submatrix(stats_all, matrix, stat_dists)
     uniforms = copula.correlated_uniforms(names, sub, n, rng) if names else {}
-    return zero_receiving_without_receptions(sample_stats(stat_dists, n, rng, uniforms))
+    samples = sample_stats(stat_dists, n, rng, uniforms)
+    if "receptions" in samples:
+        for stat in RECEIVING_STATS:
+            if stat in uniforms:
+                samples[stat] = _no_catch_coupled(
+                    stat_dists[stat], uniforms[stat], samples["receptions"] == 0, stat_dists["receptions"]
+                )
+    return zero_receiving_without_receptions(samples)
+
+
+def _no_catch_coupled(
+    dist: StatDistribution, u: np.ndarray, no_catch: np.ndarray, receptions: StatDistribution
+) -> np.ndarray:
+    """Samples of a receiving stat that are 0 on no-catch games and keep the stat's own marginal.
+
+    The stat's quantile scale [0, 1] has its zero mass at [q, q + p0], q = P(Y < 0) and
+    p0 = P(Y = 0). The no-catch games (probability p_nc = P(receptions = 0)) are given the
+    sub-interval [q, q + p_nc] of it, i.e. Y = 0. The catch games are re-ranked among
+    themselves, w uniform on (0, 1) in the order of their copula draws (so the dependence
+    on receptions is kept), and mapped to the rest of the scale: t = w (1 - p_nc), skipping
+    the interval the no-catch games took. Overall, Y then has exactly its own distribution.
+    That needs p0 >= p_nc; with less zero mass (a TD rate too high for this many no-catch
+    games) the no-catch games still get 0, and the catch games take the rest of the scale.
+    """
+    p_nc = float(1 - receptions.sf(np.array([1]))[0])
+    q = float(1 - dist.sf(np.array([0]))[0])
+    p0 = float(dist.sf(np.array([0]))[0] - dist.sf(np.array([1]))[0])
+    taken = min(p_nc, p0)  # the zero mass the no-catch games use
+    catch = ~no_catch
+    out = np.zeros_like(u, dtype=float)
+    m = int(catch.sum())
+    if m:
+        ranks = np.empty(m)
+        ranks[np.argsort(u[catch], kind="stable")] = np.arange(m)
+        w = (ranks + 0.5) / m
+        t = w * (1 - taken)
+        v = np.where(t < q, t, t + taken)
+        out[catch] = dist.ppf(np.clip(v, 1e-12, 1 - 1e-12))
+    return out
 
 
 def simulate_scores(
