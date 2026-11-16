@@ -8,7 +8,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–4 are done (Sprint 4 is in review as PR #7). Every QB, RB, WR and TE gets a full Score Distribution. Kickers and D/ST are not supported yet.
+Sprints 0–4 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution. Kickers and D/ST are not supported yet.
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
