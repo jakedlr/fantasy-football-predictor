@@ -168,3 +168,26 @@ def test_started_games_are_excluded():
         ],
     }
     assert parse_prop_markets(ladder, main_line, "receiving_yards") == []
+
+
+def with_alternate_line(response: dict, player: str, line: float, over: str, under: str) -> dict:
+    """A copy of a DK O/U response with a non-main Over/Under pair for `player` listed first."""
+    originals = [
+        s for s in response["selections"]
+        if s.get("participants") and s["participants"][0]["name"] == player
+    ]
+    alternates = []
+    for sel, odds in zip(sorted(originals, key=lambda s: s["outcomeType"] != "Over"), (over, under)):
+        alt = json.loads(json.dumps(sel))
+        alt.update(points=line, main=False, tags=[t for t in sel["tags"] if t != "MainPointLine"])
+        alt["displayOdds"]["american"] = odds
+        alternates.append(alt)
+    return {**response, "selections": alternates + response["selections"]}
+
+
+def test_main_line_ignores_alternate_over_under_lines():
+    # Review finding: an alternate pair (64.5) mixed its line and odds into the Main Line.
+    ou = with_alternate_line(load("dk_nfl_rec_yds_ou.json"), "Zay Flowers", 64.5, "−160", "+125")
+    markets = parse_prop_markets(load("dk_nfl_rec_yds_ladder.json"), ou, "receiving_yards")
+    zay = next(m for m in markets if m.player == "Zay Flowers")
+    assert zay.main_line == MainLine(71.5, -113.0, -111.0, "draftkings")

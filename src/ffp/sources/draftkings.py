@@ -73,11 +73,19 @@ def _ladders(ladder_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key,
     return rungs
 
 
+def _is_main(sel: dict) -> bool:
+    return bool(sel.get("main")) or "MainPointLine" in sel.get("tags", ())
+
+
 def _main_lines(main_line_json: dict, venue_roles: dict[Key, str | None]) -> dict[Key, MainLine]:
-    """Each player's Main Line, where the response has both the Over and the Under."""
+    """Each player's Main Line, where the response has both its Over and its Under.
+
+    Only selections DK marks as the main line count; alternate Over/Under pairs
+    at other lines are ignored so they can't mix into the Main Line.
+    """
     sides: dict[Key, dict] = {}
     for key, venue_role, sel in _player_selections(main_line_json):
-        if sel.get("outcomeType") not in ("Over", "Under"):
+        if sel.get("outcomeType") not in ("Over", "Under") or not _is_main(sel):
             continue
         entry = sides.setdefault(key, {"line": float(sel["points"])})
         entry[sel["outcomeType"]] = _odds(sel)
