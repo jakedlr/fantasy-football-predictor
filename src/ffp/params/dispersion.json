@@ -1,5 +1,5 @@
 {
-  "source": "scripts/build_params.py on 2026-11-15 from nflverse (CC-BY 4.0) via nflreadpy; fit on 2015-2021 REG+POST with zero-stat games recovered from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); receiving-yards shift is an input, not fitted",
+  "source": "scripts/build_params.py on 2026-11-16 from nflverse (CC-BY 4.0) via nflreadpy; fit on 2015-2021 REG+POST with zero-stat games recovered from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); shifted-gamma shifts are inputs, not fitted; QB relations on starters (trailing 4-game pass attempts >= 20); see RELATIONS in the script for the per-position mu floors",
   "receiving_yards": {
     "WR": {
       "family": "hurdle_shifted_gamma",
@@ -43,6 +43,71 @@
       "r_b": 1.018
     }
   },
+  "rushing_yards": {
+    "RB": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 10.0,
+      "pi0_c0": 6.23,
+      "pi0_c1": -2.645,
+      "sd_a": 3.496,
+      "sd_b": 0.581
+    },
+    "QB": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 10.0,
+      "pi0_c0": 0.655,
+      "pi0_c1": -1.05,
+      "sd_a": 2.271,
+      "sd_b": 0.661
+    },
+    "WR": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 10.0,
+      "pi0_c0": 2.941,
+      "pi0_c1": -1.745,
+      "sd_a": 3.883,
+      "sd_b": 0.464
+    },
+    "TE": {
+      "family": "hurdle_shifted_gamma",
+      "shift": 10.0,
+      "pi0_c0": 2.941,
+      "pi0_c1": -1.745,
+      "sd_a": 3.883,
+      "sd_b": 0.464
+    }
+  },
+  "carries": {
+    "RB": {
+      "family": "negative_binomial",
+      "r_a": 0.082,
+      "r_b": 1.713
+    },
+    "QB": {
+      "family": "negative_binomial",
+      "r_a": 3.152,
+      "r_b": 0.585
+    },
+    "WR": {
+      "family": "negative_binomial",
+      "r_a": 2.072,
+      "r_b": 0.245
+    },
+    "TE": {
+      "family": "negative_binomial",
+      "r_a": 2.072,
+      "r_b": 0.245
+    }
+  },
+  "passing_yards": {
+    "QB": {
+      "family": "hurdle_normal",
+      "pi0_c0": 44.82,
+      "pi0_c1": -9.169,
+      "sd_a": 441.383,
+      "sd_b": -0.312
+    }
+  },
   "n_games": {
     "receiving_yards": {
       "WR": 10771,
@@ -53,6 +118,27 @@
       "WR": 9656,
       "TE": 3398,
       "RB": 5064
+    },
+    "rushing_yards": {
+      "RB": 6900,
+      "QB": 3181,
+      "WR": 426
+    },
+    "carries": {
+      "RB": 6593,
+      "QB": 3364,
+      "WR": 1138
+    },
+    "passing_yards": {
+      "QB": 3370
+    }
+  },
+  "borrowed": {
+    "rushing_yards": {
+      "TE": "WR"
+    },
+    "carries": {
+      "TE": "WR"
     }
   }
 }

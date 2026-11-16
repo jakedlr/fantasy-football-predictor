@@ -20,6 +20,7 @@ import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import polars as pl
@@ -41,11 +42,51 @@ CORRELATION_STATS = {
 QUALIFY = {"QB": ("attempts", 15), "RB": ("offense_pct", 0.30), "WR": ("offense_pct", 0.50), "TE": ("offense_pct", 0.50)}
 WITHIN_MIN_GAMES = 6
 PD_FLOOR = 1e-3
+WORKHORSE_CARRY_SHARE = 0.55  # bell-cow RB tier (nflverse-data.md 3d)
 
-# Dispersion (stat-distributions.md): prop-eligible floors on the pre-game proxy mu.
-RECEIVING_YARDS_MIN_MU = {"WR": 20.0, "TE": 20.0, "RB": 10.0}
-RECEPTIONS_MIN_MU = {"WR": 2.0, "TE": 2.0, "RB": 1.5}
-DEFAULT_SHIFT = {"WR": 5.0, "TE": 5.0, "RB": 10.0}
+# Dispersion (stat-distributions.md). Families, as ffp.distributions implements them:
+HURDLE_GAMMA = "hurdle_shifted_gamma"  # P(0) mass + discretised zero-truncated shifted gamma
+HURDLE_NORMAL = "hurdle_normal"  # P(0) mass + discretised zero-truncated normal (no shift)
+NEG_BIN = "negative_binomial"  # NB(mean mu, size r = r_a * mu^r_b)
+
+
+class Relation(NamedTuple):
+    """One mean-dispersion relation to fit: a stat, the usage stat its proxy mu trails
+    (targets, carries or pass attempts), its family, per position the prop-eligible floor
+    on the pre-game proxy mu (the positions to fit are this dict's keys), and the positions
+    too thin to fit that borrow another position's fitted relation ({borrower: lender})."""
+
+    stat: str
+    usage: str
+    family: str
+    min_mu: dict[str, float]
+    borrow: dict[str, str] = {}
+
+
+# Floors: research's prop-eligible floors for receiving (stat-distributions.md "Sample").
+# Rushing and carries go lower than research's RB 25-yard floor to cover the backup RBs and
+# pocket QBs books also price (RB2 rush lines ~15-25, pocket-QB lines ~2-10). WR rushing:
+# mu >= 5 yards (gadget receivers), 426 games of 38 WRs in 2015-21, stable under a
+# player bootstrap and clearly narrower than the RB relation. WR carries: mu >= 0.5 (at
+# >= 1 only 298 games and an unstable r). TE rushing is too thin to fit (7 TEs, 75 games at
+# mu >= 5, mostly one gadget QB; a bootstrap's 90% band for P(0) at mu 15 is 1%-79%),
+# so TEs borrow the WR relations, which their sample resembles (P(0) and sd at mu 10-25).
+RELATIONS = (
+    Relation("receiving_yards", "targets", HURDLE_GAMMA, {"WR": 20.0, "TE": 20.0, "RB": 10.0}),
+    Relation("receptions", "targets", NEG_BIN, {"WR": 2.0, "TE": 2.0, "RB": 1.5}),
+    Relation("rushing_yards", "carries", HURDLE_GAMMA, {"RB": 15.0, "QB": 2.0, "WR": 5.0}, {"TE": "WR"}),
+    Relation("carries", "carries", NEG_BIN, {"RB": 4.0, "QB": 1.0, "WR": 0.5}, {"TE": "WR"}),
+    Relation("passing_yards", "attempts", HURDLE_NORMAL, {"QB": 150.0}),
+)
+# Every QB relation is fit on starters only: trailing-4-game mean pass attempts >= 20
+# (stat-distributions.md "Sample": QB trailing attempts >= 20).
+TRAILING_QUALIFY = {"QB": ("attempts", 20.0)}
+# The shifted gamma's shift is an input, not fitted (research Q1a: 5 for WR/TE receiving,
+# 10 for RB receiving and all rushing). A committed dispersion.json overrides these.
+DEFAULT_SHIFT = {
+    "receiving_yards": {"WR": 5.0, "TE": 5.0, "RB": 10.0},
+    "rushing_yards": {"QB": 10.0, "RB": 10.0, "WR": 10.0, "TE": 10.0},
+}
 PROXY_FEATURES = ["trail8", "trail4", "trail8_usage", "trail4_usage", "season_to_date", "trail_snap", "implied_total"]
 PMF_FLOOR = 1e-6
 
@@ -239,6 +280,32 @@ def correlation_entry(df: pl.DataFrame, cols: list[str], kind: str, *, draws: in
     }
 
 
+def with_trailing_carry_share(games: pl.DataFrame, player_stats: pl.DataFrame) -> pl.DataFrame:
+    """games plus trail_carry_share: the player's mean share of his team's carries over his
+    previous 2-4 games of the same season (nflverse-data.md 3d), null with fewer than 2.
+    Team carries sum every player on the team in player_stats, whatever his position."""
+    team = player_stats.group_by("game_id", "team").agg(pl.col("carries").fill_null(0).sum().alias("team_carries"))
+    share = pl.col("carries") / pl.col("team_carries")
+    return (games.join(team, on=["game_id", "team"], how="left")
+            .sort("player_id", "season", "week")
+            .with_columns(trail_carry_share=share.shift(1).rolling_mean(4, min_samples=2).over("player_id", "season"))
+            .drop("team_carries"))
+
+
+def workhorse_override(rb: pl.DataFrame, *, draws: int, seed: int = 0) -> dict:
+    """The bell-cow RB correlation override (nflverse-data.md 3d, 5.2): the RB matrices
+    re-estimated on qualifying games with trailing carry share >= WORKHORSE_CARRY_SHARE.
+    Bell-cows trade carries for catches with game script (RuYd-Rec about -0.12)."""
+    df = rb.filter(pl.col("trail_carry_share") >= WORKHORSE_CARRY_SHARE)
+    cols = CORRELATION_STATS["RB"]
+    return {
+        "rule": (f"RB games with trailing carry share >= {WORKHORSE_CARRY_SHARE} (mean share of team carries over "
+                 "the player's previous 2-4 games of the season); same methods as the position matrices"),
+        "within": correlation_entry(df, cols, "within", draws=draws, seed=seed),
+        "pooled": correlation_entry(df, cols, "pooled", draws=draws, seed=seed),
+    }
+
+
 # ---------------------------------------------------------------- base rates
 
 
@@ -259,6 +326,11 @@ def base_rates(qual: dict[str, pl.DataFrame]) -> dict:
         "td_rushing_share": {p: round(total(p, pl.col("rushing_tds")) / total(p, pl.col("rushing_tds") + pl.col("receiving_tds")), 3) for p in SKILL},
         "carries_per_game": {p: round(total(p, pl.col("carries")) / n[p], 3) for p in ("WR", "TE")},
         "n_games": n,
+        "qb_sacks_per_game": round(total("QB", pl.col("sacks_suffered")) / n["QB"], 3),
+        "qb_sacks_per_attempt": round(total("QB", pl.col("sacks_suffered")) / total("QB", pl.col("attempts")), 4),
+        "qb_fumbles_lost_per_carry": round(total("QB", pl.col("rushing_fumbles_lost")) / total("QB", pl.col("carries")), 4),
+        "yards_per_carry": {p: (round(total(p, pl.col("rushing_yards")) / c, 3) if (c := total(p, pl.col("carries"))) else None)
+                            for p in SKILL},
     }
 
 
@@ -350,30 +422,71 @@ def _location_for_nonzero_mean(target: np.ndarray, sd: np.ndarray, shift: float,
     raise ValueError(f"nonzero mean did not converge for {int((~done).sum())} of {done.size} targets")
 
 
-def _hurdle_nonzero_nll(params, target: np.ndarray, y: np.ndarray, shift: float) -> float:
+def _normal_location_for_nonzero_mean(target: np.ndarray, sd: np.ndarray, max_iter: int = 100) -> np.ndarray:
+    """The normal location m whose discretised, zero-truncated nonzero part has mean `target`.
+
+    Discretising N(m, sd) into integer bins centred on the integers keeps the mean at m (the
+    error is ~exp(-2 pi^2 sd^2), nil for sd >= 1), and the dropped bin y = 0 adds nothing to
+    the sum, so the nonzero mean is m / (1 - Z), Z = P(-1/2 < X < 1/2). Solved by the
+    fixed point m <- target (1 - Z(m)), exact for the discrete model (no approximation, unlike
+    the gamma's continuous-part mean). Raises ValueError where it doesn't converge."""
+    target = np.asarray(target, dtype=float)
+    m = target.copy()
+    for _ in range(max_iter):
+        z = special.ndtr((0.5 - m) / sd) - special.ndtr((-0.5 - m) / sd)
+        new = target * (1.0 - z)
+        if np.all(np.abs(new - m) < 1e-11 * np.abs(target)):
+            return new
+        m = new
+    raise ValueError(f"nonzero mean did not converge for {target.size} targets")
+
+
+def _gamma_cdf(target: np.ndarray, sd: np.ndarray, shift: float):
+    """cdf of the continuous nonzero part X = G - shift in yards, gamma G located as at runtime."""
+    mean = _location_for_nonzero_mean(target, sd, shift) + shift
+    k, scale = (mean / sd) ** 2, sd * sd / mean
+    return lambda v: special.gammainc(k, np.maximum(v + shift, 0.0) / scale)
+
+
+def _normal_cdf(target: np.ndarray, sd: np.ndarray, shift: float):
+    """cdf of the continuous nonzero part X ~ N(m, sd), located as at runtime (shift unused)."""
+    m = _normal_location_for_nonzero_mean(target, sd)
+    return lambda v: special.ndtr((v - m) / sd)
+
+
+NONZERO_CDF = {HURDLE_GAMMA: _gamma_cdf, HURDLE_NORMAL: _normal_cdf}
+# Nelder-Mead start (ln a, b) per family: near the research relations (gamma b ~ 0.5-0.8;
+# passing-yards sd nearly flat at ~80).
+SD_START = {HURDLE_GAMMA: (math.log(3.0), 0.6), HURDLE_NORMAL: (math.log(80.0), 0.0)}
+
+
+def _hurdle_nonzero_nll(params, target: np.ndarray, y: np.ndarray, shift: float, family: str = HURDLE_GAMMA) -> float:
     """Negative log-likelihood of nonzero integer yards under the runtime model: a zero-truncated,
-    discretized gamma on y + shift with sd a * target^b, its location solved so the truncated
-    nonzero mean is `target` = mu / (1 - pi0) (params = ln a, b)."""
+    discretised continuous part X (shifted gamma or normal) with sd a * target^b, located so the
+    truncated nonzero mean is `target` = mu / (1 - pi0) (params = ln a, b). P(y) is
+    [F(y + 1/2) - F(y - 1/2)] / (1 - Z), Z the y = 0 bin, floored at PMF_FLOOR so a yards value
+    outside the support (a QB kneel game below -shift) cannot break the likelihood."""
     a, b = np.exp(params[0]), params[1]
     sd = a * target ** b
     try:
-        mean = _location_for_nonzero_mean(target, sd, shift) + shift
+        cdf = NONZERO_CDF[family](target, sd, shift)
     except ValueError:  # no runtime distribution exists here either: steer the optimiser away
         return math.inf
-    k, scale = (mean / sd) ** 2, sd * sd / mean
-    cdf = lambda v: special.gammainc(k, np.maximum(v, 0.0) / scale)  # noqa: E731
-    p = cdf(y + shift + 0.5) - cdf(y + shift - 0.5)
-    p0 = cdf(shift + 0.5) - cdf(shift - 0.5)
+    p = cdf(y + 0.5) - cdf(y - 0.5)
+    p0 = cdf(0.5) - cdf(-0.5)
     return float(-np.sum(np.log(np.maximum(p, PMF_FLOOR) / (1.0 - p0))))
 
 
-def fit_sd_relation(mu: np.ndarray, y: np.ndarray, c0: float, c1: float, shift: float) -> tuple[float, float]:
+def fit_sd_relation(mu: np.ndarray, y: np.ndarray, c0: float, c1: float, shift: float,
+                    family: str = HURDLE_GAMMA) -> tuple[float, float]:
     """MLE of (a, b) in sd_nz = a * m^b for the nonzero part, m = mu / (1 - pi0(mu)) its mean,
-    with the gamma located as at runtime (see _hurdle_nonzero_nll)."""
+    with the continuous part located as at runtime (see _hurdle_nonzero_nll)."""
     nz = y != 0
     m = mu[nz] / (1.0 - special.expit(c0 + c1 * np.log(mu[nz])))
-    res = optimize.minimize(_hurdle_nonzero_nll, x0=[np.log(3.0), 0.6], args=(m, y[nz], shift), method="Nelder-Mead",
-                            options={"xatol": 1e-5, "fatol": 1e-4, "maxiter": 2000})
+    res = optimize.minimize(_hurdle_nonzero_nll, x0=list(SD_START[family]), args=(m, y[nz], shift, family),
+                            method="Nelder-Mead", options={"xatol": 1e-5, "fatol": 1e-4, "maxiter": 2000})
+    if not res.success:
+        raise RuntimeError(f"sd relation fit did not converge: {res.message}")
     return float(np.exp(res.x[0])), float(res.x[1])
 
 
@@ -390,44 +503,70 @@ def fit_nb_relation(mu: np.ndarray, y: np.ndarray) -> tuple[float, float]:
 
 
 def proxy_sample(games: pl.DataFrame, totals: pl.DataFrame, position: str, stat: str, usage: str, min_mu: float) -> pl.DataFrame:
-    """Prop-eligible games of a position with the leave-one-season-out proxy mu."""
-    df = proxy_features(games.filter(pl.col("position") == position), stat, usage, totals)
+    """Prop-eligible games of a position with the leave-one-season-out proxy mu: mu >= min_mu,
+    and for a position in TRAILING_QUALIFY (QB) a trailing-4-game mean of its column at or
+    above the floor. The proxy is fit on all the position's games; the filters come after."""
+    pos_games = games.filter(pl.col("position") == position).sort("player_id", "season", "week")
+    qualify = TRAILING_QUALIFY.get(position)
+    if qualify:
+        pos_games = pos_games.with_columns(
+            qualify_trail=pl.col(qualify[0]).shift(1).rolling_mean(4, min_samples=4).over("player_id"))
+    df = proxy_features(pos_games, stat, usage, totals)
     df = df.with_columns(mu=pl.Series(ols_leave_one_season_out(df, stat, PROXY_FEATURES)))
-    return df.filter(pl.col("mu") >= min_mu)
+    df = df.filter(pl.col("mu") >= min_mu)
+    return df.filter(pl.col("qualify_trail") >= qualify[1]) if qualify else df
 
 
-def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[str, float]) -> dict:
-    """Fitted relations per position; sample sizes go under a separate "n_games" key so
-    each relation entry holds only its family and parameters."""
-    out: dict = {"receiving_yards": {}, "receptions": {}, "n_games": {"receiving_yards": {}, "receptions": {}}}
-    for pos in ("WR", "TE", "RB"):
-        df = proxy_sample(games, totals, pos, "receiving_yards", "targets", RECEIVING_YARDS_MIN_MU[pos])
-        mu, y = df["mu"].to_numpy(), df["receiving_yards"].to_numpy()
-        c0, c1 = fit_pi0(mu, y)
-        a, b = fit_sd_relation(mu, y, c0, c1, shifts[pos])
-        out["receiving_yards"][pos] = {
-            "family": "hurdle_shifted_gamma", "shift": shifts[pos],
-            "pi0_c0": round(c0, 3), "pi0_c1": round(c1, 3), "sd_a": round(a, 3), "sd_b": round(b, 3),
-        }
-        out["n_games"]["receiving_yards"][pos] = df.height
-        df = proxy_sample(games, totals, pos, "receptions", "targets", RECEPTIONS_MIN_MU[pos])
-        r_a, r_b = fit_nb_relation(df["mu"].to_numpy(), df["receptions"].to_numpy())
-        out["receptions"][pos] = {"family": "negative_binomial", "r_a": round(r_a, 3), "r_b": round(r_b, 3)}
-        out["n_games"]["receptions"][pos] = df.height
+def hurdle_entry(mu: np.ndarray, y: np.ndarray, family: str, shift: float) -> dict:
+    """pi0 and sd relations of a hurdle yards stat; a normal has no shift, so no "shift" key."""
+    c0, c1 = fit_pi0(mu, y)
+    a, b = fit_sd_relation(mu, y, c0, c1, shift, family)
+    head = {"family": family, "shift": shift} if family == HURDLE_GAMMA else {"family": family}
+    return {**head, "pi0_c0": round(c0, 3), "pi0_c1": round(c1, 3), "sd_a": round(a, 3), "sd_b": round(b, 3)}
+
+
+def nb_entry(mu: np.ndarray, y: np.ndarray) -> dict:
+    r_a, r_b = fit_nb_relation(mu, y)
+    return {"family": NEG_BIN, "r_a": round(r_a, 3), "r_b": round(r_b, 3)}
+
+
+def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[str, dict[str, float]],
+                      relations: tuple[Relation, ...] = RELATIONS) -> dict:
+    """Fitted relations per stat and position; sample sizes go under a separate "n_games" key
+    so each relation entry holds only its family and parameters. A borrowing position gets a
+    copy of its lender's entry, listed under "borrowed" instead of "n_games"."""
+    out: dict = {r.stat: {} for r in relations}
+    out["n_games"] = {r.stat: {} for r in relations}
+    out["borrowed"] = {r.stat: dict(r.borrow) for r in relations if r.borrow}
+    for rel in relations:
+        for pos, min_mu in rel.min_mu.items():
+            df = proxy_sample(games, totals, pos, rel.stat, rel.usage, min_mu)
+            mu, y = df["mu"].to_numpy(), df[rel.stat].to_numpy()
+            if rel.family == NEG_BIN:
+                out[rel.stat][pos] = nb_entry(mu, y)
+            else:
+                out[rel.stat][pos] = hurdle_entry(mu, y, rel.family, shifts.get(rel.stat, {}).get(pos, 0.0))
+            out["n_games"][rel.stat][pos] = df.height
+        for pos, lender in rel.borrow.items():
+            out[rel.stat][pos] = dict(out[rel.stat][lender])
     return out
 
 
 # ---------------------------------------------------------------- build
 
 
-def existing_shifts(out_dir: Path) -> dict[str, float]:
-    """Receiving-yards shifts are an input: keep whatever the committed dispersion.json has."""
-    shifts = dict(DEFAULT_SHIFT)
+def existing_shifts(out_dir: Path) -> dict[str, dict[str, float]]:
+    """Shifted-gamma shifts are an input: keep whatever the committed dispersion.json has,
+    per stat and position, over DEFAULT_SHIFT."""
+    shifts = {stat: dict(by_pos) for stat, by_pos in DEFAULT_SHIFT.items()}
     path = out_dir / "dispersion.json"
     if path.exists():
-        for pos, entry in json.loads(path.read_text()).get("receiving_yards", {}).items():
-            if "shift" in entry:
-                shifts[pos] = float(entry["shift"])
+        for stat, table in json.loads(path.read_text()).items():
+            if stat == "n_games" or not isinstance(table, dict):
+                continue
+            for pos, entry in table.items():
+                if isinstance(entry, dict) and "shift" in entry:
+                    shifts.setdefault(stat, {})[pos] = float(entry["shift"])
     return shifts
 
 
@@ -435,7 +574,8 @@ def season_label(seasons: list[int]) -> str:
     return f"{seasons[0]}-{seasons[-1]}" if seasons == list(range(seasons[0], seasons[-1] + 1)) else ",".join(map(str, seasons))
 
 
-def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: dict[str, float], *, draws: int, today: str) -> dict[str, dict]:
+def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: dict[str, dict[str, float]], *, draws: int,
+          today: str) -> dict[str, dict]:
     stamp = f"scripts/build_params.py on {today} from nflverse (CC-BY 4.0) via nflreadpy"
     ps, snaps = raw.player_stats, raw.snap_counts
 
@@ -451,16 +591,26 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
     }
     for kind in ("within", "pooled"):
         correlation[kind] = {p: correlation_entry(qual[p], CORRELATION_STATS[p], kind, draws=draws, seed=0) for p in SKILL}
+    season_ps = ps.filter(pl.col("season").is_in(seasons))
+    rb = qualifying_games(with_trailing_carry_share(games.filter(pl.col("position") == "RB"), season_ps), "RB")
+    correlation["rb_workhorse"] = workhorse_override(rb, draws=draws)
 
     rates = base_rates(qual)
     base = {"source": f"{stamp}; {season_label(seasons)} REG qualifying games (nflverse-data.md section 4)", **rates,
-            "carries_per_game_note": "mean carries per qualifying game (WR/TE), for expected touches when there is no rushing market"}
+            "carries_per_game_note": ("mean carries per qualifying game (WR/TE), for expected touches when there is no "
+                                      "rushing market; QB/RB have no entry on purpose (see yards_per_carry)"),
+            "yards_per_carry_note": ("pooled rushing yards / carries per position, to turn a rushing-yards mean into "
+                                     "expected carries when there is no rush-attempts market (FanDuel has none)"),
+            "qb_sacks_note": ("QB fumbles lost (S4.4) = qb_fumbles_lost_per_sack x expected sacks (qb_sacks_per_attempt x "
+                              "expected pass attempts, else qb_sacks_per_game) + qb_fumbles_lost_per_carry x expected "
+                              "carries; sacks_suffered and attempts from nflverse player_stats")}
 
     dgames = skill_games(ps.filter(pl.col("season").is_in(dispersion_seasons)),
                          snaps.filter(pl.col("season").is_in(dispersion_seasons)), raw.players, recover_zeros=True)
     dispersion = {"source": (f"{stamp}; fit on {season_label(dispersion_seasons)} REG+POST with zero-stat games recovered "
                              "from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); "
-                             "receiving-yards shift is an input, not fitted"),
+                             "shifted-gamma shifts are inputs, not fitted; QB relations on starters (trailing "
+                             "4-game pass attempts >= 20); see RELATIONS in the script for the per-position mu floors"),
                   **dispersion_params(dgames, implied_team_totals(raw.schedules), shifts)}
     return {"correlation": correlation, "base_rates": base, "dispersion": dispersion}
 

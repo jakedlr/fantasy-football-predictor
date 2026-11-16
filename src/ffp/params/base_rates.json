@@ -1,5 +1,5 @@
 {
-  "source": "scripts/build_params.py on 2026-11-15 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG qualifying games (nflverse-data.md section 4)",
+  "source": "scripts/build_params.py on 2026-11-16 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG qualifying games (nflverse-data.md section 4)",
   "fumbles_lost_per_touch": {
     "RB": 0.0044,
     "WR": 0.0065,
@@ -37,5 +37,16 @@
     "WR": 7130,
     "TE": 3172
   },
-  "carries_per_game_note": "mean carries per qualifying game (WR/TE), for expected touches when there is no rushing market"
+  "qb_sacks_per_game": 2.302,
+  "qb_sacks_per_attempt": 0.0712,
+  "qb_fumbles_lost_per_carry": 0.0158,
+  "yards_per_carry": {
+    "QB": 4.536,
+    "RB": 4.348,
+    "WR": 5.643,
+    "TE": 3.934
+  },
+  "carries_per_game_note": "mean carries per qualifying game (WR/TE), for expected touches when there is no rushing market; QB/RB have no entry on purpose (see yards_per_carry)",
+  "yards_per_carry_note": "pooled rushing yards / carries per position, to turn a rushing-yards mean into expected carries when there is no rush-attempts market (FanDuel has none)",
+  "qb_sacks_note": "QB fumbles lost (S4.4) = qb_fumbles_lost_per_sack x expected sacks (qb_sacks_per_attempt x expected pass attempts, else qb_sacks_per_game) + qb_fumbles_lost_per_carry x expected carries; sacks_suffered and attempts from nflverse player_stats"
 }

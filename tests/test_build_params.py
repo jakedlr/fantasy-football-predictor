@@ -168,6 +168,38 @@ def test_correlation_entry_keeps_the_params_schema():
     assert entry["n_games"] == 80 and entry["n_players"] == 10
 
 
+def test_trailing_carry_share_uses_earlier_games_of_the_season():
+    # Team carries come from every player on the team (an FB or WR carry counts too).
+    rows = [{"player_id": "R", "position": "RB", "season": 2023, "week": w, "game_id": f"g{w}", "carries": c}
+            for w, c in ((1, 10.0), (2, 20.0), (3, 15.0), (4, 5.0))]
+    rows += [{"player_id": "F", "position": "FB", "season": 2023, "week": w, "game_id": f"g{w}", "carries": 20.0 - c}
+             for w, c in ((1, 10.0), (2, 20.0), (3, 15.0), (4, 5.0))]
+    rows.append({"player_id": "R", "position": "RB", "season": 2024, "week": 1, "game_id": "n1", "carries": 9.0})
+    rows.append({"player_id": "F", "position": "FB", "season": 2024, "week": 1, "game_id": "n1", "carries": 1.0})
+    ps = stat_rows(rows)
+    out = bp.with_trailing_carry_share(ps.filter(pl.col("position") == "RB"), ps)
+    share = dict(zip(zip(out["season"], out["week"]), out["trail_carry_share"]))
+    # Shares 0.5, 1.0, 0.75, 0.25: mean of the previous 2-4 games, none before 2, reset each season.
+    assert share[(2023, 1)] is None and share[(2023, 2)] is None
+    assert share[(2023, 3)] == pytest.approx(0.75) and share[(2023, 4)] == pytest.approx(0.75)
+    assert share[(2024, 1)] is None
+
+
+def test_workhorse_override_entry():
+    rng = np.random.default_rng(13)
+    rows = []
+    for k in range(4):
+        for w in range(1, 18):
+            rows.append({"player_id": f"R{k}", "season": 2023, "week": w,
+                         "trail_carry_share": 0.7 if k < 3 else 0.3, "rushing_yards": float(rng.gamma(4, 20)),
+                         "rushing_tds": float(rng.poisson(0.5)), "receptions": float(rng.poisson(3)),
+                         "receiving_yards": float(rng.gamma(2, 10)), "receiving_tds": float(rng.poisson(0.1))})
+    entry = bp.workhorse_override(pl.DataFrame(rows), draws=5_000)
+    assert entry["rule"].startswith("RB games with trailing carry share >= 0.55")
+    assert entry["within"]["stats"] == bp.CORRELATION_STATS["RB"]
+    assert entry["within"]["n_players"] == 3 and entry["pooled"]["n_games"] == 51
+
+
 # ---------------------------------------------------------------- base rates
 
 
@@ -178,22 +210,31 @@ def test_base_rates_hand_computed():
 
     qual = {
         "QB": pos("QB", [{"sacks_suffered": 4.0, "sack_fumbles_lost": 1.0, "fumbles_lost_total": 1.0,
-                          "passing_2pt_conversions": 1.0, "rushing_tds": 1.0}, {"carries": 2.0}]),
-        "RB": pos("RB", [{"carries": 18.0, "receptions": 2.0, "fumbles_lost_total": 1.0, "rushing_tds": 3.0,
-                          "receiving_tds": 1.0, "rushing_2pt_conversions": 1.0}]),
-        "WR": pos("WR", [{"carries": 1.0, "receptions": 4.0, "fumbles_lost_total": 1.0, "receiving_tds": 1.0},
+                          "passing_2pt_conversions": 1.0, "rushing_tds": 1.0, "attempts": 30.0},
+                         {"carries": 2.0, "rushing_yards": 10.0, "rushing_fumbles_lost": 1.0, "fumbles_lost_total": 1.0,
+                          "attempts": 20.0}]),
+        "RB": pos("RB", [{"carries": 18.0, "rushing_yards": 72.0, "receptions": 2.0, "fumbles_lost_total": 1.0,
+                          "rushing_tds": 3.0, "receiving_tds": 1.0, "rushing_2pt_conversions": 1.0}]),
+        "WR": pos("WR", [{"carries": 1.0, "rushing_yards": 6.0, "receptions": 4.0, "fumbles_lost_total": 1.0,
+                          "receiving_tds": 1.0},
                          {"receptions": 5.0, "receiving_2pt_conversions": 1.0}]),
         "TE": pos("TE", [{"receptions": 4.0, "receiving_tds": 2.0}]),
     }
     r = bp.base_rates(qual)
     assert r["fumbles_lost_per_touch"] == {"RB": 0.05, "WR": 0.1, "TE": 0.0}
     assert r["qb_fumbles_lost_per_sack"] == 0.25
-    assert r["fumbles_lost_per_game"] == {"QB": 0.5, "RB": 1.0, "WR": 0.5, "TE": 0.0}
+    assert r["fumbles_lost_per_game"] == {"QB": 1.0, "RB": 1.0, "WR": 0.5, "TE": 0.0}
     assert r["rush_rec_2pt_per_game"] == {"QB": 0.0, "RB": 1.0, "WR": 0.5, "TE": 0.0}
     assert r["pass_2pt_per_game"] == {"QB": 0.5}
     assert r["td_rushing_share"] == {"QB": 1.0, "RB": 0.75, "WR": 0.0, "TE": 0.0}
     assert r["carries_per_game"] == {"WR": 0.5, "TE": 0.0}
     assert r["n_games"] == {"QB": 2, "RB": 1, "WR": 2, "TE": 1}
+    # Sprint 4: QB fumbles = sack fumbles + rush-attempt fumbles (S4.4), and carries from a
+    # rushing-yards mean where there is no rush-attempts market (FanDuel has none).
+    assert r["qb_sacks_per_game"] == 2.0
+    assert r["qb_sacks_per_attempt"] == 0.08
+    assert r["qb_fumbles_lost_per_carry"] == 0.5
+    assert r["yards_per_carry"] == {"QB": 5.0, "RB": 4.0, "WR": 6.0, "TE": None}  # TE: no carries
 
 
 # ---------------------------------------------------------------- dispersion
@@ -267,8 +308,16 @@ def test_fit_nb_relation_recovers_size_law():
 
 def test_existing_shifts_reads_committed_dispersion(tmp_path):
     assert bp.existing_shifts(tmp_path) == bp.DEFAULT_SHIFT
-    (tmp_path / "dispersion.json").write_text(json.dumps({"receiving_yards": {"WR": {"shift": 4.1}}}))
-    assert bp.existing_shifts(tmp_path) == {**bp.DEFAULT_SHIFT, "WR": 4.1}
+    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 10.0, "RB": 10.0, "WR": 10.0, "TE": 10.0}  # research Q1a
+    (tmp_path / "dispersion.json").write_text(json.dumps({
+        "receiving_yards": {"WR": {"shift": 4.1}},
+        "rushing_yards": {"QB": {"shift": 8.0}},
+        "passing_yards": {"QB": {"family": "hurdle_normal"}},  # no shift: a normal has none
+    }))
+    shifts = bp.existing_shifts(tmp_path)
+    assert shifts["receiving_yards"] == {**bp.DEFAULT_SHIFT["receiving_yards"], "WR": 4.1}
+    assert shifts["rushing_yards"] == {**bp.DEFAULT_SHIFT["rushing_yards"], "QB": 8.0}
+    assert set(shifts) == {"receiving_yards", "rushing_yards"}
 
 
 # ---------------------------------------------------------------- live
@@ -334,3 +383,122 @@ def test_the_location_solver_matches_the_runtime_model(target, sd, rel):
 def test_the_location_solver_raises_where_it_cannot_converge():
     with pytest.raises(ValueError, match="did not converge"):
         bp._location_for_nonzero_mean(np.array([30.0]), np.array([20.0]), 5.0, max_iter=1)
+
+
+# ---------------------------------------------------------------- Sprint 4: rushing, passing, carries
+
+
+def _discretised_truncated_normal(m, sd, lo, hi):
+    """(support, pmf) of the runtime passing-yards nonzero part, by brute force."""
+    ys = np.arange(lo, hi + 1)
+    p = special.ndtr((ys + 0.5 - m) / sd) - special.ndtr((ys - 0.5 - m) / sd)
+    p[ys == 0] = 0.0
+    return ys, p / p.sum()
+
+
+@pytest.mark.parametrize("target, sd", [(250.0, 80.0), (150.0, 95.0), (3.0, 4.0)])
+def test_normal_location_gives_the_discretised_truncated_mean(target, sd):
+    m = bp._normal_location_for_nonzero_mean(np.array([target]), np.array([sd]))[0]
+    ys, p = _discretised_truncated_normal(m, sd, math.floor(m - 15 * sd), math.ceil(m + 15 * sd))
+    assert float(ys @ p) == pytest.approx(target, rel=1e-9)
+
+
+def test_fit_sd_relation_recovers_the_normal_power_law():
+    # QB passing yards: zero-truncated discretised normal, research table a = 514, b = -0.34.
+    rng = np.random.default_rng(11)
+    c0, c1, a, b = 15.88, -3.70, 514.0, -0.34
+    mu = rng.uniform(150, 320, 20_000)
+    target = mu / (1 - special.expit(c0 + c1 * np.log(mu)))
+    sd = a * target**b
+    m = bp._normal_location_for_nonzero_mean(target, sd)
+    y = np.round(rng.normal(m, sd))
+    while (y == 0).any():  # zero-truncate by redrawing
+        redo = y == 0
+        y[redo] = np.round(rng.normal(m[redo], sd[redo]))
+    fa, fb = bp.fit_sd_relation(mu, y, c0, c1, 0.0, family="hurdle_normal")
+    assert fa * 250**fb == pytest.approx(a * 250**b, rel=0.03)
+    assert fb == pytest.approx(b, abs=0.12)
+
+
+def test_gamma_nll_survives_kneels_below_the_shift():
+    # A QB's -12-yard kneel game sits below the gamma's support (-shift = -10): the pmf floor
+    # keeps the likelihood finite, and the floored game doesn't move the fit.
+    params = [math.log(2.5), 0.64]
+    target = np.array([20.0, 20.0])
+    nll = bp._hurdle_nonzero_nll(params, target, np.array([15.0, -12.0]), 10.0, "hurdle_shifted_gamma")
+    one = bp._hurdle_nonzero_nll(params, target[:1], np.array([15.0]), 10.0, "hurdle_shifted_gamma")
+    assert math.isfinite(nll)
+    assert nll - one == pytest.approx(-math.log(bp.PMF_FLOOR), abs=0.05)  # floor / (1 - zero bin)
+
+
+def _synthetic_games(seed=12):
+    """Three seasons of every position with every stat a relation needs (no network)."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for pos in bp.SKILL:
+        for k in range(14):
+            level = rng.uniform(0.6, 1.4)
+            for season in (2019, 2020, 2021):
+                for week in range(1, 18):
+                    tg = rng.poisson(7 * level)
+                    rec = rng.binomial(tg, 0.65)
+                    car = rng.poisson((4 if pos in ("QB", "WR", "TE") else 14) * level)
+                    att = rng.poisson(33 * level) if pos == "QB" and k < 11 else rng.poisson(3)
+                    rows.append({
+                        "player_id": f"{pos}{k}", "position": pos, "season": season, "week": week,
+                        "game_id": f"{season}_{week}_{pos}{k}", "team": "AAA", "offense_pct": 0.8,
+                        "targets": float(tg), "receptions": float(rec),
+                        "receiving_yards": float(rec and max(1, round(rng.gamma(2.0 * rec, 5.0)))),
+                        "carries": float(car),
+                        "rushing_yards": float(car and round(rng.gamma(1.5 * car, 3.0)) - rng.integers(0, 3)),
+                        "attempts": float(att),
+                        "passing_yards": float(att and max(1, round(rng.normal(7.2 * att, 50)))),
+                    })
+    return stat_rows(rows)
+
+
+def _flat_totals(games):
+    """Every game's implied team total at 22 points."""
+    return games.select("game_id", "team").unique().with_columns(implied_total=pl.lit(22.0))
+
+
+def test_proxy_sample_keeps_only_starting_qbs():
+    rows = []
+    for pid, att in (("A", 35.0), ("B", 10.0)):
+        for season in (2020, 2021):
+            for week in range(1, 9):
+                rows.append({"player_id": pid, "position": "QB", "season": season, "week": week,
+                             "game_id": f"{season}_{week}{pid}", "attempts": att + week % 3,
+                             "passing_yards": 7.0 * att + week, "offense_pct": 1.0})
+    games = stat_rows(rows)
+    totals = _flat_totals(games)
+    df = bp.proxy_sample(games, totals, "QB", "passing_yards", "attempts", -math.inf)
+    assert df.height > 0 and set(df["player_id"]) == {"A"}  # B's trailing attempts are under 20
+
+
+def test_dispersion_params_fits_every_sprint4_relation():
+    games = _synthetic_games()
+    totals = _flat_totals(games)
+    out = bp.dispersion_params(games, totals, bp.DEFAULT_SHIFT)
+    hurdle_keys = {"family", "shift", "pi0_c0", "pi0_c1", "sd_a", "sd_b"}
+    for stat, positions in (("receiving_yards", {"WR", "TE", "RB"}), ("rushing_yards", {"QB", "RB", "WR", "TE"})):
+        assert set(out[stat]) == positions
+        for pos, entry in out[stat].items():
+            assert set(entry) == hurdle_keys and entry["family"] == "hurdle_shifted_gamma"
+            assert entry["shift"] == bp.DEFAULT_SHIFT[stat][pos]
+    assert set(out["passing_yards"]) == {"QB"}
+    assert out["passing_yards"]["QB"]["family"] == "hurdle_normal"
+    assert set(out["passing_yards"]["QB"]) == hurdle_keys - {"shift"}
+    for stat, positions in (("receptions", {"WR", "TE", "RB"}), ("carries", {"QB", "RB", "WR", "TE"})):
+        assert set(out[stat]) == positions
+        assert all(set(e) == {"family", "r_a", "r_b"} and e["family"] == "negative_binomial" for e in out[stat].values())
+    # TE rushing is too thin to fit (7 TEs, 75 games in 2015-21): TEs borrow the WR relations,
+    # and the borrowing is recorded instead of a sample size.
+    assert out["borrowed"] == {"rushing_yards": {"TE": "WR"}, "carries": {"TE": "WR"}}
+    for stat, borrowed in out["borrowed"].items():
+        for pos, lender in borrowed.items():
+            assert out[stat][pos] == out[stat][lender]
+    for stat in ("receiving_yards", "receptions", "rushing_yards", "carries", "passing_yards"):
+        assert set(out["n_games"][stat]) | set(out["borrowed"].get(stat, {})) == set(out[stat])
+        assert not set(out["n_games"][stat]) & set(out["borrowed"].get(stat, {}))
+        assert all(n > 0 for n in out["n_games"][stat].values())
