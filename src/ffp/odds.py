@@ -68,3 +68,23 @@ def devig(over_odds: float, under_odds: float, method: str = "multiplicative") -
     # Normalise away bisection residue so the pair sums to exactly 1.
     s = p[0] + p[1]
     return p[0] / s, p[1] / s
+
+
+def _logit(p: float) -> float:
+    return math.log(p / (1 - p))
+
+
+def _sigmoid(x: float) -> float:
+    if x >= 0:
+        return 1 / (1 + math.exp(-x))
+    e = math.exp(x)
+    return e / (1 + e)
+
+
+def apply_logit_shift(q: float, c: float) -> float:
+    """Fair Probability p = σ(logit q − c) under the logit-shift vig model.
+
+    q is the implied probability of one side (a Rung or a Main Line side),
+    vig included; c is the book's vig in logit units for this Prop Market.
+    """
+    return _sigmoid(_logit(q) - c)

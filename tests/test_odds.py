@@ -1,6 +1,8 @@
+import math
+
 import pytest
 
-from ffp.odds import american_to_implied, devig, DEVIG_METHODS
+from ffp.odds import DEVIG_METHODS, american_to_implied, apply_logit_shift, devig
 
 
 def test_american_to_implied_favourite():
@@ -94,3 +96,16 @@ def test_american_to_implied_parses_strings(price, expected):
 def test_american_to_implied_rejects_bad_strings(bad):
     with pytest.raises(ValueError):
         american_to_implied(bad)
+
+
+# --- Logit-shift (odds-ratio) vig model: p = sigma(logit q - c) -------------
+
+
+def test_apply_logit_shift_zero_c_is_identity():
+    assert apply_logit_shift(0.7, 0.0) == pytest.approx(0.7)
+
+
+def test_apply_logit_shift_value():
+    q, c = 0.7, 0.2
+    expected = 1 / (1 + math.exp(-(math.log(q / (1 - q)) - c)))
+    assert apply_logit_shift(q, c) == pytest.approx(expected)
