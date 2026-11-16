@@ -82,3 +82,79 @@ def test_a_network_error_is_a_fetch_error(tmp_path):
 
     with pytest.raises(FetchError, match="connection reset by peer"):
         Http(tmp_path, fetch=fetch, sleep=no_sleep).get_json("u")
+
+
+# --- pacing -------------------------------------------------------------------
+
+
+class FakeClock:
+    """Time that moves only when a request takes time or the run pauses."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def paced(tmp_path, fetch=None, delay=(1, 1)):
+    clock, slept = FakeClock(), []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        clock.sleep(seconds)
+
+    fetch = fetch or (lambda url: (200, b"{}"))
+    return Http(tmp_path, fetch=fetch, sleep=sleep, clock=clock, delay=delay), clock, slept
+
+
+def test_live_requests_to_one_host_are_paused_between(tmp_path):
+    http, _, slept = paced(tmp_path, delay=(3.5, 5))
+    http.get_json("https://dk.example/a")
+    http.get_json("https://dk.example/b")
+    http.get_json("https://dk.example/c")
+    assert len(slept) == 2 and all(3.5 <= s <= 5 for s in slept)
+
+
+def test_the_pause_follows_a_slow_request_rather_than_being_swallowed_by_it(tmp_path):
+    clock = None
+
+    def slow(url):
+        clock.sleep(2)
+        return 200, b"{}"
+
+    http, clock, slept = paced(tmp_path, fetch=slow)
+    http.get_json("https://dk.example/a")
+    http.get_json("https://dk.example/b")
+    assert slept == [1]
+
+
+def test_time_already_passed_counts_toward_the_pause(tmp_path):
+    http, clock, slept = paced(tmp_path, delay=(3, 3))
+    http.get_json("https://dk.example/a")
+    clock.sleep(2)  # the caller parsed for 2 s
+    http.get_json("https://dk.example/b")
+    assert slept == [1]
+
+
+def test_each_host_is_paced_on_its_own(tmp_path):
+    slept = []  # time stands still: no host's pause runs down while another's is waited out
+    http = Http(tmp_path, fetch=lambda url: (200, b"{}"), sleep=slept.append, clock=FakeClock(), delay=(1, 1))
+    for url in ["https://dk.example/a", "https://fd.example/a", "https://dk.example/b", "https://fd.example/b"]:
+        http.get_json(url)
+    assert slept == [1, 1]  # before each host's second request
+
+
+def test_cache_hits_are_not_paced(tmp_path):
+    http, _, slept = paced(tmp_path)
+    http.get_json("https://dk.example/a")
+    http.get_json("https://dk.example/a")
+    assert slept == []
+
+
+def test_the_default_pause_is_at_least_3_5_seconds():
+    low, high = Http().delay
+    assert 3.5 <= low <= high

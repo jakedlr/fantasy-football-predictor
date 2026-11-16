@@ -8,11 +8,14 @@ the network (PLAN "Stack").
 import hashlib
 import json
 import os
+import random
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_CACHE_DIR = Path(".cache") / "http"  # gitignored
 REUSE_SECONDS = 60  # how long a response is reused: lines move fast
+DELAY = (3.5, 5.0)  # seconds paused after each live request to a host (research/sportsbook-markets.md paced 3.5 s)
 
 
 class FetchError(RuntimeError):
@@ -28,22 +31,28 @@ def scrapling_fetch(url: str) -> tuple[int, bytes, dict]:
 
 
 class Http:
-    """GETs JSON, reusing a cached answer for `ttl` seconds."""
+    """GETs JSON, reusing a cached answer for `ttl` seconds. Live requests go one at a time, and each host gets a
+    pause of `delay` (a (low, high) range of seconds) after each of its requests ends."""
 
     def __init__(
         self,
         cache_dir: str | Path = DEFAULT_CACHE_DIR,
         ttl: float = REUSE_SECONDS,
         use_cache: bool = True,
+        delay: tuple[float, float] = DELAY,
         fetch=scrapling_fetch,
         sleep=time.sleep,
+        clock=time.monotonic,
     ):
         self.cache_dir = Path(cache_dir)
         self.ttl = ttl
         self.use_cache = use_cache
         self.fetch = fetch
+        self.delay = delay
         self.sleep = sleep
+        self.clock = clock
         self._live_requests = 0
+        self._next_start: dict[str, float] = {}  # {host: earliest clock() its next request may start}
 
     @property
     def live_requests(self) -> int:
@@ -76,11 +85,21 @@ class Http:
 
     def _fetch_live(self, url: str) -> bytes:
         """The body of a 200 answer at `url`, fetched live."""
-        self._live_requests += 1
-        try:
-            status, body, *_ = self.fetch(url)
-        except Exception as e:
-            raise FetchError(f"request to {url} failed: {e}") from e
+        status, body, *_ = self._paced_fetch(url)
         if status != 200:
             raise FetchError(f"HTTP {status} from {url}")
         return body if isinstance(body, bytes) else body.encode()
+
+    def _paced_fetch(self, url: str) -> tuple:
+        """One live request, started no sooner than its host's pause allows."""
+        host = urlsplit(url).netloc
+        wait = self._next_start.get(host, float("-inf")) - self.clock()
+        if wait > 0:
+            self.sleep(wait)
+        self._live_requests += 1
+        try:
+            return self.fetch(url)
+        except Exception as e:
+            raise FetchError(f"request to {url} failed: {e}") from e
+        finally:
+            self._next_start[host] = self.clock() + random.uniform(*self.delay)
