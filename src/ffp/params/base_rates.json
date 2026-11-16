@@ -46,7 +46,25 @@
     "WR": 5.643,
     "TE": 3.934
   },
+  "td_share": {
+    "rho_rush": {
+      "QB": 0.0472,
+      "RB": 0.0322,
+      "WR": 0.0498,
+      "TE": 0.0867
+    },
+    "rho_rec": {
+      "QB": 0.1622,
+      "RB": 0.0308,
+      "WR": 0.0487,
+      "TE": 0.0508
+    },
+    "kappa": 2,
+    "k": 30,
+    "prior_seasons": 2
+  },
   "carries_per_game_note": "mean carries per qualifying game (WR/TE), for expected touches when there is no rushing market; QB/RB have no entry on purpose (see yards_per_carry)",
   "yards_per_carry_note": "pooled rushing yards / carries per position, to turn a rushing-yards mean into expected carries when there is no rush-attempts market (FanDuel has none)",
-  "qb_sacks_note": "QB fumbles lost (S4.4) = qb_fumbles_lost_per_sack x expected sacks (qb_sacks_per_attempt x expected pass attempts, else qb_sacks_per_game) + qb_fumbles_lost_per_carry x expected carries; sacks_suffered and attempts from nflverse player_stats"
+  "qb_sacks_note": "QB fumbles lost (S4.4) = qb_fumbles_lost_per_sack x expected sacks (qb_sacks_per_attempt x expected pass attempts, else qb_sacks_per_game) + qb_fumbles_lost_per_carry x expected carries; sacks_suffered and attempts from nflverse player_stats",
+  "td_share_note": "per-player rushing TD share (ffp.td_share, nflverse-data.md section 6): v = (rho_rush*C + kappa*m) / (rho_rush*C + rho_rec*T + kappa), share = (R + k*v) / (N + k), with m = td_rushing_share, C/T/R/N = carries, targets, rushing TDs, rush+rec TDs over this season to date + prior_seasons previous seasons (REG+POST); rho = TDs per carry / per target in the qualifying games"
 }
