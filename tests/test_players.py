@@ -1,17 +1,23 @@
 import csv
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from ffp.players import (
+    PROPS_NOT_POSTED,
     AmbiguousPlayerError,
     Player,
     PlayerError,
     RosterEntry,
+    ScheduledGame,
     UnknownPlayerError,
     UnknownTeamError,
     UnsupportedPlayerError,
+    kickoff_utc,
     load_roster,
+    load_schedule,
+    next_game,
     resolve_player,
     team_code_from_book_name,
 )
@@ -172,3 +178,59 @@ def test_player_errors_share_a_value_error_base():
     assert issubclass(AmbiguousPlayerError, PlayerError)
     assert issubclass(UnsupportedPlayerError, PlayerError)
     assert issubclass(PlayerError, ValueError)
+
+
+# S2.4 Next Game
+
+def _schedule():
+    return load_schedule(2026, fetch=lambda season: _read_csv(f"schedule_{season}.csv"))
+
+
+SUNDAY_EVENING = datetime(2026, 11, 15, 23, 0, tzinfo=UTC)  # 18:00 ET, Sunday of week 10
+
+
+def test_next_game_is_the_next_unscored_game():
+    game = next_game("BAL", _schedule(), SUNDAY_EVENING)
+    assert game == ScheduledGame(
+        game_id="2026_10_LAC_BAL", season=2026, week=10, home="BAL", away="LAC",
+        kickoff="2026-11-17T01:15:00Z",  # Monday 20:15 ET
+    )
+    assert game.opponent("BAL") == "LAC"
+    assert game.opponent("LAC") == "BAL"
+
+
+def test_next_game_skips_a_scored_game():
+    game = next_game("CIN", _schedule(), SUNDAY_EVENING)
+    assert (game.game_id, game.opponent("CIN"), game.kickoff) == (
+        "2026_11_CIN_WAS", "WAS", "2026-11-24T01:15:00Z"
+    )
+
+
+def test_a_game_in_progress_is_not_next():
+    during_monday_night = datetime(2026, 11, 17, 2, 0, tzinfo=UTC)
+    assert next_game("BAL", _schedule(), during_monday_night).game_id == "2026_11_BAL_CAR"
+
+
+def test_no_remaining_game_gives_none():
+    assert next_game("BAL", _schedule(), datetime(2027, 3, 1, tzinfo=UTC)) is None
+    assert next_game("PIT", _schedule(), SUNDAY_EVENING) is None  # only a scored PIT game
+
+
+def test_naive_now_is_rejected():
+    with pytest.raises(ValueError, match="timezone"):
+        next_game("BAL", _schedule(), datetime(2026, 11, 15, 18, 0))
+
+
+@pytest.mark.parametrize("gameday, gametime, utc", [
+    ("2026-10-25", "13:00", "2026-10-25T17:00:00Z"),  # EDT, UTC-4
+    ("2026-11-01", "13:00", "2026-11-01T18:00:00Z"),  # EST from 02:00 that morning
+    ("2026-03-08", "13:00", "2026-03-08T17:00:00Z"),  # EDT from 02:00 that morning
+    ("2026-11-16", "20:15", "2026-11-17T01:15:00Z"),  # evening game lands on the next UTC day
+    ("2026-11-08", "09:30", "2026-11-08T14:30:00Z"),  # international morning game
+])
+def test_kickoff_converts_us_eastern_to_utc_across_dst(gameday, gametime, utc):
+    assert kickoff_utc(gameday, gametime) == utc
+
+
+def test_props_not_posted_message():
+    assert PROPS_NOT_POSTED == "props not posted yet for this Game; rerun closer to kickoff"

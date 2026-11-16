@@ -7,6 +7,8 @@ gsis_id; the Player's team then finds the next Game in the schedule.
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from ffp.names import normalize_name
 
@@ -267,3 +269,89 @@ def _split_team_hint(text: str) -> tuple[str, str | None]:
     if match is None:
         return text.strip(), None
     return match["name"], match["team"].upper()
+
+
+# Next Game
+
+PROPS_NOT_POSTED = "props not posted yet for this Game; rerun closer to kickoff"
+
+_EASTERN = ZoneInfo("America/New_York")
+
+
+@dataclass(frozen=True)
+class ScheduledGame:
+    """One Game in the nflverse schedule. Teams are nflverse team codes."""
+
+    game_id: str  # nflverse id, "{season}_{week:02}_{away}_{home}"
+    season: int
+    week: int
+    home: str
+    away: str
+    kickoff: str  # ISO 8601 UTC, e.g. "2026-11-17T01:15:00Z", like markets.Game.kickoff
+    home_score: int | None = None  # None until the Game is final
+    away_score: int | None = None
+
+    @property
+    def scored(self) -> bool:
+        return self.home_score is not None or self.away_score is not None
+
+    def opponent(self, team: str) -> str:
+        """The other team in this Game."""
+        if team == self.home:
+            return self.away
+        if team == self.away:
+            return self.home
+        raise ValueError(f"{team} does not play in {self.game_id}")
+
+
+def kickoff_utc(gameday: str, gametime: str) -> str:
+    """nflverse `gameday` ("2026-11-16") + `gametime` ("20:15"), US Eastern, as ISO UTC."""
+    local = datetime.fromisoformat(f"{gameday}T{gametime}").replace(tzinfo=_EASTERN)
+    return local.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load_schedule(season: int, fetch: Fetch) -> list[ScheduledGame]:
+    """Every Game in `season` from nflverse `load_schedules` rows, in kickoff order.
+
+    A Game with no `gametime` yet (rare; flexed Games get one weeks ahead)
+    is placed at 13:00 Eastern, the usual Sunday slot.
+    """
+    games = [
+        ScheduledGame(
+            game_id=str(row["game_id"]),
+            season=int(row["season"]),
+            week=int(row["week"]),
+            home=str(row["home_team"]),
+            away=str(row["away_team"]),
+            kickoff=kickoff_utc(str(row["gameday"]), str(row["gametime"] or "13:00")),
+            home_score=_score(row["home_score"]),
+            away_score=_score(row["away_score"]),
+        )
+        for row in fetch(season)
+    ]
+    return sorted(games, key=lambda game: game.kickoff)
+
+
+def _score(value: object) -> int | None:
+    """A score from a polars row (int or None) or a CSV row ("38" or "")."""
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def next_game(team: str, schedule: Iterable[ScheduledGame], now: datetime) -> ScheduledGame | None:
+    """`team`'s next Game: no score yet and kickoff after `now`. None if no Game is left.
+
+    A Game that has kicked off but has no score yet is in progress, not next.
+    `now` must be timezone-aware.
+    """
+    if now.tzinfo is None:
+        raise ValueError("now must carry a timezone, e.g. datetime.now(UTC)")
+    remaining = [
+        game
+        for game in schedule
+        if team in (game.home, game.away)
+        and not game.scored
+        and datetime.fromisoformat(game.kickoff) > now
+    ]
+    return min(remaining, key=lambda game: game.kickoff, default=None)
