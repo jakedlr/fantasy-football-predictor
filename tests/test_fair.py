@@ -82,6 +82,43 @@ def test_without_main_line_uses_default_prior_c_from_a_minus_115_line():
     assert points[80].prob == pytest.approx(0.3, abs=1e-9)
 
 
+def test_output_is_non_increasing_even_with_a_crossed_rung():
+    # 60+ priced below 80+: a stale or misquoted Rung.
+    fair = {40: 0.9, 60: 0.35, 80: 0.45, 100: 0.2}
+    m = market("draftkings", fair, main=(69.5, 0.5))
+
+    points = fair_points([m])
+
+    thresholds = [p.threshold for p in points]
+    probs = [p.prob for p in points]
+    assert thresholds == sorted(thresholds)
+    assert all(a >= b for a, b in zip(probs, probs[1:]))
+
+
+def test_isotonic_pools_violators_by_weight():
+    # 60+ (w=1) at 0.35 and the Main Line 70 (w=3) at 0.5 cross: they pool to
+    # (0.35 + 3 * 0.5) / 4 = 0.4625; 80+ at 0.47 then crosses that, so all
+    # three pool to (0.35 + 1.5 + 0.47) / 5 = 0.464.
+    fair = {40: 0.9, 60: 0.35, 80: 0.47, 100: 0.2}
+    m = market("draftkings", fair, main=(69.5, 0.5))
+
+    points = by_threshold(fair_points([m]))
+
+    assert points[40].prob == pytest.approx(0.9)
+    for t in (60, 70, 80):
+        assert points[t].prob == pytest.approx(0.464)
+    assert points[100].prob == pytest.approx(0.2)
+
+
+def test_probabilities_are_clipped_away_from_0_and_1():
+    m = market("draftkings", {5: 1 - 1e-7, 200: 1e-7}, main=(59.5, 0.5))
+
+    points = by_threshold(fair_points([m]))
+
+    assert points[5].prob == pytest.approx(1 - 1e-4)
+    assert points[200].prob == pytest.approx(1e-4)
+
+
 def test_prior_c_overrides_the_default_per_book():
     fair = {50: 0.7, 80: 0.3}
     m = market("fanduel", fair, main=None, c=0.3)
