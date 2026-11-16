@@ -189,7 +189,8 @@ class Http:
         hold = self.clock() + max(wait or 0.0, self._pause(host))
         self._next_start[host] = max(self._next_start.get(host, hold), hold)
         self._slowed.add(host)
-        log.warning("HTTP %s from %s: backing off %.1fs, then retrying once", status, shown, hold - self.clock())
+        log.warning("HTTP %s from %s: backing off %.1fs, then retrying once", status, shown,
+                    self._next_start[host] - self.clock())
         retry, body, *_ = self._paced_fetch(url)
         if retry == RATE_LIMITED:
             raise FetchError(f"rate-limited: HTTP {retry} from {shown}, again after backing off")
