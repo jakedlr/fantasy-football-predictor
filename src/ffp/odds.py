@@ -1,4 +1,11 @@
-"""American odds conversion and vig removal for two-way markets."""
+"""American odds → implied probability, and vig removal → Fair Probability.
+
+This project devigs with the logit-shift (odds-ratio) model,
+p = σ(logit q − c): `calibrate_logit_shift` finds c on a Main Line and
+`apply_logit_shift` applies it to either side or to a Rung.
+`devig` keeps the methods copied from prizepicks-optimizer
+(multiplicative, additive, power, Shin) for comparison.
+"""
 
 import math
 
@@ -42,7 +49,7 @@ def _bisect(f, lo: float, hi: float, iters: int = 200) -> float:
 
 
 def devig(over_odds: float, under_odds: float, method: str = "multiplicative") -> tuple[float, float]:
-    """True (over, under) probabilities from two-sided American odds."""
+    """Fair Probabilities (over, under) of a Main Line by one of DEVIG_METHODS."""
     q = (american_to_implied(over_odds), american_to_implied(under_odds))
     total = sum(q)
 

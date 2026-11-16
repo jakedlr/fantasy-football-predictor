@@ -65,7 +65,7 @@ def test_additive_value():
 def test_power_value():
     q1, q2 = 140 / 240, 100 / 210
     p_over, p_under = devig(-140, 110, "power")
-    k = __import__("math").log(p_over) / __import__("math").log(q1)
+    k = math.log(p_over) / math.log(q1)
     assert q2 ** k == pytest.approx(p_under)
 
 
