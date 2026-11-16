@@ -99,21 +99,19 @@ class _ReceivingYardsParams:
     c1: float
     a: float  # dispersion relation of the nonzero part: sd_rel(m) = a * m**b
     b: float
-
-
-# research/stat-distributions.md Q2 two-part table / Q4 recommendation table.
-RECEIVING_YARDS_PARAMS = {
-    "WR": _ReceivingYardsParams(c0=6.75, c1=-2.48, a=3.00, b=0.622),
-    "TE": _ReceivingYardsParams(c0=6.99, c1=-2.71, a=2.33, b=0.678),
-}
-RECEIVING_YARDS_SHIFT = 5.0
+    shift: float  # the shifted gamma's location shift, yards
 
 
 def _receiving_params(position: str) -> _ReceivingYardsParams:
+    """The position's receiving-yards relations, from params/dispersion.json (scripts/build_params.py)."""
+    table = params.load("dispersion")["receiving_yards"]
     try:
-        return RECEIVING_YARDS_PARAMS[position]
+        p = table[position]
     except KeyError:
-        raise ValueError(f"no receiving-yards model for position {position!r} (WR, TE)") from None
+        raise ValueError(
+            f"no receiving-yards model for position {position!r} ({', '.join(table)})"
+        ) from None
+    return _ReceivingYardsParams(p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"], p["shift"])
 
 
 def receiving_yards_pi0_relation(mu: float, position: str) -> float:
@@ -138,7 +136,7 @@ def receiving_yards(
     monotone: for WRs it bottoms out near m ≈ 30 at mu ≈ 18, so an m below that
     has no consistent pi0 and an m above it has two.
     """
-    _receiving_params(position)
+    p = _receiving_params(position)
     if mu <= 0 or sd <= 0:
         raise ValueError(f"invalid parameters mu={mu}, sd={sd}")
     if pi0 is None:
@@ -148,7 +146,7 @@ def receiving_yards(
     target = mu / (1 - pi0)
 
     def nonzero_mean_error(m: float) -> float:
-        return HurdleShiftedGamma(m, sd, 0.0, RECEIVING_YARDS_SHIFT).mean - target
+        return HurdleShiftedGamma(m, sd, 0.0, p.shift).mean - target
 
     # Discretisation and zero-truncation move the mean by well under 1 yd, and
     # d(nonzero mean)/dm ≈ 1, so a Newton-like iteration m ← m − error converges fast.
@@ -156,7 +154,7 @@ def receiving_yards(
     for _ in range(100):
         err = nonzero_mean_error(m)
         if abs(err) < 1e-11 * target:
-            return HurdleShiftedGamma(m, sd, pi0, RECEIVING_YARDS_SHIFT)
+            return HurdleShiftedGamma(m, sd, pi0, p.shift)
         m = max(m - err, m / 2)
     raise FitError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
 

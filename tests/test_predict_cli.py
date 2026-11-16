@@ -87,11 +87,14 @@ def test_an_error_that_is_not_a_fit_failure_stops_the_run(tmp_path, monkeypatch)
 
     import ffp.predict
 
-    # Let an RB through resolution: the fit has no RB model, which is a bug, not a skip.
-    monkeypatch.setattr(ffp.predict, "MODELED_POSITIONS", ("WR", "TE", "RB"))
+    # A plain ValueError out of a fit is a bug or bad configuration, not a skip.
+    def broken(points, position, **kwargs):
+        raise ValueError("no receiving-yards model for position 'XX'")
+
+    monkeypatch.setattr(ffp.predict, "fit_receiving_yards", broken)
     input_md = tmp_path / "INPUT.md"
-    input_md.write_text("Derrick Henry\n")
-    with pytest.raises(ValueError, match="no receiving-yards model for position 'RB'"):
+    input_md.write_text("Zay Flowers\n")
+    with pytest.raises(ValueError, match="no receiving-yards model for position 'XX'"):
         main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
               "--output-dir", str(tmp_path)])
     assert not (tmp_path / "OUTPUT.md").exists()
