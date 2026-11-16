@@ -25,6 +25,11 @@ def site():
         live.DK_LEAGUE_URL: load("dk_nfl_league.json"),
         DK_SUB.format(1342, 16570): load("dk_nfl_rec_yds_ladder.json"),
         DK_SUB.format(1342, 14114): load("dk_nfl_rec_yds_ou.json"),
+        DK_SUB.format(1342, 16821): load("dk_nfl_receptions_ladder.json"),
+        DK_SUB.format(1342, 14115): load("dk_nfl_receptions_ou.json"),
+        DK_SUB.format(1003, 12438): load("dk_nfl_td_scorer.json"),
+        DK_SUB.format(1003, 12422): load("dk_nfl_3plus_tds.json"),
+        FD_EVENT.format(live.FD_APP_KEY, MNF, "td-scorer-props"): load("fd_nfl_event_td_scorer_tab.json"),
         live.FD_LEAGUE_URL: load("fd_nfl_league.json"),
         FD_EVENT.format(live.FD_APP_KEY, MNF, "receiving-props"): load("fd_nfl_event_receiving_tab.json"),
         FD_EVENT.format(live.FD_APP_KEY, MNF, "rushing-props"): load("fd_nfl_event_rushing_tab.json"),
@@ -77,6 +82,45 @@ def test_draftkings_payloads_feed_the_draftkings_parser(fake):
                                             "receiving_yards")
     zay = next(m for m in markets if m.player == "Zay Flowers")
     assert zay.main_line is not None and zay.ladder
+
+
+def test_draftkings_receptions_are_the_receptions_ladder_and_ou(fake):
+    fetch, http = fake
+    payloads = live.fetch_draftkings(http, ["receptions"])
+    assert fetch.calls == [live.DK_LEAGUE_URL, DK_SUB.format(1342, 16821), DK_SUB.format(1342, 14115)]
+    assert list(payloads) == ["dk_league", "dk_receptions_ladder", "dk_receptions_ou"]
+    markets = draftkings.parse_prop_markets(payloads["dk_receptions_ladder"], payloads["dk_receptions_ou"],
+                                            "receptions")
+    zay = next(m for m in markets if m.player == "Zay Flowers")
+    assert zay.main_line is not None and zay.ladder
+
+
+def test_draftkings_touchdowns_are_the_td_scorer_and_3plus_subcategories_as_one_ladder(fake):
+    fetch, http = fake
+    payloads = live.fetch_draftkings(http, ["rush_rec_tds"])
+    assert fetch.calls == [live.DK_LEAGUE_URL, DK_SUB.format(1003, 12438), DK_SUB.format(1003, 12422)]
+    assert list(payloads) == ["dk_league", "dk_tds_ladder"]  # no O/U
+    markets = draftkings.parse_prop_markets(payloads["dk_tds_ladder"], None, "rush_rec_tds")
+    henry = next(m for m in markets if m.player == "Derrick Henry")
+    assert [r.threshold for r in henry.ladder] == [1, 2, 3]
+
+
+def test_a_missing_3plus_tds_subcategory_is_not_an_error(tmp_path):
+    pages = site()
+    league = pages[live.DK_LEAGUE_URL]
+    league["subcategories"] = [s for s in league["subcategories"] if s["name"] != "3+ TDs"]
+    fetch = Site(pages)
+    payloads = live.fetch_draftkings(Http(tmp_path, fetch=fetch, sleep=lambda s: None), ["rush_rec_tds"])
+    assert fetch.calls == [live.DK_LEAGUE_URL, DK_SUB.format(1003, 12438)]
+    assert payloads["dk_tds_ladder"] == load("dk_nfl_td_scorer.json")
+
+
+def test_receptions_and_touchdowns_together_share_one_league_request(fake):
+    fetch, http = fake
+    payloads = live.fetch_draftkings(http, ["receiving_yards", "receptions", "rush_rec_tds"])
+    assert list(payloads) == ["dk_league", "dk_rec_yds_ladder", "dk_rec_yds_ou", "dk_receptions_ladder",
+                              "dk_receptions_ou", "dk_tds_ladder"]
+    assert len(fetch.calls) == 7
 
 
 def test_draftkings_subcategory_ids_come_from_the_league_by_name(tmp_path):
@@ -169,6 +213,25 @@ def test_fanduel_tabs_are_a_parameter(fake):
     payloads = live.fetch_fanduel_events(http, [MNF], tabs=["receiving-props", "rushing-props"])
     assert list(payloads) == [("fd_event", MNF, "receiving-props"), ("fd_event", MNF, "rushing-props")]
     assert len(fetch.calls) == 2
+
+
+def test_fanduel_tabs_for_stats_ask_each_tab_once():
+    assert live.fd_tabs(["receiving_yards", "receptions"]) == ["receiving-props"]
+    assert live.fd_tabs(["receiving_yards", "rush_rec_tds", "receptions"]) == ["receiving-props",
+                                                                               "td-scorer-props"]
+
+
+def test_fanduel_touchdowns_come_from_the_td_scorer_tab(fake):
+    fetch, http = fake
+    payloads = live.fetch_fanduel_events(http, [MNF], tabs=live.fd_tabs(["rush_rec_tds"]))
+    assert fetch.calls == [FD_EVENT.format(live.FD_APP_KEY, MNF, "td-scorer-props")]
+    assert payloads[("fd_event", MNF, "td-scorer-props")] == load("fd_nfl_event_td_scorer_tab.json")
+    assert live.FD_TD_SCORER_TAB == "td-scorer-props"
+
+
+def test_fanduel_tabs_for_an_unknown_stat_are_an_error():
+    with pytest.raises(ValueError, match="fumbles_lost"):
+        live.fd_tabs(["receptions", "fumbles_lost"])
 
 
 def test_no_events_means_no_requests(fake):

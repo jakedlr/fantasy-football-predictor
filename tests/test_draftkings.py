@@ -225,3 +225,83 @@ def test_several_unmarked_pairs_give_no_main_line():
     ou = with_alternate_line(load("dk_nfl_rec_yds_ou.json"), "Zay Flowers", 64.5, "−160", "+125")
     ou = without_main_flags(ou, "Zay Flowers")
     assert zay_main_line(ou) is None
+
+
+# --- receptions (S3.1) -------------------------------------------------------------
+
+
+def receptions() -> list[PropMarket]:
+    return parse_prop_markets(
+        load("dk_nfl_receptions_ladder.json"), load("dk_nfl_receptions_ou.json"), "receptions"
+    )
+
+
+def test_receptions_ladder_and_main_line_for_named_player():
+    # Ladder 3+..12+ with 6+ at −129; O/U 5.5 at −128/+100 (recorded a little later).
+    zay = next(m for m in receptions() if m.player == "Zay Flowers")
+    assert zay.stat == "receptions"
+    assert zay.team == "BAL Ravens"
+    assert zay.main_line == MainLine(5.5, -128.0, 100.0, "draftkings")
+    assert [(r.threshold, r.odds) for r in zay.ladder] == [
+        (3, -2000.0), (4, -610.0), (5, -257.0), (7, 145.0), (8, 257.0),
+        (9, 456.0), (10, 800.0), (11, 1340.0), (12, 2100.0),
+    ]  # 6+ is the Main Line Over's event and is dropped
+
+
+def test_receptions_player_without_an_ou_keeps_his_ladder():
+    bateman = next(m for m in receptions() if m.player == "Rashod Bateman")
+    assert bateman.main_line is None
+    assert [r.threshold for r in bateman.ladder] == [2, 3, 4, 5, 6]
+
+
+def test_receptions_main_line_at_half_a_catch():
+    hibner = next(m for m in receptions() if m.player == "Matthew Hibner")
+    assert hibner.main_line.line == 0.5 and hibner.main_line.over_threshold == 1
+    assert [r.threshold for r in hibner.ladder] == [2, 3, 4]
+
+
+# --- touchdown scorers (S3.2) --------------------------------------------------------
+
+
+def td_scorer_and_3plus() -> dict:
+    """The TD Scorer (12438) and 3+ TDs (12422) responses as one, the way live.py merges them."""
+    a, b = load("dk_nfl_td_scorer.json"), load("dk_nfl_3plus_tds.json")
+    return {"events": a["events"], "markets": a["markets"] + b["markets"],
+            "selections": a["selections"] + b["selections"]}
+
+
+def tds() -> list[PropMarket]:
+    return parse_prop_markets(td_scorer_and_3plus(), None, "rush_rec_tds")
+
+
+def test_anytime_two_plus_and_three_plus_are_rungs_one_two_and_three():
+    henry = next(m for m in tds() if m.player == "Derrick Henry")
+    assert henry == PropMarket(
+        player="Derrick Henry", stat="rush_rec_tds", game_id="34118177", book="draftkings",
+        main_line=None,
+        ladder=(Rung(1, -150.0, "draftkings"), Rung(2, 390.0, "draftkings"), Rung(3, 1700.0, "draftkings")),
+        team="BAL Ravens",
+    )
+
+
+def test_first_td_scorer_is_not_a_rung():
+    # Every player has a 1st TD price (+360 for Henry); only thresholds 1, 2, 3 come out.
+    assert {r.threshold for m in tds() for r in m.ladder} == {1, 2, 3}
+    assert all(r.odds != 360.0 for r in next(m for m in tds() if m.player == "Derrick Henry").ladder)
+
+
+def test_dst_and_no_touchdown_scorer_are_skipped():
+    players = {m.player for m in tds()}
+    assert len(players) == 26
+    assert not any("D/ST" in p or "No Touchdown" in p for p in players)
+
+
+def test_a_player_without_a_three_plus_price_has_rungs_one_and_two():
+    hibner = next(m for m in tds() if m.player == "Matthew Hibner")
+    assert [(r.threshold, r.odds) for r in hibner.ladder] == [(1, 1300.0), (2, 16000.0)]
+
+
+def test_td_scorer_response_alone_gives_anytime_and_two_plus():
+    markets = parse_prop_markets(load("dk_nfl_td_scorer.json"), None, "rush_rec_tds")
+    zay = next(m for m in markets if m.player == "Zay Flowers")
+    assert [(r.threshold, r.odds) for r in zay.ladder] == [(1, 155.0), (2, 1300.0)]

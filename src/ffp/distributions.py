@@ -9,7 +9,8 @@ import numpy as np
 from scipy import optimize, stats
 from scipy.special import expit, logit
 
-from ffp.fair import FairPoint
+from ffp import params
+from ffp.fair import MAIN_LINE_WEIGHT, FairPoint
 
 
 class FitError(ValueError):
@@ -187,18 +188,27 @@ def receiving_yards_sd_relation(mu: float, position: str, pi0: float | None = No
     return p.a * (mu / (1 - pi0)) ** p.b
 
 
-def _logit_sf(dist: HurdleShiftedGamma, x: np.ndarray) -> np.ndarray:
+def _logit_sf(dist: StatDistribution, x: np.ndarray) -> np.ndarray:
+    """logit S(x), with S clipped so the logit stays finite."""
     return logit(np.clip(dist.sf(x), _SF_CLIP, 1 - _SF_CLIP))
 
 
-def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
-    """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu)."""
+def _residuals(dist: StatDistribution, x: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """The fit residuals logit p − logit S(x)."""
+    return target - _logit_sf(dist, x)
+
+
+def _fit_main_line_only(point: FairPoint, position: str, pi0: float | None = None) -> HurdleShiftedGamma:
+    """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu).
+
+    pi0 is the given one, or its relation at mu when None.
+    """
     x, target = np.array([point.threshold]), logit(point.prob)
 
     def dist(ln_mu: float) -> HurdleShiftedGamma:
         mu = math.exp(ln_mu)
-        sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position)
-        return receiving_yards(mu, sd, position)
+        sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position, pi0)
+        return receiving_yards(mu, sd, position, pi0)
 
     def error(ln_mu: float) -> float:
         return _logit_sf(dist(ln_mu), x)[0] - target
@@ -211,8 +221,14 @@ def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
     return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
 
 
-def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
+def fit_receiving_yards(
+    points: Sequence[FairPoint], position: str, pi0: float | None = None
+) -> HurdleShiftedGamma:
     """Fit a WR/TE receiving-yards Stat Distribution to Fair Probabilities.
+
+    pi0, when given, fixes P(0 yards) instead of fitting it: research Q4 takes it
+    from the receptions market, pi0 = P(receptions = 0) = 1 − receptions.sf(1).
+    The fit is then over (ln mu, ln sd) only, without the δ term below.
 
     Three parameters, theta = (ln mu, ln sd, δ) with logit pi0 = logit pi0_rel(mu) + δ,
     by weighted least squares in logit space plus Gaussian priors on ln sd (centred
@@ -225,17 +241,19 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
     missed. S(x) = P(Y >= x) of the discretised distribution, which already
     evaluates the continuous part at x − ½ (the 0.5 continuity correction).
 
-    With a single point (a Main Line only), pi0 stays on its relation, sd is fixed
-    at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
+    With a single point (a Main Line only), pi0 stays on its relation (or the given
+    pi0), sd is fixed at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
     """
     _receiving_params(position)  # validate before doing any work
+    if pi0 is not None and not 0 <= pi0 < 1:
+        raise ValueError(f"invalid parameter pi0={pi0}")
     if not points:
         raise FitError("no Fair Probabilities to fit")
     # The 1-point fit is the fallback and the starting point for the full fit. Its
     # anchor is the heaviest point (the Main Line, when present); among equal
     # weights, the one nearest 50%, not an extreme Rung such as "10+" at −2000.
     anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
-    start = _fit_main_line_only(anchor, position)
+    start = _fit_main_line_only(anchor, position, pi0)
     if len(points) == 1:
         return start
 
@@ -243,11 +261,17 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
     target = logit(np.array([p.prob for p in points]))
     w = np.array([p.weight for p in points], dtype=float)
     ln_mu_range = np.log(_MU_RANGE)
+    fixed_pi0 = pi0
 
     def params(theta: np.ndarray) -> tuple[float, float, float]:
         mu, sd = math.exp(theta[0]), math.exp(theta[1])
+        if fixed_pi0 is not None:
+            return mu, sd, fixed_pi0
         pi0 = float(expit(logit(receiving_yards_pi0_relation(mu, position)) + theta[2]))
         return mu, sd, pi0
+
+    def pi0_prior(theta: np.ndarray) -> float:
+        return 0.0 if fixed_pi0 is not None else FIT_LAMBDA_PI0 * theta[2] ** 2
 
     def objective(theta: np.ndarray) -> float:
         # Outside the model's range the objective is +inf, which Nelder-Mead steps away from
@@ -261,13 +285,15 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
             dist = receiving_yards(mu, sd, position, pi0)
         except ValueError:  # FitError included: the nonzero mean did not converge
             return math.inf
-        resid = target - _logit_sf(dist, x)
+        resid = _residuals(dist, x, target)
         sd_prior = theta[1] - math.log(receiving_yards_sd_relation(mu, position, pi0))
-        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + FIT_LAMBDA_PI0 * theta[2] ** 2)
+        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + pi0_prior(theta))
 
-    theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0])
+    # theta = (ln mu, ln sd, δ), or (ln mu, ln sd) when pi0 is given.
+    steps = [0.1, 0.1] if fixed_pi0 is not None else [0.1, 0.1, 0.5]
+    theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0][: len(steps)])
     # Explicit steps: the default simplex steps 5% of each coordinate, i.e. ~0 for δ = 0.
-    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.1, 0.5])])
+    simplex = np.vstack([theta0, theta0 + np.diag(steps)])
     result = optimize.minimize(
         objective,
         theta0,
@@ -304,3 +330,171 @@ class Poisson:
     @property
     def mean(self) -> float:
         return self.lam
+
+
+class NegativeBinomial:
+    """Receptions: NB with mean mu and size r, so Var = mu + mu²/r (research Q1b, Q4).
+
+    Integer support 0, 1, 2, ...; sf(x) = P(Y >= x). As r → ∞ it tends to Poisson(mu).
+    """
+
+    def __init__(self, mu: float, r: float):
+        if not (mu > 0 and r > 0):
+            raise ValueError(f"invalid negative binomial parameters mu={mu}, r={r}")
+        self.mu, self.r = float(mu), float(r)
+        self._dist = stats.nbinom(self.r, self.r / (self.r + self.mu))
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        """P(Y >= x); a fractional x is rounded up (Y >= 4.5 means Y >= 5)."""
+        x = np.ceil(np.asarray(x, dtype=float))
+        return np.where(x <= 0, 1.0, self._dist.sf(x - 1))
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        """Smallest integer k with P(Y <= k) >= u."""
+        return self._dist.ppf(np.asarray(u, dtype=float))
+
+    @property
+    def mean(self) -> float:
+        return self.mu
+
+
+# Receptions fit. r is fitted only with this many points besides the Main Line (research Q3:
+# "fix r from r(μ) unless there are ≥3 Rungs"); with fewer it stays on the relation.
+RECEPTIONS_MIN_POINTS_FOR_R = 3
+# Prior sd of ln r around the relation. Weak on purpose: r is pinned only by a full Ladder, and
+# then the Ladder should win. Var − mu = mu²/r, so 0.5 in ln r is ±65% on the excess variance.
+FIT_SIGMA_LN_R = 0.5
+FIT_LAMBDA_R = FIT_TAU**2 / FIT_SIGMA_LN_R**2  # = 0.04
+_REC_MU_RANGE = (0.01, 40.0)  # mu the model allows, catches
+_LN_R_RANGE = (math.log(0.05), math.log(1e4))  # 1e4: Poisson for any practical purpose
+
+
+def receptions_r_relation(mu: float, position: str) -> float:
+    """NB size from the dispersion relation, r = r_a·mu^r_b (params "dispersion")."""
+    try:
+        rel = params.load("dispersion")["receptions"][position]
+    except KeyError:
+        raise ValueError(f"no receptions model for position {position!r}") from None
+    return rel["r_a"] * mu ** rel["r_b"]
+
+
+def _receptions_on_relation(mu: float, position: str) -> NegativeBinomial:
+    return NegativeBinomial(mu, receptions_r_relation(mu, position))
+
+
+def _fit_receptions_one_point(point: FairPoint, position: str) -> NegativeBinomial:
+    """Root-find mu so P(Y >= threshold) is the one Fair Probability, r = r(mu)."""
+    x, target = np.array([point.threshold]), logit(point.prob)
+
+    def error(ln_mu: float) -> float:
+        return _logit_sf(_receptions_on_relation(math.exp(ln_mu), position), x)[0] - target
+
+    lo, hi = math.log(_REC_MU_RANGE[0]), math.log(_REC_MU_RANGE[1])
+    if error(lo) * error(hi) > 0:
+        raise FitError(
+            f"P(receptions >= {point.threshold}) = {point.prob} is out of reach for mu in {_REC_MU_RANGE}"
+        )
+    return _receptions_on_relation(math.exp(optimize.brentq(error, lo, hi, xtol=1e-12)), position)
+
+
+def fit_receptions(points: Sequence[FairPoint], position: str) -> NegativeBinomial:
+    """Fit a receptions Stat Distribution (negative binomial) to Fair Probabilities.
+
+    Weighted least squares in logit space, as for receiving yards:
+
+        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ_r (ln r − ln r_rel(mu))²
+
+    over theta = (ln mu, ln r), λ_r = τ²/σ_r² with σ_r = FIT_SIGMA_LN_R. r is free
+    only with at least RECEPTIONS_MIN_POINTS_FOR_R points besides the Main Line (the
+    heaviest point, when it has Main Line weight); otherwise r = r_rel(mu) and only
+    mu is fitted. With a single point, mu is root-found to reproduce it exactly.
+    """
+    receptions_r_relation(1.0, position)  # validate before doing any work
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    # The anchor is the heaviest point (the Main Line, when present), as in fit_receiving_yards.
+    anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
+    start = _fit_receptions_one_point(anchor, position)
+    if len(points) == 1:
+        return start
+
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+    ln_mu_range = np.log(_REC_MU_RANGE)
+    besides_main = len(points) - (anchor.weight >= MAIN_LINE_WEIGHT)
+
+    if besides_main < RECEPTIONS_MIN_POINTS_FOR_R:
+
+        def objective_mu(ln_mu: float) -> float:
+            dist = _receptions_on_relation(math.exp(ln_mu), position)
+            return float(np.sum(w * _residuals(dist, x, target) ** 2))
+
+        result = optimize.minimize_scalar(
+            objective_mu, bounds=tuple(ln_mu_range), method="bounded", options={"xatol": 1e-10}
+        )
+        return _receptions_on_relation(math.exp(result.x), position)
+
+    def objective(theta: np.ndarray) -> float:
+        in_range = ln_mu_range[0] <= theta[0] <= ln_mu_range[1] and _LN_R_RANGE[0] <= theta[1] <= _LN_R_RANGE[1]
+        if not in_range:
+            return math.inf
+        mu = math.exp(theta[0])
+        prior = theta[1] - math.log(receptions_r_relation(mu, position))
+        resid = _residuals(NegativeBinomial(mu, math.exp(theta[1])), x, target)
+        return float(np.sum(w * resid**2) + FIT_LAMBDA_R * prior**2)
+
+    theta0 = np.array([math.log(start.mu), math.log(start.r)])
+    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.3])])
+    result = optimize.minimize(
+        objective,
+        theta0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-8, "fatol": 1e-13, "initial_simplex": simplex, "maxiter": 3000},
+    )
+    if not math.isfinite(result.fun):
+        raise FitError("no receptions fit within the model's range")
+    return NegativeBinomial(math.exp(result.x[0]), math.exp(result.x[1]))
+
+
+_TD_LAMBDA_MAX = 20.0  # bracket for the root-find when there is no anytime point
+
+
+def fit_touchdowns(points: Sequence[FairPoint]) -> Poisson:
+    """Rush + rec TDs as a Poisson from the anytime-TD Fair Probability: λ = −ln(1 − p).
+
+    Only the lowest threshold is used, normally the anytime ("1+") point; the 2+ and 3+
+    points don't move λ. Poisson has one parameter, so one price pins it (research Q3),
+    and the anytime price is the one to trust: it is the shortest and most traded, while
+    2+/3+ are longshots devigged with a one-sided prior vig that leaves their heavier
+    hold in (on the MNF fixtures their Fair Probability sits ≈ 0.3 pp above Poisson's
+    P(2+) for nearly every longshot). Pooling them would fit that vig, not the player.
+    They stay a check: research found Poisson matches observed P(2+) within 0.5 pp.
+
+    Without an anytime point (only 2+ offered), λ is root-found so P(Y >= k) matches the
+    lowest threshold k.
+    """
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    lowest = min(points, key=lambda p: p.threshold)
+    if lowest.threshold <= 1:
+        return Poisson(-math.log1p(-lowest.prob))
+
+    def error(lam: float) -> float:
+        return float(Poisson(lam).sf(np.array([lowest.threshold]))[0]) - lowest.prob
+
+    if error(_TD_LAMBDA_MAX) < 0:
+        raise FitError(f"P(TDs >= {lowest.threshold}) = {lowest.prob} is out of reach")
+    return Poisson(optimize.brentq(error, 0.0, _TD_LAMBDA_MAX, xtol=1e-14))
+
+
+def split_touchdowns(td: Poisson, rushing_share: float) -> tuple[Poisson, Poisson]:
+    """(rushing TDs, receiving TDs): Poisson(λ·share) and Poisson(λ·(1 − share)).
+
+    Exact by Poisson thinning: if each TD is independently rushing with probability
+    `share`, the two counts are independent Poissons. The share is the position's
+    Base Rate td_rushing_share (WR 3.3%, TE 2.2%), passed in by the caller.
+    """
+    if not 0 <= rushing_share <= 1:
+        raise ValueError(f"invalid rushing share {rushing_share}")
+    return Poisson(td.lam * rushing_share), Poisson(td.lam * (1 - rushing_share))
