@@ -30,6 +30,10 @@ class ScoreDistribution:
     def percentiles(self, ks=(5, 25, 50, 75, 95)) -> dict[int, float]:
         return {k: self.percentile(k) for k in ks}
 
+    @property
+    def mean(self) -> float:
+        return float(self.points.mean())
+
 
 def simulate_scores(
     stat_dists: Mapping[str, StatDistribution],

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from ffp.scoring import load_rules
 from ffp.simulate import sample_stats, simulate_scores
@@ -55,3 +56,29 @@ def test_receiving_yards_only_scores_a_tenth_of_a_point_per_yard_under_espn():
     samples = sample_stats(dists, 2_000, np.random.default_rng(99))
     result = simulate_scores(dists, ESPN, n=2_000, seed=99)
     np.testing.assert_allclose(result.points, 0.1 * samples["receiving_yards"])
+
+
+class PointMass:
+    """Test-double Stat Distribution that always takes one value."""
+
+    def __init__(self, value):
+        self.value = float(value)
+
+    def sf(self, x):
+        return np.where(np.asarray(x) <= self.value, 1.0, 0.0)
+
+    def ppf(self, u):
+        return np.full(np.shape(u), self.value)
+
+    @property
+    def mean(self):
+        return self.value
+
+
+def test_point_mass_gives_equal_percentiles_at_that_score():
+    # 7 receptions * 1 + 85 yards * 0.1 + 1 TD * 6 = 7 + 8.5 + 6 = 21.5
+    dists = {"receptions": PointMass(7), "receiving_yards": PointMass(85), "receiving_tds": PointMass(1)}
+    result = simulate_scores(dists, ESPN, n=1_000)
+    for value in result.percentiles().values():
+        assert value == pytest.approx(21.5)
+    assert result.mean == pytest.approx(21.5)
