@@ -188,18 +188,27 @@ def receiving_yards_sd_relation(mu: float, position: str, pi0: float | None = No
     return p.a * (mu / (1 - pi0)) ** p.b
 
 
-def _logit_sf(dist: HurdleShiftedGamma, x: np.ndarray) -> np.ndarray:
+def _logit_sf(dist: StatDistribution, x: np.ndarray) -> np.ndarray:
+    """logit S(x), with S clipped so the logit stays finite."""
     return logit(np.clip(dist.sf(x), _SF_CLIP, 1 - _SF_CLIP))
 
 
-def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
-    """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu)."""
+def _residuals(dist: StatDistribution, x: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """The fit residuals logit p − logit S(x)."""
+    return target - _logit_sf(dist, x)
+
+
+def _fit_main_line_only(point: FairPoint, position: str, pi0: float | None = None) -> HurdleShiftedGamma:
+    """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu).
+
+    pi0 is the given one, or its relation at mu when None.
+    """
     x, target = np.array([point.threshold]), logit(point.prob)
 
     def dist(ln_mu: float) -> HurdleShiftedGamma:
         mu = math.exp(ln_mu)
-        sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position)
-        return receiving_yards(mu, sd, position)
+        sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position, pi0)
+        return receiving_yards(mu, sd, position, pi0)
 
     def error(ln_mu: float) -> float:
         return _logit_sf(dist(ln_mu), x)[0] - target
@@ -212,8 +221,14 @@ def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
     return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
 
 
-def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
+def fit_receiving_yards(
+    points: Sequence[FairPoint], position: str, pi0: float | None = None
+) -> HurdleShiftedGamma:
     """Fit a WR/TE receiving-yards Stat Distribution to Fair Probabilities.
+
+    pi0, when given, fixes P(0 yards) instead of fitting it: research Q4 takes it
+    from the receptions market, pi0 = P(receptions = 0) = 1 − receptions.sf(1).
+    The fit is then over (ln mu, ln sd) only, without the δ term below.
 
     Three parameters, theta = (ln mu, ln sd, δ) with logit pi0 = logit pi0_rel(mu) + δ,
     by weighted least squares in logit space plus Gaussian priors on ln sd (centred
@@ -226,17 +241,19 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
     missed. S(x) = P(Y >= x) of the discretised distribution, which already
     evaluates the continuous part at x − ½ (the 0.5 continuity correction).
 
-    With a single point (a Main Line only), pi0 stays on its relation, sd is fixed
-    at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
+    With a single point (a Main Line only), pi0 stays on its relation (or the given
+    pi0), sd is fixed at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
     """
     _receiving_params(position)  # validate before doing any work
+    if pi0 is not None and not 0 <= pi0 < 1:
+        raise ValueError(f"invalid parameter pi0={pi0}")
     if not points:
         raise FitError("no Fair Probabilities to fit")
     # The 1-point fit is the fallback and the starting point for the full fit. Its
     # anchor is the heaviest point (the Main Line, when present); among equal
     # weights, the one nearest 50%, not an extreme Rung such as "10+" at −2000.
     anchor = max(points, key=lambda p: (p.weight, -abs(p.prob - 0.5)))
-    start = _fit_main_line_only(anchor, position)
+    start = _fit_main_line_only(anchor, position, pi0)
     if len(points) == 1:
         return start
 
@@ -244,11 +261,17 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
     target = logit(np.array([p.prob for p in points]))
     w = np.array([p.weight for p in points], dtype=float)
     ln_mu_range = np.log(_MU_RANGE)
+    fixed_pi0 = pi0
 
     def params(theta: np.ndarray) -> tuple[float, float, float]:
         mu, sd = math.exp(theta[0]), math.exp(theta[1])
+        if fixed_pi0 is not None:
+            return mu, sd, fixed_pi0
         pi0 = float(expit(logit(receiving_yards_pi0_relation(mu, position)) + theta[2]))
         return mu, sd, pi0
+
+    def pi0_prior(theta: np.ndarray) -> float:
+        return 0.0 if fixed_pi0 is not None else FIT_LAMBDA_PI0 * theta[2] ** 2
 
     def objective(theta: np.ndarray) -> float:
         # Outside the model's range the objective is +inf, which Nelder-Mead steps away from
@@ -262,13 +285,15 @@ def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShi
             dist = receiving_yards(mu, sd, position, pi0)
         except ValueError:  # FitError included: the nonzero mean did not converge
             return math.inf
-        resid = target - _logit_sf(dist, x)
+        resid = _residuals(dist, x, target)
         sd_prior = theta[1] - math.log(receiving_yards_sd_relation(mu, position, pi0))
-        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + FIT_LAMBDA_PI0 * theta[2] ** 2)
+        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + pi0_prior(theta))
 
-    theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0])
+    # theta = (ln mu, ln sd, δ), or (ln mu, ln sd) when pi0 is given.
+    steps = [0.1, 0.1] if fixed_pi0 is not None else [0.1, 0.1, 0.5]
+    theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0][: len(steps)])
     # Explicit steps: the default simplex steps 5% of each coordinate, i.e. ~0 for δ = 0.
-    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.1, 0.5])])
+    simplex = np.vstack([theta0, theta0 + np.diag(steps)])
     result = optimize.minimize(
         objective,
         theta0,
@@ -357,17 +382,12 @@ def _receptions_on_relation(mu: float, position: str) -> NegativeBinomial:
     return NegativeBinomial(mu, receptions_r_relation(mu, position))
 
 
-def _residuals(dist: StatDistribution, x: np.ndarray, target: np.ndarray) -> np.ndarray:
-    """logit p − logit S(x), with S clipped so the logit stays finite."""
-    return target - logit(np.clip(dist.sf(x), _SF_CLIP, 1 - _SF_CLIP))
-
-
 def _fit_receptions_one_point(point: FairPoint, position: str) -> NegativeBinomial:
     """Root-find mu so P(Y >= threshold) is the one Fair Probability, r = r(mu)."""
-    x, target = np.array([point.threshold]), np.array([logit(point.prob)])
+    x, target = np.array([point.threshold]), logit(point.prob)
 
     def error(ln_mu: float) -> float:
-        return -_residuals(_receptions_on_relation(math.exp(ln_mu), position), x, target)[0]
+        return _logit_sf(_receptions_on_relation(math.exp(ln_mu), position), x)[0] - target
 
     lo, hi = math.log(_REC_MU_RANGE[0]), math.log(_REC_MU_RANGE[1])
     if error(lo) * error(hi) > 0:

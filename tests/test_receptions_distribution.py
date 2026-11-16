@@ -5,7 +5,7 @@ import pytest
 from scipy import stats
 
 from ffp import params
-from ffp.distributions import FitError, NegativeBinomial, fit_receptions
+from ffp.distributions import FitError, NegativeBinomial, fit_receiving_yards, fit_receptions, receiving_yards
 from ffp.fair import FairPoint
 
 
@@ -124,6 +124,51 @@ def test_fit_failures_are_fit_errors_but_an_unknown_position_is_not():
     with pytest.raises(ValueError) as raised:
         fit_receptions([FairPoint(5, 0.5, 3.0)], "QB")
     assert not isinstance(raised.value, FitError)
+
+
+def test_receptions_reject_an_unknown_position_before_fitting():
+    with pytest.raises(ValueError, match="QB"):
+        fit_receptions([], "QB")
+
+
+# --- receiving yards' P(0) from receptions (research Q4: pi0 = P(rec = 0)) -------------
+
+
+def test_receiving_yards_fit_with_a_given_pi0_keeps_it():
+    truth = receiving_yards(14.0, 16.0, "WR", pi0=0.30)  # the formula would say ≈ 0.52
+    xs = [5, 10, 15, 20, 30, 40]
+    pts = [FairPoint(x, float(truth.sf(np.array([x]))[0]), 3.0 if x == 10 else 1.0) for x in xs]
+    fit = fit_receiving_yards(pts, "WR", pi0=0.30)
+    assert fit.pi0 == 0.30
+    assert fit.mean == pytest.approx(14.0, rel=0.01)
+    assert fit.sd == pytest.approx(16.0, rel=0.05)
+
+
+def test_receiving_yards_main_line_only_with_a_given_pi0_reproduces_the_main_line():
+    from ffp.distributions import MAIN_LINE_ONLY_KAPPA, receiving_yards_sd_relation
+
+    fit = fit_receiving_yards([FairPoint(53, 0.47, 3.0)], "WR", pi0=0.08)
+    assert fit.pi0 == 0.08
+    assert fit.sf(np.array([53]))[0] == pytest.approx(0.47, abs=1e-9)
+    assert fit.sd == pytest.approx(
+        MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(fit.mean, "WR", 0.08), rel=1e-9
+    )
+
+
+def test_receiving_yards_pi0_from_the_receptions_fit():
+    # How the integrator links them: P(0 yards) = P(0 receptions) = 1 − P(rec >= 1).
+    rec = fit_receptions([FairPoint(1, 0.64, 3.0), FairPoint(2, 0.30, 1.0)], "TE")
+    pi0 = 1 - float(rec.sf(np.array([1]))[0])
+    yards = fit_receiving_yards([FairPoint(10, 0.45, 3.0), FairPoint(20, 0.2, 1.0)], "TE", pi0=pi0)
+    p_zero_yards = yards.sf(np.array([0]))[0] - yards.sf(np.array([1]))[0]
+    p_zero_catches = 1 - rec.sf(np.array([1]))[0]
+    assert p_zero_yards == pytest.approx(p_zero_catches, abs=1e-12)
+
+
+@pytest.mark.parametrize("pi0", [-0.1, 1.0, 1.5])
+def test_receiving_yards_reject_an_impossible_pi0(pi0):
+    with pytest.raises(ValueError):
+        fit_receiving_yards([FairPoint(53, 0.47, 3.0)], "WR", pi0=pi0)
 
 
 @pytest.mark.parametrize("ps", [[0.03, 0.02, 0.01, 0.005], [1e-3, 5e-4, 2e-4, 1e-4], [0.9999] * 4])
