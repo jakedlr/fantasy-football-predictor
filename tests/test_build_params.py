@@ -205,6 +205,28 @@ def test_base_rates_hand_computed():
     assert r["yards_per_carry"] == {"QB": 5.0, "RB": 4.0, "WR": 6.0, "TE": None}  # TE: no carries
 
 
+def test_td_share_constants_hand_computed():
+    # S4.3: the volume share's per-position TD rates come from the same qualifying games as m.
+    def pos(p, rows):
+        return stat_rows([{"player_id": p, "position": p, "season": 2023, "week": i, "game_id": f"g{i}", **r}
+                          for i, r in enumerate(rows)])
+
+    qual = {
+        "QB": pos("QB", [{"carries": 5.0, "rushing_tds": 1.0, "targets": 1.0, "attempts": 30.0, "sacks_suffered": 2.0},
+                         {"carries": 15.0, "rushing_tds": 1.0}]),
+        "RB": pos("RB", [{"carries": 20.0, "rushing_tds": 1.0, "targets": 4.0, "receiving_tds": 1.0},
+                         {"carries": 30.0, "targets": 6.0}]),
+        "WR": pos("WR", [{"carries": 2.0, "targets": 40.0, "receiving_tds": 2.0}]),
+        "TE": pos("TE", [{"targets": 8.0, "receptions": 6.0, "receiving_tds": 1.0}]),
+    }
+    share = bp.base_rates(qual)["td_share"]
+    assert share["rho_rush"] == {"QB": 0.1, "RB": 0.02, "WR": 0.0, "TE": None}  # TE: no carries
+    assert share["rho_rec"] == {"QB": 0.0, "RB": 0.1, "WR": 0.05, "TE": 0.125}
+    assert share["kappa"] == 2
+    assert share["k"] == 30
+    assert share["prior_seasons"] == 2
+
+
 # ---------------------------------------------------------------- dispersion
 
 

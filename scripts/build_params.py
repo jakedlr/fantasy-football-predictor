@@ -41,6 +41,10 @@ CORRELATION_STATS = {
 # "Meaningful usage" filters (nflverse-data.md 3, "Sample and filters").
 QUALIFY = {"QB": ("attempts", 15), "RB": ("offense_pct", 0.30), "WR": ("offense_pct", 0.50), "TE": ("offense_pct", 0.50)}
 WITHIN_MIN_GAMES = 6
+# Per-player rushing TD share (nflverse-data.md 6, S4.3): kappa pseudo expected-TDs shrink the
+# volume share toward m, k pseudo-TDs shrink the TD history toward the volume share, over this
+# season to date + `prior_seasons` previous seasons.
+TD_SHARE_SHRINKAGE = {"kappa": 2, "k": 30, "prior_seasons": 2}
 PD_FLOOR = 1e-3
 
 # Dispersion (stat-distributions.md). Families, as ffp.distributions implements them:
@@ -287,6 +291,11 @@ def base_rates(qual: dict[str, pl.DataFrame]) -> dict:
     def total(pos: str, expr: pl.Expr) -> float:
         return float(qual[pos].select(expr.sum()).item())
 
+    def ratio(pos: str, num: str, den: str) -> float | None:
+        """Pooled num / den, None when the position has no den (e.g. no TE carries)."""
+        d = total(pos, pl.col(den))
+        return round(total(pos, pl.col(num)) / d, 4) if d else None
+
     touches = pl.col("carries") + pl.col("receptions")
     rush_rec_2pt = pl.col("rushing_2pt_conversions") + pl.col("receiving_2pt_conversions")
     n = {p: qual[p].height for p in qual}
@@ -304,6 +313,11 @@ def base_rates(qual: dict[str, pl.DataFrame]) -> dict:
         "qb_fumbles_lost_per_carry": round(total("QB", pl.col("rushing_fumbles_lost")) / total("QB", pl.col("carries")), 4),
         "yards_per_carry": {p: (round(total(p, pl.col("rushing_yards")) / c, 3) if (c := total(p, pl.col("carries"))) else None)
                             for p in SKILL},
+        "td_share": {
+            "rho_rush": {p: ratio(p, "rushing_tds", "carries") for p in SKILL},
+            "rho_rec": {p: ratio(p, "receiving_tds", "targets") for p in SKILL},
+            **TD_SHARE_SHRINKAGE,
+        },
     }
 
 
@@ -573,7 +587,12 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
                                      "expected carries when there is no rush-attempts market (FanDuel has none)"),
             "qb_sacks_note": ("QB fumbles lost (S4.4) = qb_fumbles_lost_per_sack x expected sacks (qb_sacks_per_attempt x "
                               "expected pass attempts, else qb_sacks_per_game) + qb_fumbles_lost_per_carry x expected "
-                              "carries; sacks_suffered and attempts from nflverse player_stats")}
+                              "carries; sacks_suffered and attempts from nflverse player_stats"),
+            "td_share_note": ("per-player rushing TD share (ffp.td_share, nflverse-data.md section 6): v = (rho_rush*C + "
+                              "kappa*m) / (rho_rush*C + rho_rec*T + kappa), share = (R + k*v) / (N + k), with m = "
+                              "td_rushing_share, C/T/R/N = carries, targets, rushing TDs, rush+rec TDs over this season "
+                              "to date + prior_seasons previous seasons (REG+POST); rho = TDs per carry / per target "
+                              "in the qualifying games")}
 
     dgames = skill_games(ps.filter(pl.col("season").is_in(dispersion_seasons)),
                          snaps.filter(pl.col("season").is_in(dispersion_seasons)), raw.players, recover_zeros=True)
