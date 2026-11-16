@@ -101,3 +101,25 @@ def test_percentile_k_has_k_percent_at_or_below_it():
     assert dist.percentile(25) == 5.0
     assert dist.percentile(50) == 10.0
     assert dist.percentile(95) == 19.0
+
+
+def test_injected_uniforms_are_used():
+    u = np.array([0.05, 0.15, 0.95, 0.5])
+    # REC_YDS cdf: 0.1, 0.2, 0.4, 0.6, 0.8, 0.9, 1.0 -> u maps to 0, 20, 150, 60.
+    samples = sample_stats(
+        {"receiving_yards": REC_YDS, "receptions": RECEPTIONS},
+        4,
+        np.random.default_rng(0),
+        uniforms={"receiving_yards": u},
+    )
+    np.testing.assert_array_equal(samples["receiving_yards"], [0, 20, 150, 60])
+    assert samples["receptions"].shape == (4,)
+
+
+def test_defaults_are_20000_samples_and_a_fixed_seed():
+    from ffp.simulate import DEFAULT_SEED
+
+    dists = {"receiving_yards": REC_YDS}
+    default = simulate_scores(dists, ESPN)
+    assert default.points.shape == (20_000,)
+    np.testing.assert_array_equal(default.points, simulate_scores(dists, ESPN, n=20_000, seed=DEFAULT_SEED).points)

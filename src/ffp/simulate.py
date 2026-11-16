@@ -17,7 +17,12 @@ def sample_stats(
     rng: np.random.Generator,
     uniforms: Mapping[str, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
-    return {stat: dist.ppf(rng.uniform(size=n)) for stat, dist in stat_dists.items()}
+    uniforms = uniforms or {}
+    samples = {}
+    for stat, dist in stat_dists.items():
+        u = uniforms[stat] if stat in uniforms else rng.uniform(size=n)
+        samples[stat] = dist.ppf(u)
+    return samples
 
 
 @dataclass(frozen=True)
