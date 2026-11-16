@@ -26,7 +26,8 @@ def parse_games(subcategory_json: dict) -> list[Game]:
                 home=teams["Home"],
                 kickoff=_kickoff(event["startEventDate"]),
                 book=BOOK,
-                started=False,
+                # Anything but NOT_STARTED (STARTED, or a finished/suspended state) is not priced.
+                started=event.get("status") != "NOT_STARTED",
             )
         )
     return games

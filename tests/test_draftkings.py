@@ -31,3 +31,23 @@ def test_parse_games_reads_each_event_in_league_response():
             started=False,
         ),
     ]
+
+
+def started_event(event_id: str = "999") -> dict:
+    """A minimal DK event that is in progress (no fixture has one)."""
+    return {
+        "id": event_id,
+        "name": "KC Chiefs @ DEN Broncos",
+        "startEventDate": "2026-11-16T21:25:00.0000000Z",
+        "status": "STARTED",
+        "participants": [
+            {"name": "DEN Broncos", "venueRole": "Home"},
+            {"name": "KC Chiefs", "venueRole": "Away"},
+        ],
+    }
+
+
+def test_parse_games_marks_in_progress_game_started():
+    [game] = parse_games({"events": [started_event()]})
+    assert game.started is True
+    assert (game.away, game.home, game.kickoff) == ("KC Chiefs", "DEN Broncos", "2026-11-16T21:25:00Z")
