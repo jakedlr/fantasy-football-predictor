@@ -82,7 +82,7 @@ def test_an_unknown_name_is_skipped_with_the_resolution_error(nflverse, books):
 
 def test_a_player_whose_game_has_no_props_gets_rerun_closer_to_kickoff(nflverse, books):
     # After MNF kicks off, Zay's next Game is week 11 at CAR, which no book in the fixtures lists.
-    after_mnf = datetime(2026, 11, 17, 6, 0, tzinfo=timezone.utc)
+    after_mnf = datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc)  # past the in-progress window
     results, [skip] = run(["Zay Flowers"], nflverse, books, now=after_mnf)
     assert results == []
     assert skip.reason == PROPS_NOT_POSTED
@@ -145,3 +145,84 @@ def test_next_game_is_the_schedule_game(nflverse):
     assert isinstance(target.game, ScheduledGame)
     assert target.game.game_id == "2026_10_LAC_BAL"
     assert target.player.team == "LAC"
+
+
+# Sprint 2 review findings.
+
+
+def test_a_player_whose_game_is_in_progress_is_told_so(nflverse, books):
+    # Finding 4: he was pointed at next week's Game and told "rerun closer to kickoff".
+    during = datetime(2026, 11, 17, 2, 30, tzinfo=timezone.utc)
+    results, [skip] = run(["Zay Flowers"], nflverse, books, now=during)
+    assert results == []
+    assert "already kicked off" in skip.reason and "LAC @ BAL" in skip.reason
+
+
+class _FakeHttp:
+    """Serves the committed fixtures by URL; `fail` names URLs (substrings) that error."""
+
+    def __init__(self, fail=(), garble=()):
+        import json as _json
+
+        from ffp.sources import live
+
+        league = _json.loads((FIXTURES / "dk_nfl_league.json").read_text())
+        fd_tab = _json.loads((FIXTURES / "fd_nfl_event_receiving_tab.json").read_text())
+        self.fail, self.garble, self.live = fail, garble, live
+        self.pages = {"dk_league": league, "fd_tab": fd_tab}
+
+    def get_json(self, url):
+        import json as _json
+
+        from ffp.sources.http import FetchError
+
+        if any(f in url for f in self.fail):
+            raise FetchError(f"refused: {url}")
+        if any(g in url for g in self.garble):
+            return {"events": [{"id": "1"}], "attachments": {"events": {"1": {"name": "A @ B"}}}}
+        if url == self.live.DK_LEAGUE_URL:
+            return self.pages["dk_league"]
+        if "/subcategories/" in url:
+            name = "dk_nfl_rec_yds_ladder.json" if "16570" in url else "dk_nfl_rec_yds_ou.json"
+            return _json.loads((FIXTURES / name).read_text())
+        if "content-managed-page" in url:
+            tab = self.pages["fd_tab"]
+            return {"attachments": {"events": tab["attachments"]["events"]}}
+        if "event-page" in url:
+            return self.pages["fd_tab"]
+        raise AssertionError(url)
+
+
+def _live(http, nflverse):
+    from ffp.predict import load_live_books
+
+    _, schedule = nflverse
+    game = next(g for g in schedule if g.game_id == "2026_10_LAC_BAL")
+    return load_live_books(http, [game], BEFORE_MNF)
+
+
+def test_live_books_from_fixtures(nflverse):
+    books = _live(_FakeHttp(), nflverse)
+    assert [b.book for b in books] == ["draftkings", "fanduel"]
+    assert all(b.markets for b in books)
+
+
+def test_a_book_whose_response_does_not_parse_is_left_out(nflverse, caplog):
+    # Finding 2: a parse error in one book crashed the whole run.
+    books = _live(_FakeHttp(garble=["/subcategories/"]), nflverse)
+    assert [b.book for b in books] == ["fanduel"]
+    assert "DraftKings left out" in caplog.text
+
+
+def test_one_failed_fanduel_event_keeps_the_others(nflverse, caplog):
+    # Finding 3: one failed FD event page threw away every FD market.
+    http = _FakeHttp(fail=["eventId=999"])
+    tab = http.pages["fd_tab"]
+    [(event_id, event)] = tab["attachments"]["events"].items()
+    # The league page also lists a second event for the same Game (as after a re-listing), id 999.
+    events = {event_id: event, "999": dict(event, eventId=999)}
+    http.pages["fd_tab"] = {**tab, "attachments": {**tab["attachments"], "events": events}}
+    books = _live(http, nflverse)
+    fd = next(b for b in books if b.book == "fanduel")
+    assert fd.markets  # the good event's markets survive
+    assert "999" in caplog.text

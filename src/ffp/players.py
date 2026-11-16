@@ -7,7 +7,7 @@ gsis_id; the Player's team then finds the next Game in the schedule.
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from ffp.names import normalize_name
@@ -85,6 +85,8 @@ def load_roster(season: int, fetch: Fetch | None = None) -> list[RosterEntry]:
     """
     latest: dict[str, RosterEntry] = {}
     for row in (fetch or _nflreadpy_rosters_weekly)(season):
+        if not _present(row.get("gsis_id")):
+            continue  # no canonical id: such rows can't be told apart, so they're left out
         entry = RosterEntry(
             gsis_id=str(row["gsis_id"]),
             name=str(row["full_name"]),
@@ -102,18 +104,49 @@ def load_roster(season: int, fetch: Fetch | None = None) -> list[RosterEntry]:
 _OFF_ROSTER = frozenset({"CUT", "RET"})
 
 
+def _present(value: object) -> bool:
+    """False for a missing id however it arrives: None, NaN, "" or the text "None"/"nan"."""
+    if value is None or value != value:  # NaN is the one value unequal to itself
+        return False
+    return str(value).strip().lower() not in ("", "none", "nan", "null")
+
+
 def name_key(name: str) -> str:
     """The key two spellings of one player's name share: `normalize_name`, then the alias table."""
     key = normalize_name(name)
     return ALIASES.get(key, key)
 
 
+class Roster(Sequence):
+    """Roster entries with an index by `name_key`, built once.
+
+    Pass one to `resolve_player` when resolving many names; a plain sequence
+    of entries also works but is indexed again on every call.
+    """
+
+    def __init__(self, entries: Iterable[RosterEntry]):
+        self._entries = list(entries)
+        self._by_key: dict[str, list[RosterEntry]] = {}
+        for entry in self._entries:
+            self._by_key.setdefault(name_key(entry.name), []).append(entry)
+
+    def named(self, key: str) -> list[RosterEntry]:
+        """The entries whose name has this `name_key`."""
+        return list(self._by_key.get(key, ()))
+
+    def __getitem__(self, i):
+        return self._entries[i]
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+
 def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     """The Player an INPUT.md line names.
 
     `text` is a player name, optionally followed by a team hint: "Name (TEAM)".
-    Names compare by `normalize_name` after the alias table; only QB/RB/WR/TE
-    count. The hint keeps only the players on that team. A K, a D/ST ("Ravens
+    Input and roster names both compare by `name_key` (`normalize_name`, then
+    the alias table); only QB/RB/WR/TE count. The hint keeps only the players on that team. A K, a D/ST ("Ravens
     D/ST", "BAL DST", "Ravens") or any other position raises
     UnsupportedPlayerError.
     """
@@ -123,8 +156,8 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
             f'"{text}" looks like a team defense: D/ST is not supported yet, only QB/RB/WR/TE'
         )
     team = _hint_team_code(hint) if hint is not None else None
-    key = name_key(name)
-    same_name = [entry for entry in roster if normalize_name(entry.name) == key]
+    index = roster if isinstance(roster, Roster) else Roster(roster)
+    same_name = index.named(name_key(name))
     matches = [entry for entry in same_name if entry.position in SUPPORTED_POSITIONS]
     if not matches and same_name:
         raise UnsupportedPlayerError(_unsupported_message(text, same_name))
@@ -367,6 +400,26 @@ def next_game(team: str, schedule: Iterable[ScheduledGame], now: datetime) -> Sc
         and datetime.fromisoformat(game.kickoff) > now
     ]
     return min(remaining, key=lambda game: game.kickoff, default=None)
+
+
+# A Game that kicked off less than this long ago and has no score yet is in progress. nflverse
+# posts final scores some hours after a Game ends, so the window is longer than a Game.
+IN_PROGRESS_WINDOW = timedelta(hours=8)
+
+
+def game_in_progress(
+    team: str, schedule: Iterable[ScheduledGame], now: datetime
+) -> ScheduledGame | None:
+    """`team`'s Game that has kicked off and isn't scored yet, if it kicked off within
+    IN_PROGRESS_WINDOW of `now`. None otherwise."""
+    if now.tzinfo is None:
+        raise ValueError("now must carry a timezone, e.g. datetime.now(UTC)")
+    for game in schedule:
+        if team in (game.home, game.away) and not game.scored:
+            kickoff = datetime.fromisoformat(game.kickoff)
+            if kickoff <= now < kickoff + IN_PROGRESS_WINDOW:
+                return game
+    return None
 
 
 def _nflreadpy_rosters_weekly(season: int) -> list[dict]:

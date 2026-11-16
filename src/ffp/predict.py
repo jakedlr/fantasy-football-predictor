@@ -20,9 +20,11 @@ from ffp.players import (
     PROPS_NOT_POSTED,
     Player,
     PlayerError,
+    Roster,
     RosterEntry,
     ScheduledGame,
     UnknownTeamError,
+    game_in_progress,
     load_roster,
     load_schedule,
     name_key,
@@ -107,6 +109,7 @@ def resolve_targets(
     names: Sequence[str], roster: Sequence[RosterEntry], schedule: Sequence[ScheduledGame], now: datetime
 ) -> tuple[list[Target], list[SkippedPlayer]]:
     """Each name's Player and next Game, or the reason it can't be predicted."""
+    roster = roster if isinstance(roster, Roster) else Roster(roster)
     targets, skipped = [], []
     for name in names:
         try:
@@ -117,12 +120,23 @@ def resolve_targets(
         if player.position not in MODELED_POSITIONS:
             skipped.append(SkippedPlayer(name, _unmodeled(player)))
             continue
+        playing = game_in_progress(player.team, schedule, now)
+        if playing is not None:
+            skipped.append(SkippedPlayer(name, _in_progress(playing)))
+            continue
         game = next_game(player.team, schedule, now)
         if game is None:
             skipped.append(SkippedPlayer(name, NO_GAME))
             continue
         targets.append(Target(name, player, game))
     return targets, skipped
+
+
+def _in_progress(game: ScheduledGame) -> str:
+    return (
+        f"this week's Game ({game.away} @ {game.home}) has already kicked off; "
+        "rerun after it ends to predict the next one"
+    )
 
 
 def _unmodeled(player: Player) -> str:
@@ -174,8 +188,8 @@ def load_live_books(
     fetched. A book that fails is logged and left out; the other still counts.
     """
     from ffp.sources import live
-    from ffp.sources.http import FetchError
 
+    failures = _book_failures()
     books = []
     try:
         dk = live.fetch_draftkings(http, [STAT], on_response=on_response)
@@ -186,19 +200,38 @@ def load_live_books(
                 draftkings.parse_prop_markets(dk["dk_rec_yds_ladder"], dk["dk_rec_yds_ou"], STAT),
             )
         )
-    except (FetchError, live.SubcategoryNotFound) as error:
-        log.warning("DraftKings left out: %s", error)
+    except failures as error:
+        log.warning("DraftKings left out: %s", _describe(error))
 
     try:
-        league = live.fetch_fanduel_league(http, on_response=on_response)
-        fd_games = fanduel.parse_games(league, now)
-        wanted = {g.game_id for g in fd_games for s in games if _same_game(g, s)}
-        tabs = live.fetch_fanduel_events(http, sorted(wanted), on_response=on_response)
-        markets = [m for tab in tabs.values() for m in fanduel.parse_prop_markets(tab, STAT)]
-        books.append(BookOdds(fanduel.BOOK, fd_games, markets))
-    except FetchError as error:
-        log.warning("FanDuel left out: %s", error)
+        fd_games = fanduel.parse_games(live.fetch_fanduel_league(http, on_response=on_response), now)
+    except failures as error:
+        log.warning("FanDuel left out: %s", _describe(error))
+        return books
+    wanted = sorted({g.game_id for g in fd_games for s in games if _same_game(g, s)})
+    markets = []
+    for event_id in wanted:  # one event at a time, so one failed event costs only its own Game
+        try:
+            tabs = live.fetch_fanduel_events(http, [event_id], tabs=[fanduel.TABS[STAT]], on_response=on_response)
+            markets += [m for tab in tabs.values() for m in fanduel.parse_prop_markets(tab, STAT)]
+        except failures as error:
+            log.warning("FanDuel event %s left out: %s", event_id, _describe(error))
+    books.append(BookOdds(fanduel.BOOK, fd_games, markets))
     return books
+
+
+# What a book can fail with, short of a bug in our own code: the request failing, the
+# catalogue lacking a market, or a response whose shape changed under the parser.
+def _book_failures() -> tuple[type[Exception], ...]:
+    from ffp.sources.http import FetchError
+    from ffp.sources.live import SubcategoryNotFound
+
+    return (FetchError, SubcategoryNotFound, KeyError, IndexError, TypeError, ValueError, AttributeError)
+
+
+def _describe(error: Exception) -> str:
+    """An exception as one line: a KeyError's str() is only the missing key."""
+    return f"{type(error).__name__}: {error}"
 
 
 def _same_game(book_game: Game, game: ScheduledGame) -> bool:

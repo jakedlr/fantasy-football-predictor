@@ -254,3 +254,51 @@ def test_loaders_default_to_nflreadpy(monkeypatch):
     monkeypatch.setitem(sys.modules, "nflreadpy", fake)
     assert resolve_player("Zay Flowers", load_roster(2026)).team == "BAL"
     assert next_game("BAL", load_schedule(2026), SUNDAY_EVENING).game_id == "2026_10_LAC_BAL"
+
+
+# Sprint 2 review findings.
+
+
+def _entry(gsis_id, name, position="WR", team="LAC"):
+    from ffp.players import RosterEntry
+
+    return RosterEntry(gsis_id, name, position, team, "ACT", 10)
+
+
+@pytest.mark.parametrize("text", ["Joshua Palmer", "Josh Palmer"])
+def test_a_roster_name_that_is_an_alias_spelling_still_resolves(text):
+    # Finding 5: aliases were applied to the input but not to roster names.
+    from ffp.players import resolve_player
+
+    player = resolve_player(text, [_entry("00-1", "Joshua Palmer")])
+    assert player.gsis_id == "00-1"
+
+
+def test_rows_without_a_gsis_id_are_dropped_not_merged():
+    # Finding 6: str(None) == "None" made every id-less row share one key.
+    rows = [
+        {"gsis_id": None, "full_name": "A One", "position": "WR", "team": "BAL", "status": "ACT", "week": 10},
+        {"gsis_id": "", "full_name": "B Two", "position": "WR", "team": "BAL", "status": "ACT", "week": 10},
+        {"gsis_id": "00-2", "full_name": "C Three", "position": "WR", "team": "BAL", "status": "ACT", "week": 10},
+    ]
+    assert [e.gsis_id for e in load_roster(2026, fetch=lambda season: rows)] == ["00-2"]
+
+
+def test_a_roster_index_resolves_like_the_plain_roster(roster):
+    # Finding 8: build the name index once per run rather than per INPUT.md line.
+    from ffp.players import Roster, resolve_player
+
+    index = Roster(roster)
+    for text in ["Ja'Marr Chase", "AJ Brown", "Justin Jefferson", "Hollywood Brown"]:
+        assert resolve_player(text, index) == resolve_player(text, roster)
+
+
+def test_a_game_in_progress_is_found():
+    # Finding 4: a Game that has kicked off but isn't scored is in progress, not "next week".
+    from ffp.players import game_in_progress
+
+    schedule = _schedule()
+    during = datetime(2026, 11, 17, 2, 30, tzinfo=UTC)  # LAC @ BAL kicked off at 01:15Z
+    assert game_in_progress("BAL", schedule, during).game_id == "2026_10_LAC_BAL"
+    assert game_in_progress("BAL", schedule, datetime(2026, 11, 16, 12, tzinfo=UTC)) is None
+    assert game_in_progress("BAL", schedule, datetime(2026, 11, 18, 12, tzinfo=UTC)) is None  # long over
