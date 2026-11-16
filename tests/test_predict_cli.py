@@ -45,3 +45,31 @@ def test_blank_lines_are_ignored_and_unknown_players_are_skipped(tmp_path):
     assert data["skipped"] == [
         {"player": "Not A Player", "reason": "no Prop Markets found for this player"}
     ]
+
+
+def test_markdown_list_and_heading_markers_are_not_part_of_names(tmp_path):
+    # Review finding: "- Zay Flowers" was read as the name "- Zay Flowers".
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("# Players\n- Zay Flowers\n* Tre Harris\n1. Mark Andrews\nQuentin Johnston\n")
+    from ffp.predict import read_input
+
+    assert read_input(input_md) == ["Zay Flowers", "Tre Harris", "Mark Andrews", "Quentin Johnston"]
+
+
+def test_a_player_whose_fit_fails_is_skipped_and_the_rest_are_still_written(tmp_path, monkeypatch):
+    # Review finding: one unfittable player aborted the whole run with no output.
+    import ffp.predict
+
+    real_fit = ffp.predict.fit_receiving_yards
+
+    def fit_or_fail(points, position):
+        if points[0].threshold == 6:  # Derrick Henry's Main Line 5.5 -> Y >= 6 is his lowest point
+            raise ValueError("out of reach")
+        return real_fit(points, position)
+
+    monkeypatch.setattr(ffp.predict, "fit_receiving_yards", fit_or_fail)
+    _, data = run_predict(tmp_path, ["Derrick Henry", "Zay Flowers"])
+    assert [r["player"] for r in data["players"]] == ["Zay Flowers"]
+    assert data["skipped"] == [
+        {"player": "Derrick Henry", "reason": "could not fit receiving yards: out of reach"}
+    ]

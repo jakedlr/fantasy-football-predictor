@@ -1,6 +1,7 @@
 """Player names -> Score Distributions: Prop Markets -> Fair Probabilities -> Stat Distributions -> simulation."""
 
 import json
+import re
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -24,9 +25,22 @@ SPRINT_1_FLAGS = (
 NO_MARKETS = "no Prop Markets found for this player"
 
 
+_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+
+
 def read_input(path: Path) -> list[str]:
-    """Player names from INPUT.md, one per line; blank lines are ignored."""
-    return [line.strip() for line in Path(path).read_text().splitlines() if line.strip()]
+    """Player names from INPUT.md, one per line.
+
+    Blank lines and Markdown headings are ignored, and list markers ("- ", "* ", "1. ")
+    are stripped, so a plain list and a Markdown list both work.
+    """
+    names = []
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        names.append(_LIST_MARKER.sub("", line).strip())
+    return [name for name in names if name]
 
 
 def load_fixture_markets(fixtures: Path) -> tuple[list[PropMarket], dict[str, Game]]:
@@ -55,7 +69,10 @@ def predict(
         if not player_markets:
             skipped.append(SkippedPlayer(name, NO_MARKETS))
             continue
-        results.append(_player_result(name, player_markets, games, rules))
+        try:
+            results.append(_player_result(name, player_markets, games, rules))
+        except ValueError as error:  # includes distributions.FitError
+            skipped.append(SkippedPlayer(name, f"could not fit receiving yards: {error}"))
     return results, skipped
 
 
