@@ -126,24 +126,28 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
     if team is not None:
         on_team = [entry for entry in matches if entry.team == team]
         if not on_team and matches:
-            found = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in matches)
+            found = _describe(matches)
             raise UnknownPlayerError(f'no "{name}" on {team}; found {found}')
         matches = on_team
     if not matches:
         raise UnknownPlayerError(f'no QB/RB/WR/TE named "{name}" on a current NFL roster')
     if len(matches) > 1:
-        candidates = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in matches)
+        candidates = _describe(matches)
         raise AmbiguousPlayerError(
             f'"{text}" matches more than one player: {candidates}. '
-            f'Add the team to the line, e.g. "{text} ({matches[0].team})", '
-            "using Name (TEAM)."
+            f'Add the team as Name (TEAM), e.g. "{name} ({matches[0].team})".'
         )
     entry = matches[0]
     return Player(entry.gsis_id, entry.name, entry.position, entry.team)
 
 
+def _describe(entries: Sequence[RosterEntry]) -> str:
+    """'Josh Johnson (QB, ARI), Josh Johnson Jr. (RB, BAL)'."""
+    return ", ".join(f"{e.name} ({e.position}, {e.team})" for e in entries)
+
+
 def _unsupported_message(text: str, entries: Sequence[RosterEntry]) -> str:
-    found = ", ".join(f"{e.name} ({e.position}, {e.team})" for e in entries)
+    found = _describe(entries)
     if any(e.position == "K" for e in entries):
         return f'"{text}" is a kicker ({found}): K is not supported yet, only QB/RB/WR/TE'
     return f'"{text}" is not a QB/RB/WR/TE ({found}): only QB/RB/WR/TE are supported'
