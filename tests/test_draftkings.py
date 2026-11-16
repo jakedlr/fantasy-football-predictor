@@ -225,3 +225,36 @@ def test_several_unmarked_pairs_give_no_main_line():
     ou = with_alternate_line(load("dk_nfl_rec_yds_ou.json"), "Zay Flowers", 64.5, "−160", "+125")
     ou = without_main_flags(ou, "Zay Flowers")
     assert zay_main_line(ou) is None
+
+
+# --- receptions (S3.1) -------------------------------------------------------------
+
+
+def receptions() -> list[PropMarket]:
+    return parse_prop_markets(
+        load("dk_nfl_receptions_ladder.json"), load("dk_nfl_receptions_ou.json"), "receptions"
+    )
+
+
+def test_receptions_ladder_and_main_line_for_named_player():
+    # Ladder 3+..12+ with 6+ at −129; O/U 5.5 at −128/+100 (recorded a little later).
+    zay = next(m for m in receptions() if m.player == "Zay Flowers")
+    assert zay.stat == "receptions"
+    assert zay.team == "BAL Ravens"
+    assert zay.main_line == MainLine(5.5, -128.0, 100.0, "draftkings")
+    assert [(r.threshold, r.odds) for r in zay.ladder] == [
+        (3, -2000.0), (4, -610.0), (5, -257.0), (7, 145.0), (8, 257.0),
+        (9, 456.0), (10, 800.0), (11, 1340.0), (12, 2100.0),
+    ]  # 6+ is the Main Line Over's event and is dropped
+
+
+def test_receptions_player_without_an_ou_keeps_his_ladder():
+    bateman = next(m for m in receptions() if m.player == "Rashod Bateman")
+    assert bateman.main_line is None
+    assert [r.threshold for r in bateman.ladder] == [2, 3, 4, 5, 6]
+
+
+def test_receptions_main_line_at_half_a_catch():
+    hibner = next(m for m in receptions() if m.player == "Matthew Hibner")
+    assert hibner.main_line.line == 0.5 and hibner.main_line.over_threshold == 1
+    assert [r.threshold for r in hibner.ladder] == [2, 3, 4]
