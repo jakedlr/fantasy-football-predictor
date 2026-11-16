@@ -70,10 +70,11 @@ class RosterEntry:
     week: int  # the week this row is from
 
 
-def load_roster(season: int, fetch: Fetch) -> list[RosterEntry]:
+def load_roster(season: int, fetch: Fetch | None = None) -> list[RosterEntry]:
     """Each player's latest weekly-roster row in `season`, all positions.
 
-    `fetch(season)` returns nflverse `load_rosters_weekly` rows. The latest
+    `fetch(season)` returns nflverse `load_rosters_weekly` rows; it defaults
+    to nflreadpy (network, cached by nflreadpy). The latest
     week gives the current team, so traded players resolve to their new team.
     Players whose latest status is CUT or RET are dropped: they're on no team.
     Every other status stays (ACT, RES, INA, DEV, ...), so a player on reserve
@@ -83,7 +84,7 @@ def load_roster(season: int, fetch: Fetch) -> list[RosterEntry]:
     defender gets a precise error instead of "unknown".
     """
     latest: dict[str, RosterEntry] = {}
-    for row in fetch(season):
+    for row in (fetch or _nflreadpy_rosters_weekly)(season):
         entry = RosterEntry(
             gsis_id=str(row["gsis_id"]),
             name=str(row["full_name"]),
@@ -310,8 +311,10 @@ def kickoff_utc(gameday: str, gametime: str) -> str:
     return local.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def load_schedule(season: int, fetch: Fetch) -> list[ScheduledGame]:
+def load_schedule(season: int, fetch: Fetch | None = None) -> list[ScheduledGame]:
     """Every Game in `season` from nflverse `load_schedules` rows, in kickoff order.
+
+    `fetch(season)` defaults to nflreadpy, like `load_roster`.
 
     A Game with no `gametime` yet (rare; flexed Games get one weeks ahead)
     is placed at 13:00 Eastern, the usual Sunday slot.
@@ -327,7 +330,7 @@ def load_schedule(season: int, fetch: Fetch) -> list[ScheduledGame]:
             home_score=_score(row["home_score"]),
             away_score=_score(row["away_score"]),
         )
-        for row in fetch(season)
+        for row in (fetch or _nflreadpy_schedules)(season)
     ]
     return sorted(games, key=lambda game: game.kickoff)
 
@@ -355,3 +358,15 @@ def next_game(team: str, schedule: Iterable[ScheduledGame], now: datetime) -> Sc
         and datetime.fromisoformat(game.kickoff) > now
     ]
     return min(remaining, key=lambda game: game.kickoff, default=None)
+
+
+def _nflreadpy_rosters_weekly(season: int) -> list[dict]:
+    import nflreadpy  # imported here so tests and offline runs never need it
+
+    return nflreadpy.load_rosters_weekly(season).to_dicts()
+
+
+def _nflreadpy_schedules(season: int) -> list[dict]:
+    import nflreadpy
+
+    return nflreadpy.load_schedules(season).to_dicts()

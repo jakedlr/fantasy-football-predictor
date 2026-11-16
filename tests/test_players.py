@@ -1,4 +1,6 @@
 import csv
+import sys
+import types
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -234,3 +236,21 @@ def test_kickoff_converts_us_eastern_to_utc_across_dst(gameday, gametime, utc):
 
 def test_props_not_posted_message():
     assert PROPS_NOT_POSTED == "props not posted yet for this Game; rerun closer to kickoff"
+
+
+class _FakeFrame:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def to_dicts(self):
+        return self._rows
+
+
+def test_loaders_default_to_nflreadpy(monkeypatch):
+    fake = types.SimpleNamespace(
+        load_rosters_weekly=lambda season: _FakeFrame(_read_csv(f"rosters_weekly_{season}.csv")),
+        load_schedules=lambda season: _FakeFrame(_read_csv(f"schedule_{season}.csv")),
+    )
+    monkeypatch.setitem(sys.modules, "nflreadpy", fake)
+    assert resolve_player("Zay Flowers", load_roster(2026)).team == "BAL"
+    assert next_game("BAL", load_schedule(2026), SUNDAY_EVENING).game_id == "2026_10_LAC_BAL"
