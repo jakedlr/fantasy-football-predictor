@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from ffp.scoring import load_rules
-from ffp.simulate import sample_stats, simulate_scores
+from ffp.simulate import DEFAULT_SEED, ScoreDistribution, sample_stats, simulate_scores
 
 
 class DiscreteDist:
@@ -94,8 +94,6 @@ def test_chance_of_at_least_matches_the_samples():
 
 def test_percentile_k_has_k_percent_at_or_below_it():
     # Pk is the smallest sample x with P(points <= x) >= k%.
-    from ffp.simulate import ScoreDistribution
-
     dist = ScoreDistribution(np.arange(1.0, 21.0))  # 1..20, each 5%
     assert dist.percentile(5) == 1.0
     assert dist.percentile(25) == 5.0
@@ -117,8 +115,6 @@ def test_injected_uniforms_are_used():
 
 
 def test_defaults_are_20000_samples_and_a_fixed_seed():
-    from ffp.simulate import DEFAULT_SEED
-
     dists = {"receiving_yards": REC_YDS}
     default = simulate_scores(dists, ESPN)
     assert default.points.shape == (20_000,)
