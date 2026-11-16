@@ -1,8 +1,8 @@
 """Stat Distributions: one Scoring Stat for one player in one Game."""
 
 import math
-from dataclasses import dataclass
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
@@ -146,6 +146,7 @@ FIT_SIGMA_P = 0.15  # prior sd of ln sd around the dispersion relation
 FIT_LAMBDA = FIT_TAU**2 / FIT_SIGMA_P**2  # ≈ 0.44, weight of the prior against Σ wᵢ rᵢ²
 MAIN_LINE_ONLY_KAPPA = 0.93  # book-implied sd ≈ 0.93 × the nflverse-proxy relation
 _SF_CLIP = 1e-12
+_MU_RANGE = (1.0, 500.0)  # bracket for the Main-Line-only root-find, yards
 
 
 def receiving_yards_sd_relation(mu: float, position: str) -> float:
@@ -168,10 +169,15 @@ def _fit_main_line_only(point: FairPoint, position: str) -> HurdleShiftedGamma:
         sd = MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(mu, position)
         return receiving_yards(mu, sd, position)
 
-    ln_mu = optimize.brentq(
-        lambda ln_mu: _logit_sf(dist(ln_mu), x)[0] - target, math.log(1.0), math.log(500.0), xtol=1e-12
-    )
-    return dist(ln_mu)
+    def error(ln_mu: float) -> float:
+        return _logit_sf(dist(ln_mu), x)[0] - target
+
+    lo, hi = math.log(_MU_RANGE[0]), math.log(_MU_RANGE[1])
+    if error(lo) * error(hi) > 0:
+        raise ValueError(
+            f"P(Y >= {point.threshold}) = {point.prob} is out of reach for mu in {_MU_RANGE}"
+        )
+    return dist(optimize.brentq(error, lo, hi, xtol=1e-12))
 
 
 def fit_receiving_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
