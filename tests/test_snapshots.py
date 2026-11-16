@@ -147,3 +147,26 @@ def test_secret_query_params_are_stripped_from_stored_urls(tmp_path):
     assert stored == "https://sbapi.example.com/api/event-page?eventId=123&tab=all"
     for path in snap.run_dir.iterdir():
         assert "FhMFpcPWXMeyZxOx" not in path.read_text()
+
+
+def test_a_crash_mid_write_leaves_earlier_files_valid(tmp_path, monkeypatch):
+    import ffp.snapshots
+
+    snap = Snapshot(RUN_AT, root=tmp_path)
+    first = snap.save_response("draftkings", "events", {"n": 1})
+    snap.save_fair_points("A", "receptions", [FairPoint(5, 0.4, 3.0)])
+    before = {p.name: p.read_bytes() for p in snap.run_dir.iterdir()}
+
+    def crash(src, dst):
+        raise OSError("disk died mid-run")
+
+    monkeypatch.setattr(ffp.snapshots.os, "replace", crash)
+    with pytest.raises(OSError):
+        snap.save_response("draftkings", "events", {"n": 2})
+    with pytest.raises(OSError):
+        snap.save_fair_points("B", "receptions", [FairPoint(3, 0.6, 3.0)])
+
+    after = {p.name: p.read_bytes() for p in snap.run_dir.iterdir()}
+    assert after == before  # nothing half-written, no temp files left behind
+    assert _load(snap.run_dir / "manifest.json")["responses"][0]["file"] == first.name
+    assert [e["player"] for e in _load(snap.run_dir / "fair_points.json")["fair_points"]] == ["A"]

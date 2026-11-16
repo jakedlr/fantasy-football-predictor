@@ -5,6 +5,7 @@ history for later backtesting.
 """
 
 import json
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -29,6 +30,24 @@ def redact_url(url: str) -> str:
         if pair and unquote_plus(pair.partition("=")[0]).lower() not in SECRET_QUERY_PARAMS
     ]
     return urlunsplit(parts._replace(query="&".join(kept)))
+
+
+def _write_atomic(path: Path, data: bytes) -> None:
+    """Write data to path via a temp file and rename, so path is never half-written."""
+    tmp = path.with_name(f".{path.name}.tmp")
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _json_bytes(obj: object) -> bytes:
+    return (json.dumps(obj, indent=2, ensure_ascii=False) + "\n").encode()
 
 
 def _safe_part(text: str, fallback: str) -> str:
@@ -74,23 +93,27 @@ class Snapshot:
             f"{_safe_part(book, 'book')}-{_safe_part(name, 'response')}{ext}"
         )
         if fmt == "json":
-            path.write_text(json.dumps(payload, indent=2))
+            data = _json_bytes(payload)
         elif fmt == "text":
-            path.write_text(payload)
+            data = payload.encode()
         else:
-            path.write_bytes(payload)
-        self._responses.append(
-            {
-                "file": path.name,
-                "book": book,
-                "name": name,
-                "url": None if url is None else redact_url(url),
-                "fetched_at": (fetched_at or self.run_at).isoformat(),
-                "format": fmt,
-            }
-        )
-        manifest = {"run_id": self.run_id, "run_at": self.run_at.isoformat(), "responses": self._responses}
-        (self.run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+            data = payload
+        entry = {
+            "file": path.name,
+            "book": book,
+            "name": name,
+            "url": None if url is None else redact_url(url),
+            "fetched_at": (fetched_at or self.run_at).isoformat(),
+            "format": fmt,
+        }
+        responses = [*self._responses, entry]
+        _write_atomic(path, data)
+        try:
+            self._write_run_file("manifest.json", "responses", responses)
+        except BaseException:
+            path.unlink(missing_ok=True)  # no file the manifest doesn't list
+            raise
+        self._responses = responses
         return path
 
     def save_fair_points(
@@ -101,14 +124,20 @@ class Snapshot:
         *,
         game_id: str | None = None,
     ) -> Path:
-        self._fair_points.append(
-            {
-                "player": player,
-                "stat": stat,
-                "game_id": game_id,
-                "points": [asdict(p) for p in points],
-            }
-        )
-        path = self.run_dir / "fair_points.json"
-        path.write_text(json.dumps({"fair_points": self._fair_points}, indent=2))
+        entry = {
+            "player": player,
+            "stat": stat,
+            "game_id": game_id,
+            "points": [asdict(p) for p in points],
+        }
+        fair_points = [*self._fair_points, entry]
+        path = self._write_run_file("fair_points.json", "fair_points", fair_points)
+        self._fair_points = fair_points
+        return path
+
+    def _write_run_file(self, filename: str, key: str, entries: list[dict]) -> Path:
+        """Atomically (re)write one of the run's JSON index files."""
+        path = self.run_dir / filename
+        doc = {"run_id": self.run_id, "run_at": self.run_at.isoformat(), key: entries}
+        _write_atomic(path, _json_bytes(doc))
         return path
