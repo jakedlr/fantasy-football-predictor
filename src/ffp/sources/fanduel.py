@@ -19,8 +19,14 @@ BOOK = "fanduel"
 # and passing yards ("PASSING_YARDS") follow the same pattern; add them here and in TABS.
 MARKET_STEMS = {"receiving_yards": "RECEIVING_YARDS", "receptions": "RECEPTIONS"}
 
+# Rushing + receiving TDs, split later (not a Scoring Stat): only one-sided scorer markets,
+# one per Game, each runner a bare player name. Market type → the Rung's threshold N
+# ("N or more TDs"). First, last and per-half scorer markets are not "N or more": ignored.
+TD_STAT = "rush_rec_tds"
+TD_MARKET_THRESHOLDS = {"ANY_TIME_TOUCHDOWN_SCORER": 1, "TO_SCORE_2+_TOUCHDOWNS": 2, "TO_SCORE_3+_TOUCHDOWNS": 3}
+
 # Scoring Stat → the event-page tab slug (the `tab=` query value) that holds its markets.
-TABS = {"receiving_yards": "receiving-props", "receptions": "receiving-props"}
+TABS = {"receiving_yards": "receiving-props", "receptions": "receiving-props", TD_STAT: "td-scorer-props"}
 
 # (player name as FD spells it, FD event id)
 Key = tuple[str, str]
@@ -133,6 +139,27 @@ def _ladders(
     return {key: list(by_threshold.values()) for key, by_threshold in rungs.items()}
 
 
+def _td_ladders(markets: list[dict], slugs: dict[Key, str | None]) -> dict[Key, list[Rung]]:
+    """Each player's TD Rungs from the scorer markets: anytime = 1+, 2+ and 3+.
+
+    Team defenses ("Baltimore Defense") are listed as player selections; they're skipped.
+    """
+    rungs: dict[Key, dict[int, Rung]] = {}
+    for market in markets:
+        threshold = TD_MARKET_THRESHOLDS.get(market.get("marketType", ""))
+        if threshold is None:
+            continue
+        event_id = str(market.get("eventId"))
+        for runner in _active_runners(market):
+            player = runner.get("runnerName", "")
+            if not player or player.endswith(" Defense"):
+                continue
+            key = (player, event_id)
+            rungs.setdefault(key, {}).setdefault(threshold, Rung(threshold, _odds(runner), BOOK))
+            slugs.setdefault(key, _logo_slug(runner))
+    return {key: list(by_threshold.values()) for key, by_threshold in rungs.items()}
+
+
 def _main_lines(
     markets: list[dict], main_key: str, slugs: dict[Key, str | None]
 ) -> dict[Key, MainLine]:
@@ -178,15 +205,21 @@ def parse_prop_markets(event_tab_json: dict, stat: str) -> list[PropMarket]:
     one of them gets main_line None or an empty ladder. Started Games are
     excluded. An empty result may mean the tab is not posted yet; ask
     props_posted() to tell.
+
+    For TD_STAT the tab is the TD scorer tab: no Main Line, and the anytime,
+    2+ and 3+ scorer prices are Rungs 1, 2 and 3.
     """
-    if stat not in MARKET_STEMS:
+    if stat not in TABS:
         raise ValueError(f"no FanDuel market for Scoring Stat {stat!r}")
-    stem = MARKET_STEMS[stat]
     markets = _markets(event_tab_json)
     games = {g.game_id: g for g in parse_games(event_tab_json)}
     slugs: dict[Key, str | None] = {}
-    ladders = _ladders(markets, f"PLAYER_ALT_{stem}", slugs)
-    main_lines = _main_lines(markets, f"PLAYER_{stem}", slugs)
+    if stat == TD_STAT:
+        ladders, main_lines = _td_ladders(markets, slugs), {}
+    else:
+        stem = MARKET_STEMS[stat]
+        ladders = _ladders(markets, f"PLAYER_ALT_{stem}", slugs)
+        main_lines = _main_lines(markets, f"PLAYER_{stem}", slugs)
 
     prop_markets = []
     for key in list(ladders) + [k for k in main_lines if k not in ladders]:

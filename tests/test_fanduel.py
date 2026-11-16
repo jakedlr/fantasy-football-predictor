@@ -235,7 +235,7 @@ def test_main_line_needs_both_sides():
 
 def test_every_parseable_stat_names_its_tab():
     assert TABS["receiving_yards"] == "receiving-props"
-    assert set(TABS) == set(MARKET_STEMS)
+    assert set(TABS) == set(MARKET_STEMS) | {"rush_rec_tds"}
 
 
 def test_unknown_stat_rejected():
@@ -272,3 +272,49 @@ def test_receptions_do_not_mix_with_receiving_yards():
     assert [r.threshold for r in hibner.ladder] == [2, 3]  # 1+ is the Over 0.5 event
     yards = parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "receiving_yards")
     assert {m.player for m in receptions()} == {m.player for m in yards}
+
+
+# --- touchdown scorers (S3.2) --------------------------------------------------------
+
+
+def tds() -> list[PropMarket]:
+    return parse_prop_markets(load("fd_nfl_event_td_scorer_tab.json"), "rush_rec_tds")
+
+
+def test_touchdowns_come_from_the_td_scorer_tab():
+    assert TABS["rush_rec_tds"] == "td-scorer-props"
+
+
+def test_anytime_two_plus_and_three_plus_are_rungs_one_two_and_three():
+    henry = next(m for m in tds() if m.player == "Derrick Henry")
+    assert henry == PropMarket(
+        player="Derrick Henry", stat="rush_rec_tds", game_id="36275768", book="fanduel",
+        main_line=None,
+        ladder=(Rung(1, -140.0, "fanduel"), Rung(2, 440.0, "fanduel"), Rung(3, 2200.0, "fanduel")),
+        team="Baltimore Ravens",
+    )
+
+
+def test_defenses_are_skipped():
+    # FD lists "Baltimore Defense" and "LA Chargers Defense" as player selections.
+    players = {m.player for m in tds()}
+    assert len(players) == 27
+    assert not any(p.endswith("Defense") for p in players)
+
+
+def test_suspended_td_prices_are_not_rungs():
+    # Hibner's 2+ (+30000) and Hampton's 3+ (+20000) are SUSPENDED in the fixture.
+    hibner = next(m for m in tds() if m.player == "Matthew Hibner")
+    assert [(r.threshold, r.odds) for r in hibner.ladder] == [(1, 1300.0)]
+    hampton = next(m for m in tds() if m.player == "Omarion Hampton")
+    assert [r.threshold for r in hampton.ladder] == [1, 2]
+
+
+def test_first_last_and_half_td_scorers_are_not_rungs():
+    assert {r.threshold for m in tds() for r in m.ladder} <= {1, 2, 3}
+    zay = next(m for m in tds() if m.player == "Zay Flowers")
+    assert [(r.threshold, r.odds) for r in zay.ladder] == [(1, 160.0), (2, 1300.0), (3, 8000.0)]
+
+
+def test_a_tab_without_td_markets_gives_no_td_prop_markets():
+    assert parse_prop_markets(load("fd_nfl_event_receiving_tab.json"), "rush_rec_tds") == []
