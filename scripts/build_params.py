@@ -51,24 +51,30 @@ NEG_BIN = "negative_binomial"  # NB(mean mu, size r = r_a * mu^r_b)
 
 class Relation(NamedTuple):
     """One mean-dispersion relation to fit: a stat, the usage stat its proxy mu trails
-    (targets, carries or pass attempts), its family, and per position the prop-eligible
-    floor on the pre-game proxy mu (the positions to fit are this dict's keys)."""
+    (targets, carries or pass attempts), its family, per position the prop-eligible floor
+    on the pre-game proxy mu (the positions to fit are this dict's keys), and the positions
+    too thin to fit that borrow another position's fitted relation ({borrower: lender})."""
 
     stat: str
     usage: str
     family: str
     min_mu: dict[str, float]
+    borrow: dict[str, str] = {}
 
 
 # Floors: research's prop-eligible floors for receiving (stat-distributions.md "Sample").
 # Rushing and carries go lower than research's RB 25-yard floor to cover the backup RBs and
-# pocket QBs books also price (RB2 rush lines ~15-25, pocket-QB lines ~2-10); WR/TE rushing
-# needs mu >= 5 yards (gadget receivers), which leaves a small sample.
+# pocket QBs books also price (RB2 rush lines ~15-25, pocket-QB lines ~2-10). WR rushing:
+# mu >= 5 yards (gadget receivers), 426 games of 38 WRs in 2015-21, stable under a
+# player bootstrap and clearly narrower than the RB relation. WR carries: mu >= 0.5 (at
+# >= 1 only 298 games and an unstable r). TE rushing is too thin to fit (7 TEs, 75 games at
+# mu >= 5, mostly one gadget QB; a bootstrap's 90% band for P(0) at mu 15 is 1%-79%),
+# so TEs borrow the WR relations, which their sample resembles (P(0) and sd at mu 10-25).
 RELATIONS = (
     Relation("receiving_yards", "targets", HURDLE_GAMMA, {"WR": 20.0, "TE": 20.0, "RB": 10.0}),
     Relation("receptions", "targets", NEG_BIN, {"WR": 2.0, "TE": 2.0, "RB": 1.5}),
-    Relation("rushing_yards", "carries", HURDLE_GAMMA, {"RB": 15.0, "QB": 2.0, "WR": 5.0, "TE": 5.0}),
-    Relation("carries", "carries", NEG_BIN, {"RB": 4.0, "QB": 1.0, "WR": 1.0, "TE": 1.0}),
+    Relation("rushing_yards", "carries", HURDLE_GAMMA, {"RB": 15.0, "QB": 2.0, "WR": 5.0}, {"TE": "WR"}),
+    Relation("carries", "carries", NEG_BIN, {"RB": 4.0, "QB": 1.0, "WR": 0.5}, {"TE": "WR"}),
     Relation("passing_yards", "attempts", HURDLE_NORMAL, {"QB": 150.0}),
 )
 # Every QB relation is fit on starters only: trailing-4-game mean pass attempts >= 20
@@ -495,9 +501,11 @@ def nb_entry(mu: np.ndarray, y: np.ndarray) -> dict:
 def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[str, dict[str, float]],
                       relations: tuple[Relation, ...] = RELATIONS) -> dict:
     """Fitted relations per stat and position; sample sizes go under a separate "n_games" key
-    so each relation entry holds only its family and parameters."""
+    so each relation entry holds only its family and parameters. A borrowing position gets a
+    copy of its lender's entry, listed under "borrowed" instead of "n_games"."""
     out: dict = {r.stat: {} for r in relations}
     out["n_games"] = {r.stat: {} for r in relations}
+    out["borrowed"] = {r.stat: dict(r.borrow) for r in relations if r.borrow}
     for rel in relations:
         for pos, min_mu in rel.min_mu.items():
             df = proxy_sample(games, totals, pos, rel.stat, rel.usage, min_mu)
@@ -507,6 +515,8 @@ def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[st
             else:
                 out[rel.stat][pos] = hurdle_entry(mu, y, rel.family, shifts.get(rel.stat, {}).get(pos, 0.0))
             out["n_games"][rel.stat][pos] = df.height
+        for pos, lender in rel.borrow.items():
+            out[rel.stat][pos] = dict(out[rel.stat][lender])
     return out
 
 

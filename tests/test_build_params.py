@@ -451,6 +451,13 @@ def test_dispersion_params_fits_every_sprint4_relation():
     for stat, positions in (("receptions", {"WR", "TE", "RB"}), ("carries", {"QB", "RB", "WR", "TE"})):
         assert set(out[stat]) == positions
         assert all(set(e) == {"family", "r_a", "r_b"} and e["family"] == "negative_binomial" for e in out[stat].values())
+    # TE rushing is too thin to fit (7 TEs, 75 games in 2015-21): TEs borrow the WR relations,
+    # and the borrowing is recorded instead of a sample size.
+    assert out["borrowed"] == {"rushing_yards": {"TE": "WR"}, "carries": {"TE": "WR"}}
+    for stat, borrowed in out["borrowed"].items():
+        for pos, lender in borrowed.items():
+            assert out[stat][pos] == out[stat][lender]
     for stat in ("receiving_yards", "receptions", "rushing_yards", "carries", "passing_yards"):
-        assert set(out["n_games"][stat]) == set(out[stat])
+        assert set(out["n_games"][stat]) | set(out["borrowed"].get(stat, {})) == set(out[stat])
+        assert not set(out["n_games"][stat]) & set(out["borrowed"].get(stat, {}))
         assert all(n > 0 for n in out["n_games"][stat].values())
