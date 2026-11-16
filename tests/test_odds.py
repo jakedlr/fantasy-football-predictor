@@ -2,7 +2,13 @@ import math
 
 import pytest
 
-from ffp.odds import DEVIG_METHODS, american_to_implied, apply_logit_shift, devig
+from ffp.odds import (
+    DEVIG_METHODS,
+    american_to_implied,
+    apply_logit_shift,
+    calibrate_logit_shift,
+    devig,
+)
 
 
 def test_american_to_implied_favourite():
@@ -109,3 +115,34 @@ def test_apply_logit_shift_value():
     q, c = 0.7, 0.2
     expected = 1 / (1 + math.exp(-(math.log(q / (1 - q)) - c)))
     assert apply_logit_shift(q, c) == pytest.approx(expected)
+
+
+def _add_vig(p: float, c: float) -> float:
+    """Inverse of apply_logit_shift: the book's q for a Fair Probability p."""
+    return 1 / (1 + math.exp(-(math.log(p / (1 - p)) + c)))
+
+
+def test_calibrate_logit_shift_fair_market_is_zero():
+    assert calibrate_logit_shift(0.5, 0.5) == pytest.approx(0.0, abs=1e-12)
+    assert calibrate_logit_shift(0.7, 0.3) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_calibrate_logit_shift_positive_with_overround():
+    q_over, q_under = american_to_implied("−110"), american_to_implied("−110")
+    c = calibrate_logit_shift(q_over, q_under)
+    assert c > 0
+    assert apply_logit_shift(q_over, c) + apply_logit_shift(q_under, c) == pytest.approx(1.0, abs=1e-12)
+
+
+@pytest.mark.parametrize("p_over, c", [(0.5, 0.05), (0.62, 0.09), (0.15, 0.2), (0.93, 0.12)])
+def test_calibrate_logit_shift_recovers_known_vig(p_over, c):
+    q_over, q_under = _add_vig(p_over, c), _add_vig(1 - p_over, c)
+    c_hat = calibrate_logit_shift(q_over, q_under)
+    assert c_hat == pytest.approx(c, abs=1e-9)
+    assert apply_logit_shift(q_over, c_hat) == pytest.approx(p_over, abs=1e-9)
+    assert apply_logit_shift(q_under, c_hat) == pytest.approx(1 - p_over, abs=1e-9)
+
+
+def test_calibrate_logit_shift_negative_when_underround():
+    # A market summing below 1 (e.g. a promo) gives c < 0.
+    assert calibrate_logit_shift(0.45, 0.45) < 0

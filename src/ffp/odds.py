@@ -88,3 +88,15 @@ def apply_logit_shift(q: float, c: float) -> float:
     vig included; c is the book's vig in logit units for this Prop Market.
     """
     return _sigmoid(_logit(q) - c)
+
+
+def calibrate_logit_shift(q_over: float, q_under: float) -> float:
+    """Vig c of a two-sided Main Line under the logit-shift model.
+
+    Solves σ(logit q_over − c) + σ(logit q_under − c) = 1 by bisection.
+    c > 0 when the implied probabilities sum above 1 (positive overround),
+    c = 0 for a fair market and c < 0 when they sum below 1.
+    """
+    lo_o, lo_u = _logit(q_over), _logit(q_under)
+    bound = abs(lo_o) + abs(lo_u) + 1
+    return _bisect(lambda c: _sigmoid(lo_o - c) + _sigmoid(lo_u - c) - 1, -bound, bound)
