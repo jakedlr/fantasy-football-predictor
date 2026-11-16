@@ -2,9 +2,40 @@
 
 Probed 2026-11-15 (Sunday evening ET) from this network. Both books answered every request with HTTP 200 JSON. There were no 403/429 responses and no bot challenges. In total I made 20 requests, spaced 2.5 s apart, using Scrapling `Fetcher.get(url, impersonate="chrome", headers={"Accept": "application/json"})`, the same way `~/claude-projects/prizepicks-optimizer/src/ppopt/sources/http.py` does.
 
-The sample game is **LA Chargers @ BAL Ravens (MNF)**, kickoff 2026-11-17T01:15Z (DK) or 01:21Z (FD). DK event id is `34118177` and FD event id is `36275768`. At probe time the SNF game (PIT @ CIN) was live. The following week's games were listed but had **no player props posted** at either book (see Gotchas).
+The sample game is **LA Chargers @ BAL Ravens (MNF)**, kickoff 2026-11-17T01:15Z (DK) or 01:21Z (FD). DK event id is `34118177` and FD event id is `36275768`. At probe time the SNF game (PIT @ CIN) was live. The following week's games were listed but had **no player props posted** at either book at that time; Thursday's props were up at both books by the Sprint 2 re-check a few hours later (see Gotchas).
 
 Fixtures are in `research/fixtures/`. DK fixtures are trimmed to the MNF event; the `categories` and `subcategories` lists are kept as-is. FD event-tab fixtures are unmodified, since each is one event.
+
+---
+
+## Re-check 2026-11-15 (Sprint 2)
+
+Re-probed at about 00:00 ET Monday 2026-11-16 (21:00 PT Sunday 2026-11-15), after SNF had ended. I made 10 requests, spaced 3.5 s apart, with Scrapling 0.5 `Fetcher.get(url, impersonate="chrome", headers={"Accept": "application/json"})`, the same call as prizepicks-optimizer's `scrapling_fetch`. No cookies, extra headers or proxy were used. Every request returned HTTP 200 `application/json`, with no 403/429 and no bot challenge. I compared each response with its fixture by full JSON key path, with numeric dict keys collapsed, plus the specific fields our parsers read.
+
+| Endpoint | Status | Notes |
+|---|---|---|
+| DK league `leagues/88808` | works | Lists 14 events (MNF through next MNF). Categories 1000/1001/1342/1003 have unchanged ids and names (1000 still has the trailing space). Every prop subcategory id in the table below is still present except 18958 (see below). Live-only categories (998, 1054, 1680, 1873) are gone because no game was in play. |
+| DK subcat 1342/16570 (rec yds Ladder) | works | Key paths identical to `dk_nfl_rec_yds_ladder.json`. 20 markets over 2 events (MNF and Thursday IND @ HOU). `milestoneValue` is an int, there is no `outcomeType`, market tag `MilestoneMarket` is present, and `displayOdds.american` is a string with U+2212. The main-line rung is still included (Derrick Henry 6+ −118 = O/U Over −118). |
+| DK subcat 1342/14114 (rec yds O/U) | works | Key paths identical to `dk_nfl_rec_yds_ou.json`. `points` is a float, `outcomeType` is Over/Under, and every selection has `main: true` with tag `MainPointLine`. |
+| DK subcat 1003/12438 (TD scorer) | works | Key paths identical to `dk_nfl_td_scorer.json`. Same 3 market types and `outcomeType` values. 14 of 175 selections (D/ST, "No Touchdown Scorer") still lack `participants`. |
+| FD `content-managed-page` (nfl) | works | Events are still at `attachments.events{}` with `eventId`, `name` and `openDate`. MNF is still 36275768 and Thursday is still 36305232. |
+| FD event-page `receiving-props` | works | Key paths and market types identical to `fd_nfl_event_receiving_tab.json`. |
+| FD event-page `rushing-props` | works | Identical to `fd_nfl_event_rushing_tab.json`. |
+| FD event-page `passing-props` | works | Identical to `fd_nfl_event_passing_tab.json`. Still no QB INT, attempts or completions markets. |
+| FD event-page `td-scorer-props` | works | Identical to `fd_nfl_event_td_scorer_tab.json`. |
+| FD event-page `receiving-props`, Thursday 36305232 | works, **now posted** | Was "not posted" at the first probe. Now it has full player markets, and its key paths are identical to the MNF receiving fixture. |
+
+FD tab ids and titles are unchanged (217 Passing Props, 218 Receiving Props, 219 Rushing Props, 220 TD Scorer Props, 215 D/ST, 150 Same Game Parlay™, 1 Popular), and so are the slugs. The app key, the hosts (`sportsbook-nash.draftkings.com`, `sbapi.nj.sportsbook.fanduel.com`), the DK league id 88808 and the `dkusnj` state segment are also unchanged. No header beyond `Accept: application/json` plus Chrome TLS impersonation was needed.
+
+**Shape changes:** none in any field a parser reads. Every endpoint either has key paths identical to its fixture, or the differences are confined to parts the parsers ignore:
+- DK league: game-line markets (Moneyline/Spread/Total) carry a new `markets[].blurbId` (a UUID). League-level `selections[].points` and `trueOdds` are sometimes JSON ints (a spread of 3, say), not floats. Player-prop O/U `points` were all floats, but a parser should still coerce with `float()`.
+- FD league: some futures runners (college players in a draft or award market) carry `teamAbbr`. Event-tab player runners do **not** have it, so the logo slug is still the only team signal on FD.
+
+**Facts fixed in place below:**
+- DK Interceptions O/U subcategory 18958 is no longer in the catalogue now that SNF is over. It held the in-play game's market, and 15937 is the pre-game id. I updated the ID table, the note under it, and Gotcha 9.
+- Posting timing: Thursday's props were posted at both books by about 00:00 ET Monday, roughly 92 h before kickoff. Gotcha 1 had said "expect Tuesday–Wednesday at the earliest", and I corrected it there and in the intro.
+
+**Fixtures:** still representative. No `_2026-11-15` fixtures were added, because nothing a parser reads changed. `fd_nfl_event_receiving_tab_not_posted.json` remains a valid example of the not-posted shape (only moneyline, spread and total), even though that specific game has since posted props.
 
 ---
 
@@ -33,7 +64,7 @@ Categories: `1000` "Passing Props " (the trailing space is really in the name), 
 | Passing TDs | 1000 / **16568** "Pass TDs" | Passing Touchdowns Milestones | 1000 / **9525** "Pass TDs O/U" | |
 | Completions | 1000 / **16889** "Completions" | Passing Completions Milestones | 1000 / **9522** "Completions O/U" | |
 | Pass attempts | 1000 / 16888 "Pass Attempts" | (not fetched) | 1000 / 9517 "Pass Attempts O/U" | |
-| Interceptions thrown | 1000 / **16819** "Interceptions" | Interceptions Thrown Milestones | 1000 / **15937** and **18958**, both named "Interceptions O/U" | Interceptions Thrown O/U |
+| Interceptions thrown | 1000 / **16819** "Interceptions" | Interceptions Thrown Milestones | 1000 / **15937** (plus **18958** while SNF was live; gone after it ended), both named "Interceptions O/U" | Interceptions Thrown O/U |
 | Rush + Rec yards | 1001 / 16572 "Rush + Rec Yards" | (not fetched) | 1001 / 9523 | |
 | Anytime TD, 1st TD, 2+ TDs | 1003 / **12438** "TD Scorer" | `Anytime Touchdown Scorer` (mt 11019), `1st Touchdown Scorer` (11018), `Score 2 or More` (11020) | n/a | |
 | 3+ TDs | 1003 / **12422** "3+ TDs" | Score 3 or More | n/a | |
@@ -42,7 +73,7 @@ Other TD subcats in 1003: 11818 Last TD Scorer, 12424 Anytime TD - 1st Quarter, 
 
 **DK has no separate rushing-TD or receiving-TD market.** No such subcategory exists in any category. Its only TD props are scorer props.
 
-**Interceptions O/U uses two subcategory ids.** At probe time 15937 held MNF and 18958 held the live SNF game. To be safe, match subcategories by name, the way the existing repo does. (Its `books.json` "Interceptions O/U" name lookup maps to whichever id comes last.) Ladder and O/U ids match the October fixture in prizepicks-optimizer, except for the extra 18958.
+**Interceptions O/U used two subcategory ids.** At probe time 15937 held MNF and 18958 held the live SNF game. By the Sprint 2 re-check (SNF over) 18958 had left the catalogue and only 15937 remained, so 18958 looks tied to the in-play game. To be safe, match subcategories by name, the way the existing repo does. (Its `books.json` "Interceptions O/U" name lookup maps to whichever id comes last.) Ladder and O/U ids match the October fixture in prizepicks-optimizer, except for the extra 18958.
 
 ### JSON shape (subcategory response)
 
@@ -213,7 +244,7 @@ I ran the unmodified `prizepicks-optimizer` parsers in-process against the new p
 
 ## Gotchas
 
-1. **Posting timing.** About 32 h before MNF, both books had full props for MNF. The Thursday game (IND @ HOU, 4 days out) and all of next Sunday's games were listed in both league feeds, but their props were not posted. DK subcategories covered only the 2 current-week events. FD's Thursday `receiving-props` tab returned only moneyline, spread and total (fixture `fd_nfl_event_receiving_tab_not_posted.json`). Expect to fetch Tuesday–Wednesday at the earliest, and treat an empty result as "not posted", not as an error.
+1. **Posting timing.** About 32 h before MNF, both books had full props for MNF. At the first probe, the Thursday game (IND @ HOU, 4 days out) and all of next Sunday's games were listed in both league feeds, but their props were not posted. DK subcategories covered only the 2 current-week events. FD's Thursday `receiving-props` tab returned only moneyline, spread and total (fixture `fd_nfl_event_receiving_tab_not_posted.json`). By the re-check at about 00:00 ET Monday (~92 h before the Thursday kickoff), **both books had posted Thursday props**. Next Sunday's games were still not in the DK subcategories. So props for the next game appear about Sunday night to Monday; treat an empty result as "not posted", not as an error.
 2. **DK subcategory responses include live games.** Filter on `events[].status == "NOT_STARTED"` or on start time.
 3. **DK odds strings use U+2212 minus.** FD gives an int.
 4. **The DK ladder contains the main-line rung**, which duplicates the O/U Over. The FD ladder uses only round rungs. Dedupe before fitting a distribution.
@@ -221,7 +252,7 @@ I ran the unmodified `prizepicks-optimizer` parsers in-process against the new p
 6. **FD tiers (`_LOW/_MEDIUM/_HIGH`) are a per-player bucket, not alternate lines.** Each player appears in exactly one tier, so strip the suffix. Passing markets only use `_HIGH`.
 7. **Neither book gives a team abbreviation on the player.** Use DK `venueRole` (HomePlayer/AwayPlayer) and the FD logo slug.
 8. **Name formats differ between books.** Teams: DK "LA Chargers" vs FD "Los Angeles Chargers"; defenses: DK "BAL Ravens D/ST" vs FD "Baltimore Defense". Player names matched exactly for every FD rec-yds player in this sample. DK additionally listed Tre Harris and Quentin Johnston (LAC), which FD lacked.
-9. **DK Interceptions O/U appears under two subcategory ids** (15937, 18958). Fetch both, or look them up by name.
+9. **DK Interceptions O/U can appear under two subcategory ids** (15937, plus 18958 while a game is live). Look them up by name rather than hard-coding ids.
 10. **FD does not offer QB interceptions thrown, pass attempts, completions or rush attempts for this game.** Re-check closer to kickoff.
 11. **Scrapling logs the full request URL**, FD app key included, at INFO level. Lower the scrapling logger level in any tooling.
 12. **DK ladder end rungs are very long odds** (+3400, +4000). This is where the hold is likely heaviest, so be careful weighting tail rungs.
