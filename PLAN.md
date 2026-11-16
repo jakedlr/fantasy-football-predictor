@@ -139,16 +139,16 @@ Done when WR/TE output includes receptions, TDs, fumbles and 2-pt, all correlate
 
 ## Sprint 4 — RB and QB
 
-**Research wave:** check the QB rushing and RB Ladder fixtures. Generate the RB/QB params, including the workhorse-RB override.
+**Research wave:** check the QB rushing and RB Ladder fixtures and record a rush-attempts (carries) fixture if one is missing. Generate the RB/QB params: rushing-yards relations (RB, QB, and WR/TE for receivers with rushing markets), passing-yards relations, the carries r(μ) relation, and the empirical-Bayes shrinkage (strength and seasons) for each player's rushing TD share.
 
-**Build wave:** 3 subagents (QB passing stats; rushing stats; position matrices).
+**Build wave:** 3 subagents (QB passing stats; rushing stats + carries; position matrices + TD split).
 
-Done when all four positions are supported.
+Done when a QB, RB, WR and TE each get a full Score Distribution and the suite passes.
 
 - **S4.1 Passing yards** (normal + mass at 0), **pass TDs** (Binomial(11, μ/11)), **INTs** (Poisson). DK only for INTs if FD has none.
-- **S4.2 Rushing yards** (point mass at 0 + shifted gamma, with a shift for negatives) for RBs and QBs.
-- **S4.3 Position matrices** and the RB rushing/receiving TD split from the player's own history.
-- **S4.4 QB fumbles from sacks.**
+- **S4.2 Rushing yards** (point mass at 0 + shifted gamma, with a shift for negatives) for RBs and QBs, and for WR/TE when a rushing market exists (the "counts as 0" assumption stays only for those without one). **Carries** are a Usage Stat: fetched, fitted as a negative binomial, used only for their mean in expected touches (fumbles), never simulated, and they don't set rushing-yards P(0). With no carries market, fumbles lost uses the per-game Base Rate, unflagged.
+- **S4.3 Position matrices** for QB and RB (one per position, no workhorse override), and the **rushing TD share from the player's own history**, shrunk toward the position share (empirical Bayes), for all four positions; it splits both TDs and 2-pt conversions. No history (rookies): the position share.
+- ~~S4.4 QB fumbles from sacks.~~ Dropped (Sprint 4 planning): no book offers a QB sacks-taken market, and research/nflverse-data.md finds QB fumbles lost barely vary by usage, so the flat per-game rate stays.
 
 ## Backlog (later sprints, order decided after Sprint 4)
 
@@ -157,3 +157,5 @@ Done when all four positions are supported.
 - **Kicker and D/ST** from team totals and opponent totals.
 - **Conditional receptions→yards model** or a supervised alternative, adopted only if the backtest shows the copula is miscalibrated.
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
+- **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
+- **Workhorse-RB correlation override** (≥55% carry share: RuYd–Rec −0.12 vs +0.02 pooled), adopted only if the backtest shows it matters.
