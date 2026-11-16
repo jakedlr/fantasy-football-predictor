@@ -6,8 +6,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
+from ffp.simulate import ScoreDistribution
+
 CHANCE_THRESHOLDS = (5, 10, 15, 20, 25, 30)
 PERCENTILE_KS = (5, 25, 50, 75, 95)
+
+
+def chances(dist: ScoreDistribution, thresholds: Sequence[int] = CHANCE_THRESHOLDS) -> dict[int, float]:
+    """Chance of N+ points for each threshold N."""
+    return {t: dist.chance_of_at_least(t) for t in thresholds}
 
 
 @dataclass(frozen=True)

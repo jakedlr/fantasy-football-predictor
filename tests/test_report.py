@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ffp.report import PlayerResult, SkippedPlayer, StatDetail, write_json, write_markdown
+import numpy as np
+
+from ffp.report import PlayerResult, SkippedPlayer, StatDetail, chances, write_json, write_markdown
+from ffp.simulate import ScoreDistribution
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 
@@ -49,3 +52,15 @@ def test_json_matches_golden_file(tmp_path):
     out = tmp_path / "output.json"
     write_json(RESULTS, SKIPPED, "espn-league", GENERATED_AT, out, assumptions=ASSUMPTIONS)
     assert out.read_text() == (GOLDEN / "output.json").read_text()
+
+
+def test_no_skipped_players_says_none(tmp_path):
+    out = tmp_path / "OUTPUT.md"
+    write_markdown(RESULTS, [], "espn-league", GENERATED_AT, out)
+    assert out.read_text().endswith("## Skipped\n\nNone.\n")
+    assert "Assumptions" not in out.read_text()
+
+
+def test_chances_from_a_score_distribution():
+    dist = ScoreDistribution(np.array([0.0, 4.9, 5.0, 12.0, 31.0]))
+    assert chances(dist) == {5: 0.6, 10: 0.4, 15: 0.2, 20: 0.2, 25: 0.2, 30: 0.2}
