@@ -353,3 +353,35 @@ def test_a_rung_s_odds_are_the_american_odds_of_its_mid(mid):
     rung = KalshiRung("g", 2026, 10, SNF_KO, "00-1", "P", "receptions", 5, mid - 0.005, mid + 0.005)
     (market,) = to_prop_markets([rung])
     assert american_to_implied(market.ladder[0].odds) == pytest.approx(mid, abs=1e-12)
+
+
+# --- Sprint 6: D/ST lines and wide kicker lines ----------------------------------------
+
+def test_a_kalshi_dst_target_is_the_teams_dst():
+    from ffp.sources.kalshi import dst_id
+
+    assert dst_id("SF 49ers D/ST") == "DST-SF"
+    assert dst_id("LA Chargers D/ST") == "DST-LAC"
+    assert dst_id("Ja'Marr Chase") is None and dst_id(None) is None
+    assert dst_id("Nowhere Nobodies D/ST") is None
+
+
+def test_wide_fantasy_lines_load_only_when_asked(tmp_path):
+    from ffp.sources.kalshi import dst_id
+
+    c = Cache(tmp_path)
+    c.save_games(GAMES)
+    c.save_players({"uuid-pit": {"name": "PIT Steelers D/ST", "position": "N/A", "source_id": "sr9",
+                                 "gsis_id": dst_id("PIT Steelers D/ST")}})
+    ffpts = "KXNFLFFPTS-26NOV15PITCIN-PITPITDST-5P7"
+    td = "KXNFLTD-26NOV15PITCIN-PITPITDST-1"
+    c.save_markets("KXNFLFFPTS", [_market(ffpts, player="uuid-pit", floor=5.7)])
+    c.save_markets("KXNFLTD", [_market(td, player="uuid-pit", floor=0.5)])
+    c.append_quote(_quote(ffpts, 0.30, 0.45))  # 15¢ wide
+    c.append_quote(_quote(td, 0.10, 0.12))
+    assert load_fantasy_lines(tmp_path) == []
+    (line,) = load_fantasy_lines(tmp_path, keep_wide=True)
+    assert (line.gsis_id, line.line, line.wide) == ("DST-PIT", 5.7, True)
+    drops = drop_counts(tmp_path)
+    assert drops[("KXNFLFFPTS", "wide_spread")] == 1
+    assert drops[("KXNFLTD", "dst_rung")] == 1 and load_rungs(tmp_path) == []  # a D/ST's TD Rung is not a player's

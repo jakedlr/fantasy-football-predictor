@@ -90,18 +90,23 @@ def test_team_hint_on_a_unique_name_still_checks_the_team(roster):
         resolve_player("Ja'Marr Chase (PIT)", roster)
 
 
-def test_kicker_is_not_supported_yet(roster):
-    with pytest.raises(UnsupportedPlayerError, match="not supported yet"):
-        resolve_player("Evan McPherson", roster)
+def test_a_kicker_resolves_like_any_player(roster):
+    # Sprint 6: kickers are supported.
+    assert resolve_player("Evan McPherson", roster) == Player("00-0036854", "Evan McPherson", "K", "CIN")
 
 
-@pytest.mark.parametrize("text", [
-    "Ravens D/ST", "BAL DST", "BAL D/ST", "Baltimore Ravens Defense", "Ravens", "Ravens DEF",
-    "Ravens D-ST", "Bengals Defense", "Baltimore D/ST", "D/ST (BAL)",
+@pytest.mark.parametrize("text, team", [
+    ("Ravens D/ST", "BAL"), ("BAL DST", "BAL"), ("BAL D/ST", "BAL"), ("Baltimore Ravens Defense", "BAL"),
+    ("Ravens", "BAL"), ("Ravens DEF", "BAL"), ("Ravens D-ST", "BAL"), ("Bengals Defense", "CIN"),
+    ("Baltimore D/ST", "BAL"), ("D/ST (BAL)", "BAL"), ("Baltimore Defense", "BAL"), ("LA Chargers D/ST", "LAC"),
 ])
-def test_dst_is_not_supported_yet(roster, text):
-    with pytest.raises(UnsupportedPlayerError, match="not supported yet"):
-        resolve_player(text, roster)
+def test_a_dst_resolves_to_its_team(roster, text, team):
+    assert resolve_player(text, roster) == Player(f"DST-{team}", f"{team} D/ST", "DST", team)
+
+
+def test_a_dst_without_a_team_is_unknown(roster):
+    with pytest.raises(UnknownPlayerError, match="names no team"):
+        resolve_player("D/ST", roster)
 
 
 def test_name_on_only_a_non_skill_position_is_not_supported(roster):

@@ -52,7 +52,7 @@ from ffp.estimates import RecentGames, recent_games
 from ffp.fair import KALSHI_PRIOR_C, PROB_FLOOR
 from ffp.outcomes import OUTCOME_STATS, fantasy_points
 from ffp.predict import (
-    MODELED_POSITIONS,
+    PLAYER_POSITIONS,
     NO_CORRELATION,
     TD_STAT,
     Fitted,
@@ -209,7 +209,7 @@ def tasks(games: Iterable[PlayerGame], ctx: Context) -> tuple[list[Task], list[d
     out, skipped = [], []
     for pg in games:
         position = ctx.positions.at(pg.gsis_id, pg.season, pg.week)
-        if position is None or position not in MODELED_POSITIONS:
+        if position is None or position not in PLAYER_POSITIONS:
             skipped.append(_record(pg, position, NO_POSITION if position is None else UNMODELED))
             continue
         key = (pg.game_id, pg.gsis_id)
@@ -771,7 +771,7 @@ def _joint(ok) -> dict:
     """Normal-score correlation of the outcomes' PITs per stat pair, against the same statistic
     from one copula draw per player-game (what the model expects) and the latent rho."""
     out = {}
-    for pos in MODELED_POSITIONS:
+    for pos in PLAYER_POSITIONS:
         rows = [r for r in ok if r["position"] == pos]
         subsets = {"all": rows}
         if pos == "RB":

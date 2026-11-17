@@ -35,7 +35,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..markets import PropMarket, Rung, parse_utc
-from ..players import ScheduledGame, UnknownTeamError, _present, load_schedule, team_code_from_book_name
+from ..players import DST, ScheduledGame, UnknownTeamError, _present, dst_player, load_schedule, team_code_from_book_name
 from .fanduel import TD_STAT
 from .http import FetchError
 
@@ -382,11 +382,12 @@ class KalshiFantasyLine:
     season: int
     week: int
     kickoff: str
-    gsis_id: str
+    gsis_id: str  # a D/ST's is "DST-<team>"
     player: str
     line: float  # pays when points > line, strictly
     bid: float
     ask: float
+    wide: bool = False  # ask − bid above MAX_SPREAD: loaded only with load_fantasy_lines(keep_wide=True)
 
     @property
     def mid(self) -> float:
@@ -421,9 +422,10 @@ def load_rungs(root: str | Path = DEFAULT_ROOT) -> list[KalshiRung]:
     return _load(root)[0]
 
 
-def load_fantasy_lines(root: str | Path = DEFAULT_ROOT) -> list[KalshiFantasyLine]:
-    """Every usable KXNFLFFPTS line in the cache (cache only)."""
-    return _load(root)[1]
+def load_fantasy_lines(root: str | Path = DEFAULT_ROOT, keep_wide: bool = False) -> list[KalshiFantasyLine]:
+    """Every usable KXNFLFFPTS line in the cache (cache only). With `keep_wide`, lines dropped only
+    for a wide spread come back too, marked `wide` (Sprint 6: kicker lines run 10¢ wide)."""
+    return _load(root, keep_wide)[1]
 
 
 def load_fantasy_means(root: str | Path = DEFAULT_ROOT) -> list[KalshiFantasyMean]:
@@ -438,7 +440,8 @@ def drop_counts(root: str | Path = DEFAULT_ROOT) -> Counter:
     opened_in_game   listed at or after kickoff
     dnp              settled at the pre-game fair price: the player didn't play (result "scalar";
                      on KXNFLFFPTSLADDER, which always settles "scalar": no numeric value)
-    unmapped_player  the player uuid has no gsis_id (D/ST, "No TD", or no nflverse match)
+    unmapped_player  the player uuid has no gsis_id ("No TD", or no nflverse match; a D/ST is "DST-<team>")
+    dst_rung         a D/ST's TD Rung: only D/ST fantasy-point lines are used (Sprint 6), so no quote is fetched
     not_fetched      no candles pulled yet
     no_candle        no candle ended at or before kickoff, minute or hourly
     one_sided        no bid, or no ask below $1
@@ -459,8 +462,11 @@ def _market_drop_reason(series: str, market: Mapping, game: ScheduledGame | None
             return "dnp"
     elif market.get("result") == "scalar":
         return "dnp"
-    if not (players.get(market.get("player")) or {}).get("gsis_id"):
+    gsis_id = (players.get(market.get("player")) or {}).get("gsis_id")
+    if not gsis_id:
         return "unmapped_player"
+    if series != FANTASY_LINE_SERIES and gsis_id.startswith(f"{DST}-"):
+        return "dst_rung"
     return None
 
 
@@ -472,7 +478,7 @@ def _is_number(value) -> bool:
     return True
 
 
-def _load(root):
+def _load(root, keep_wide: bool = False):
     cache = Cache(root)
     games, players, quotes = cache.games(), cache.players(), cache.quotes()
     rungs, lines, means, drops = [], [], [], Counter()
@@ -489,13 +495,15 @@ def _load(root):
                     reason = "no_candle"
                 else:
                     reason = price_drop_reason(Quote(q["bid"], q["ask"], q["end"], q["volume"]))
+            wide = keep_wide and series == FANTASY_LINE_SERIES and reason == "wide_spread"
             if reason is not None:
                 drops[(series, reason)] += 1
-                continue
+                if not wide:
+                    continue
             player = players[market["player"]]
             head = (game.game_id, game.season, game.week, game.kickoff, player["gsis_id"], player["name"])
             if series == FANTASY_LINE_SERIES:
-                lines.append(KalshiFantasyLine(*head, fantasy_line(market), q["bid"], q["ask"]))
+                lines.append(KalshiFantasyLine(*head, fantasy_line(market), q["bid"], q["ask"], wide))
             elif series == FANTASY_MEAN_SERIES:
                 means.append(KalshiFantasyMean(*head, (q["bid"] + q["ask"]) / 2, q["bid"], q["ask"]))
             else:
@@ -724,12 +732,28 @@ def _update_players(http, cache: Cache, series: list[str], seasons: list[int], r
         found = player_directory([target]) if target.get("id") else {}
         players[uuid] = {**found.get(uuid, {"name": target.get("name"), "position": None, "source_id": None}),
                          "gsis_id": None}
-    if any(p.get("source_id") and not p.get("gsis_id") for p in players.values()):
+    if any(p.get("source_id") and not p.get("gsis_id") and not dst_id(p.get("name")) for p in players.values()):
         to_gsis = sportradar_to_gsis(seasons, roster_fetch)
         for p in players.values():
             if p.get("source_id") and not p.get("gsis_id"):
                 p["gsis_id"] = to_gsis.get(p["source_id"])
+    for p in players.values():  # Sprint 6: "SF 49ers D/ST" is the D/ST "DST-SF", as players.dst_player names it
+        if not p.get("gsis_id") and dst_id(p.get("name")):
+            p["gsis_id"] = dst_id(p["name"])
     cache.save_players(players)
+
+
+DST_NAME_SUFFIX = " D/ST"
+
+
+def dst_id(name: str | None) -> str | None:
+    """The id of the D/ST a Kalshi target names ("SF 49ers D/ST" → "DST-SF"), else None."""
+    if not name or not name.endswith(DST_NAME_SUFFIX):
+        return None
+    try:
+        return dst_player(team_code_from_book_name(name.removesuffix(DST_NAME_SUFFIX))).gsis_id
+    except UnknownTeamError:
+        return None
 
 
 def _fetch_quotes(http, cache: Cache, series: list[str], cutoff: datetime, since: date | None,

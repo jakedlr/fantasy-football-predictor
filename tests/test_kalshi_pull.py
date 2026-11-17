@@ -46,6 +46,21 @@ def _without(url, param):
     return urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
 
 
+def _dst_free(url):
+    """`url` without D/ST tickers in its live candlesticks batch, or None when only D/ST tickers were
+    asked. The recording predates Sprint 6, which maps D/ST lines and so asks for their candles."""
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parts.query)
+    tickers = dict(query).get("market_tickers")
+    if tickers is None or "DST" not in tickers:
+        return url
+    kept = [t for t in tickers.split(",") if not t.split("-")[-2].endswith("DST")]
+    if not kept:
+        return None
+    query = [(k, ",".join(kept) if k == "market_tickers" else v) for k, v in query]
+    return urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
+
+
 class FixtureHttp:
     """Answers from the recorded responses; fails the test on any other URL. A live listing's
     min_close_ts (set by incremental re-listing) is ignored."""
@@ -60,7 +75,9 @@ class FixtureHttp:
 
     def get_json(self, url):
         self.calls.append(url)
-        key = _without(url, "min_close_ts")
+        key = _dst_free(_without(url, "min_close_ts"))
+        if key is None:  # only D/ST tickers asked: none were recorded, so no candles
+            return {"markets": []}
         if key not in self.responses:
             pytest.fail(f"no recorded response for {url}")
         answer = self.responses[key]
@@ -106,8 +123,11 @@ def test_pull_reports_the_drop_reasons(pulled):
     root, _, report = pulled
     assert report.drops == drop_counts(root)
     reasons = {reason for _, reason in report.drops}
-    assert {"opened_in_game", "unmapped_player", "wide_spread", "one_sided"} <= reasons
-    assert report.drops[("KXNFLTD", "unmapped_player")] == 1  # PIT Steelers D/ST: no gsis_id
+    assert {"opened_in_game", "dst_rung", "wide_spread", "one_sided"} <= reasons
+    # Sprint 6: the Steelers D/ST is "DST-PIT". Its TD Rung is left out; its fantasy-point line is
+    # fetched (and gets no candle here: the recording predates the mapping).
+    assert report.drops[("KXNFLTD", "dst_rung")] == 1
+    assert report.drops[("KXNFLFFPTS", "no_candle")] >= 1
 
 
 def test_historical_markets_cost_one_request_each_and_live_ones_are_batched(pulled):

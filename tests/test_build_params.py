@@ -554,3 +554,86 @@ def test_per_carry_yards_by_position():
     out = bp.per_carry_params(plays, players)
     assert out["RB"] == {"lo": -2, "pmf": [0.25, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0.25], "n": 4, "mean": 3.5}
     assert out["TE"] == out["WR"] == {"lo": 8, "pmf": [1.0], "n": 1, "mean": 8.0}
+
+
+# ---------------------------------------------------------------- Sprint 6: kickers and D/ST
+
+SCHEDULE_6 = pl.DataFrame({
+    "game_id": ["2024_01_A_B", "2024_02_B_A"], "season": [2024, 2024], "week": [1, 2], "game_type": ["REG", "REG"],
+    "home_team": ["B", "A"], "away_team": ["A", "B"], "home_score": [27, 10], "away_score": [20, 13],
+    "spread_line": [3.0, -1.5], "total_line": [44.0, 40.0],
+})
+
+
+def test_team_game_lines_give_both_teams_implied_totals():
+    lines = {(r["game_id"], r["team"]): r for r in bp.team_game_lines(SCHEDULE_6, [2024]).to_dicts()}
+    home = lines["2024_01_A_B", "B"]  # B at home, favoured by 3, total 44
+    assert (home["itt"], home["opp_itt"], home["fav_by"], home["points"], home["points_allowed"]) == (23.5, 20.5, 3.0, 27, 20)
+    assert lines["2024_01_A_B", "A"]["itt"] == 20.5 and lines["2024_01_A_B", "A"]["fav_by"] == -3.0
+
+
+def test_kicking_games_sum_any_kicker_and_count_kicking_nothing():
+    stats = pl.DataFrame({
+        "game_id": ["2024_01_A_B", "2024_01_A_B"], "team": ["B", "B"],
+        "fg_att": [2, 1], "pat_att": [3, 0], "pat_made": [3, 0],
+        "fg_made_list": ["29;51", None], "fg_missed_list": [None, "55"], "fg_blocked_list": [None, None],
+    })
+    games = {(r["game_id"], r["team"]): r for r in bp.kicking_games(stats, bp.team_game_lines(SCHEDULE_6, [2024])).to_dicts()}
+    b = games["2024_01_A_B", "B"]
+    assert (b["fga"], b["pat_att"], sorted(b["made"]), b["missed"]) == (3, 3, [29, 51], [55])
+    a = games["2024_01_A_B", "A"]  # no kicking row: kicked nothing
+    assert (a["fga"], a["pat_att"], a["made"], a["missed"]) == (0, 0, [], [])
+
+
+def _play(**kw):
+    base = {"game_id": "2024_01_A_B", "play_id": 1.0, "season": 2024, "season_type": "REG", "play_type": "pass",
+            "posteam": "A", "defteam": "B", "yards_gained": 0.0, "sack": 0.0, "interception": 0.0, "safety": 0.0,
+            "punt_blocked": 0.0, "touchdown": 0.0, "td_team": None, "fumble_lost": 0.0, "fumble_recovery_1_team": None,
+            "fumbled_1_team": None, "forced_fumble_player_1_team": None, "field_goal_result": None,
+            "extra_point_result": None, "two_point_conv_result": None, "two_point_attempt": 0.0}
+    return {**base, **kw}
+
+
+def test_dst_games_count_each_part_from_play_by_play():
+    plays = pl.DataFrame([
+        _play(play_id=1.0, yards_gained=12.0),
+        _play(play_id=2.0, play_type="pass", sack=1.0, yards_gained=-7.0, fumble_lost=1.0, fumbled_1_team="A",
+              fumble_recovery_1_team="B", forced_fumble_player_1_team="B"),
+        _play(play_id=3.0, play_type="pass", interception=1.0, touchdown=1.0, td_team="B", yards_gained=0.0),
+        _play(play_id=4.0, play_type="extra_point", posteam="B", defteam="A", extra_point_result="good"),
+        _play(play_id=5.0, play_type="punt", posteam="A", defteam="B", touchdown=1.0, td_team="B"),
+        _play(play_id=6.0, play_type="extra_point", posteam="B", defteam="A", extra_point_result="blocked"),
+        _play(play_id=7.0, play_type="run", posteam="B", defteam="A", yards_gained=5.0, two_point_attempt=0.0),
+    ])
+    d = {r["team"]: r for r in bp.dst_games(plays, SCHEDULE_6, [2024]).to_dicts()}
+    b, a = d["B"], d["A"]
+    assert (b["sacks"], b["fumble_recoveries"], b["forced_fumbles"], b["interceptions"]) == (1, 1, 1, 1)
+    assert (b["interception_return_tds"], b["punt_return_tds"], b["kickoff_return_tds"]) == (1, 1, 0)
+    assert b["yards_allowed"] == 12 - 7  # the sack counts against A's yards
+    assert a["blocked_kicks"] == 1  # A blocked B's extra point
+    # A gave up a pick-six (7 with its try) and a punt-return TD (6: its try was blocked).
+    assert (a["opponent_defensive_tds_points"], a["opponent_return_tds_points"]) == (7, 6)
+    assert (b["opponent_defensive_tds_points"], b["opponent_return_tds_points"]) == (0, 0)
+    assert (a["points_allowed_all"], b["points_allowed_all"]) == (27, 20)
+    assert (d["A"]["opp_itt"], d["B"]["opp_itt"]) == (23.5, 20.5)
+
+
+def test_opponent_return_td_points_include_the_try():
+    plays = pl.DataFrame([
+        _play(play_id=1.0, play_type="pass", posteam="A", defteam="B", interception=1.0, touchdown=1.0, td_team="B"),
+        _play(play_id=2.0, play_type="extra_point", posteam="B", defteam="A", extra_point_result="good"),
+        _play(play_id=3.0, play_type="kickoff", posteam="A", defteam="B", touchdown=1.0, td_team="A"),
+        _play(play_id=4.0, play_type="pass", posteam="A", defteam="B", two_point_attempt=1.0,
+              two_point_conv_result="success"),
+    ])
+    d = {r["team"]: r for r in bp.dst_games(plays, SCHEDULE_6, [2024]).to_dicts()}
+    # A threw a pick-six (B's 7 points), then returned the kickoff for a TD and converted two (8).
+    assert d["A"]["opponent_defensive_tds_points"] == 7
+    assert d["B"]["opponent_return_tds_points"] == 8
+    assert d["A"]["kickoff_return_tds"] == 1 and d["B"]["interception_return_tds"] == 1
+
+
+def test_dumps_keeps_one_row_per_line():
+    text = bp.dumps({"source": "x", "columns": ["a", "b"], "rows": [[1, 2.5], [3, None]]})
+    assert json.loads(text) == {"source": "x", "columns": ["a", "b"], "rows": [[1, 2.5], [3, None]]}
+    assert '    [1,2.5],\n    [3,null]\n' in text

@@ -1,6 +1,6 @@
 # Fantasy Football Predictor (`ffp`)
 
-`ffp` turns DraftKings and FanDuel player prop prices into a fantasy-point distribution for each player's next NFL game. For every QB, RB, WR and TE you list, it reports Score Percentiles (P5, P25, P50, P75, P95). With `--chance N` it also reports the chance of N or more points for numbers you choose.
+`ffp` turns DraftKings and FanDuel player prop prices into a fantasy-point distribution for each player's next NFL game. For every QB, RB, WR, TE, kicker and D/ST you list, it reports Score Percentiles (P5, P25, P50, P75, P95). With `--chance N` it also reports the chance of N or more points for numbers you choose.
 
 How it works: each prop Ladder (for example "70+ receiving yards at −260") is devigged into Fair Probabilities. A Stat Distribution is fitted to those for every stat that scores points. The stats are then sampled together through a Gaussian copula and scored under your league's Scoring Rules, 20,000 Monte Carlo draws per player.
 
@@ -8,13 +8,15 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–5.6 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution; kickers and D/ST are not supported yet. Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md).
+Sprints 0–6 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md).
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
 | QB | passing yards, pass TDs, INTs, rushing yards, rush+rec TDs | fumbles lost (flat per game), 2-pt (passing and rush/rec) |
 | RB | rushing yards, receptions, receiving yards, rush+rec TDs; carries (Usage Stat) | fumbles lost (per touch), 2-pt |
 | WR / TE | receptions, receiving yards, rush+rec TDs; rushing yards when a book prices them; carries (Usage Stat) | fumbles lost (per touch), 2-pt |
+| K | none: the Game Lines (his team's Implied Team Total and expected margin) | FG and PAT attempts, kick distance and make rate |
+| D/ST | the opponent's team total and the D/ST anytime-TD price, when a book prices them; the Game Lines | past team-games (2015 on) with a similar opponent Implied Team Total |
 
 Model choices:
 
@@ -26,6 +28,8 @@ Model choices:
 - **INTs:** Poisson.
 - **Rush+rec TDs:** Poisson from the anytime/2+/3+ prices. They are split into rushing and receiving TDs by the player's own rushing share: his last 2 seasons plus this season, shrunk toward his volume and position (`ffp.td_share`).
 - **Carries** are only used to set expected touches for fumbles lost. With no carries market (FanDuel has none), expected carries are the rushing-yards mean divided by the position's yards per carry.
+- **Kickers:** FG and PAT attempts from his team's Implied Team Total and expected margin, each FG's distance from the last two seasons, the league's make rate by distance (with a season trend). No kicker-specific skill or weather ([ADR 0003](docs/adr/0003-kickers-and-dst-from-game-lines.md)).
+- **D/ST:** whole past team-games whose opponent had a similar Implied Team Total, reweighted to match the opponent's team-total Ladder and the D/ST TD price where a book prices them, each scored under your rules. This keeps Points Allowed tiers, whole football scores and the correlation between sacks, turnovers and points allowed.
 - **Correlation:** Gaussian copula with within-player-season Spearman matrices per position (`--correlation pooled` switches matrices). Receiving yards and TDs are 0 whenever receptions are 0.
 
 A stat the position needs but that has no market, or can't be fitted, becomes an **Estimated Stat**, flagged `estimated: X (no market)`. Its mean comes from the player's other priced stats (for example receptions from his receiving yards; rushing yards from his expected rushing TDs, capped for RBs with a high TD price) blended with his last 8 games from nflverse, where a game last season counts half. Where nothing can estimate it, the stat is flagged `incomplete: missing X` and counts as 0, so that player's range is too low. Fixture runs are offline and estimate from the other priced stats only. The model's other omissions are listed under "Assumptions" in every `OUTPUT.md`.
@@ -42,7 +46,7 @@ pip install -e '.[dev]'
 
 ## Usage
 
-List players one per line in a Markdown or plain-text file. List markers, checkboxes, headings and front matter are ignored. If a name is ambiguous, add the team, as in `Name (TEAM)`.
+List players one per line in a Markdown or plain-text file. List markers, checkboxes, headings and front matter are ignored. If a name is ambiguous, add the team, as in `Name (TEAM)`. A kicker is listed by name. A D/ST is listed by its team, as in `Ravens D/ST`, `BAL DST`, `Baltimore Defense` or just `Ravens`.
 
 ```markdown
 # Week 11
@@ -50,6 +54,8 @@ List players one per line in a Markdown or plain-text file. List markers, checkb
 - Derrick Henry
 - Zay Flowers
 - Mark Andrews
+- Cameron Dicker
+- Ravens D/ST
 ```
 
 Run it:
@@ -84,7 +90,9 @@ Options:
 Output:
 
 - **`OUTPUT.md`:** a percentile table, flags and assumptions, plus a chance table when `--chance` is given.
-- **`output.json`:** the same, plus per-stat detail (mean, median, books used, Rung count).
+- **`output.json`:** the same, plus per-stat detail (mean, median, books used, Rung count). For a kicker the detail is FG attempts, FGs made and PATs made; for a D/ST it is Points Allowed, sacks, interceptions and D/ST TDs.
+
+A kicker is always flagged `from game lines`. A D/ST with no team total or TD price is flagged `from game lines (no team total or D/ST TD market)`. When no book lists the Game's spread and total, both use nflverse's schedule lines and say so.
 
 Players are skipped, with a reason, when:
 
@@ -92,16 +100,24 @@ Players are skipped, with a reason, when:
 - the position isn't supported;
 - the game has already kicked off;
 - props aren't posted yet (rerun closer to kickoff);
-- no fit succeeds.
+- no fit succeeds;
+- for a kicker or D/ST: no spread and total anywhere yet, or Scoring Rules without a `kicker`/`dst` section.
 
 A live run makes a few network calls:
 
 - DraftKings and FanDuel site endpoints ([ADR 0001](docs/adr/0001-sportsbook-site-endpoints-for-live-odds.md)). Passing markets are fetched only when a QB is listed.
+  - A D/ST adds DraftKings' team totals and TD scorer, and FanDuel's "popular" and TD scorer tabs for its Game.
+  - A kicker adds four DraftKings kicker subcategories. The model doesn't use them yet; they are saved in the snapshot for a later backtest.
 - nflverse, through `nflreadpy`, for rosters, the schedule and weekly player stats (TD history).
 
 ## Scoring Rules
 
-The bundled default is `src/ffp/rules/espn-league.json`. Presets `standard`, `half-ppr`, `ppr` and `sleeper` are built in (`sleeper` is Sleeper's default full PPR, which Kalshi's fantasy-points markets settle on: `ppr` with −1 per interception instead of −2). Custom leagues go in `scoring/<name>.json` and override a bundled file of the same name ([scoring/README.md](scoring/README.md)).
+The bundled default is `src/ffp/rules/espn-league.json`. Presets `standard`, `half-ppr`, `ppr` and `sleeper` are built in:
+
+- `standard`, `half-ppr` and `ppr` use ESPN's default kicker and D/ST scoring.
+- `sleeper` is Sleeper's default full PPR, which Kalshi's fantasy-points markets settle on: `ppr` with −1 per interception instead of −2. It also uses Sleeper's kicker and D/ST rules: missed PAT −1, forced fumble +1, and its own Points Allowed tiers with no Yards Allowed tiers.
+
+A rules file's `kicker` section scores FGs by distance tiers, plus PATs and misses. Its `dst` section scores the D/ST counts and the Points Allowed and Yards Allowed tiers. `points_allowed_excludes` can leave the opponent's defensive TDs and/or return TDs out of Points Allowed. Custom leagues go in `scoring/<name>.json` and override a bundled file of the same name ([scoring/README.md](scoring/README.md)).
 
 ## Development
 
@@ -110,11 +126,17 @@ pytest                 # full offline suite (tests never touch the network)
 pytest -m live         # live smoke tests against the real sportsbooks
 ```
 
-Model parameters are committed JSON in `src/ffp/params/`: dispersion relations, per-carry rushing yards, correlation matrices and Base Rates. Regenerate them from nflverse (this needs the network, downloads play-by-play for the dispersion seasons, and caches to disk). `market_calibration.json` is measured on the Kalshi backtest and kept by hand:
+Model parameters are committed JSON in `src/ffp/params/`:
+
+- dispersion relations, per-carry rushing yards, correlation matrices and Base Rates;
+- the kicker model (`kicker.json`, from the `--seasons` window, with a season trend: rebuild every season);
+- the D/ST Analog Games (`dst_games.json`, one row per team-game of `--dst-seasons`).
+
+Regenerate them from nflverse. This needs the network, downloads play-by-play for the dispersion and D/ST seasons, and caches to disk. `market_calibration.json` is measured on the Kalshi backtest and kept by hand.
 
 ```bash
 python scripts/build_params.py [--out src/ffp/params] [--seasons 2021-2025] \
-                               [--dispersion-seasons 2015-2021] [--draws 40000]
+                               [--dispersion-seasons 2015-2021] [--dst-seasons 2015-2025] [--draws 40000]
 ```
 
 ### Backtest data (Sprint 5)
@@ -144,6 +166,14 @@ The run writes three files to `--out` (git-ignored):
 
 The metrics are PIT, CRPS and P(≥k) reliability per stat against Kalshi's own mids, plus fantasy-point coverage and the model against KXNFLFFPTS and KXNFLFFPTSLADDER. The recalibration diagnostics cover free-fit dispersion, the rushing shift, gamma vs lognormal, PIT dependence against the copula, and the TD mids. The logic is in `ffp.backtest`.
 
+### Kicker and D/ST backtest (Sprint 6)
+
+```bash
+python scripts/backtest_k_dst.py   # [--seasons 2016-2025] [--samples 2000] [--out data/backtest-k-dst] [--kalshi data/kalshi] [--no-kalshi]
+```
+
+It runs a walk-forward backtest on nflverse: each test season's kicker and D/ST models are fitted on earlier seasons only and scored on that season's team-games from their closing lines. Each model is compared with a baseline that ignores the Game Lines. It then checks Kalshi's 2026 kicker and D/ST fantasy-point lines against the model and the outcomes. The pull maps Kalshi's D/ST targets to `DST-<team>`, and lines with spreads over 10¢ are kept as their own group. The run writes `summary.json` and `tables.md` to `--out`; results are in [research/kickers-dst.md](research/kickers-dst.md).
+
 ### Layout
 
 ```
@@ -157,6 +187,8 @@ src/ffp/
   base_rates.py      fumbles lost and 2-pt from nflverse Base Rates
   td_share.py        per-player rushing TD share
   estimates.py       Estimated Stats: a missing core stat from other stats and recent games
+  gamelines.py       Game Lines → Implied Team Totals; a team's markets
+  kicker.py, dst.py  kickers from the Game Lines; D/ST from Analog Games tilted to its markets
   copula.py, simulate.py   correlated sampling → Score Distribution
   scoring.py, rules/ Scoring Rules
   report.py          OUTPUT.md + output.json
@@ -167,6 +199,7 @@ src/ffp/
   params/            committed model parameters (scripts/build_params.py)
 scripts/build_params.py   regenerates params/ from nflverse
 scripts/backtest_kalshi.py   runs the Kalshi Backtest (ffp.backtest)
+scripts/backtest_k_dst.py    walk-forward kicker and D/ST Backtest, plus Kalshi's K and D/ST lines
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
 ```
@@ -174,7 +207,7 @@ docs/adr/          architecture decisions
 ### Docs
 
 - [PLAN.md](PLAN.md): sprint plan, settled decisions and backlog.
-- [RESEARCH.md](RESEARCH.md) and `research/*.md`: background research. `stat-distributions.md` covers the families and fits, `nflverse-data.md` the Base Rates, correlations and TD share, and `sportsbook-markets.md` the book endpoints and markets.
+- [RESEARCH.md](RESEARCH.md) and `research/*.md`: background research. `stat-distributions.md` covers the families and fits, `nflverse-data.md` the Base Rates, correlations and TD share, `sportsbook-markets.md` the book endpoints and markets, and `kickers-dst.md` the kicker and D/ST research and backtest.
 - [GLOSSARY.md](GLOSSARY.md): the project's vocabulary.
 
 Keep this README current. Any change to behaviour, usage, options, supported positions or status updates it in the same commit (see [CLAUDE.md](CLAUDE.md)).

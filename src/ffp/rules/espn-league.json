@@ -36,6 +36,7 @@
     "kickoff_return_tds": 6,
     "punt_return_tds": 6,
     "blocked_kick_return_tds": 6,
+    "points_allowed_excludes": ["opponent_defensive_tds"],
     "points_allowed_tiers": [
       {"min": 0, "max": 0, "points": 5},
       {"min": 1, "max": 6, "points": 4},
@@ -62,6 +63,9 @@
     "D/ST points-allowed tier 18-27 (0 pts) is not shown on the league page; assumed to be the ESPN default.",
     "D/ST yards-allowed tier 300-349 (0 pts) is not shown on the league page; assumed to be the ESPN default.",
     "D/ST yards-allowed tiers 450-499 (-5), 500-549 (-6) and 550+ (-7) are not shown on the league page; assumed to be ESPN defaults.",
-    "Return TDs and fumble-recovery TDs scored by offensive players are not modelled yet; they count as 0 points."
+    "D/ST Points Allowed leaves out the opponent's INT and fumble return TDs and counts its kick and punt return TDs (ESPN's definition per secondary sources); not confirmed on the league page.",
+    "D/ST Yards Allowed is the opponent's net offensive yards (sack yards subtracted); not confirmed on the league page.",
+    "No missed-PAT penalty: the league page shows none.",
+    "Return TDs and fumble-recovery TDs scored by offensive players are not modelled; they count as 0 points."
   ]
 }

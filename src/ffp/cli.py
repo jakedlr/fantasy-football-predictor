@@ -98,10 +98,13 @@ def main(argv: list[str] | None = None) -> int:
 
         # Filed under the real fetch time, never --now: snapshots are price history (ADR 0001).
         snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, datetime.now(timezone.utc))
+        positions = {t.player.position for t in targets}
         books = pipeline.load_live_books(
             Http(), list({t.game.game_id: t.game for t in targets}.values()), now,
             on_response=_response_saver(snapshot),
-            stats=pipeline.market_stats_for({t.player.position for t in targets}),
+            stats=pipeline.market_stats_for(positions),
+            kickers="K" in positions,
+            dsts=pipeline.DST in positions,
         )
         if not books:
             print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)

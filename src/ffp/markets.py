@@ -94,3 +94,18 @@ def ladder_without_main_line_copy(ladder: list[Rung], main_line: MainLine | None
         same_event = main_line.over_threshold
         ladder = [r for r in ladder if r.threshold != same_event]
     return tuple(sorted(ladder, key=lambda r: r.threshold))
+
+
+# Team-level Prop Markets (Sprint 6): their `player` is the team as the book spells it.
+TEAM_POINTS = "team_points"  # a team's points in the Game: its team-total Main Line and alternate totals
+DST_TDS = "dst_tds"  # TDs scored by a team's D/ST: the books' anytime/2+/3+ "D/ST" scorer prices
+
+
+@dataclass(frozen=True)
+class GameLine:
+    """A book's main spread and total for one Game (Sprint 6). Either may be missing."""
+
+    game_id: str  # the book's id
+    book: str
+    home_spread: float | None  # the home team's handicap: −3.5 when the home team is favoured by 3.5
+    total: float | None  # the total points line

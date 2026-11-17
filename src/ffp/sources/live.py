@@ -54,6 +54,26 @@ DK_STATS = {
 }
 
 
+class DkSubcategory(NamedTuple):
+    """A DraftKings subcategory by its category and subcategory names, and its payload name."""
+
+    payload: str  # the payload key: dk_<payload>
+    category: str
+    subcategory: str
+
+
+# Sprint 6, kickers and D/ST: team totals and the TD scorer (D/ST TDs) feed the D/ST model; the
+# kicker subcategories are fetched only so the Snapshot keeps them.
+DK_TEAM_TOTALS = DkSubcategory("team_totals", "Team Props", "Team Totals")
+DK_TD_SCORER = DkSubcategory("td_scorer", "TD Scorers", "TD Scorer")
+DK_KICKER_SUBCATEGORIES = (
+    DkSubcategory("fg_made_ladder", "Special Teams Props", "FG Made"),
+    DkSubcategory("pat_made_ladder", "Special Teams Props", "PAT Made"),
+    DkSubcategory("kicking_pts_ladder", "Special Teams Props", "Kicking Pts"),
+    DkSubcategory("kicking_pts_ou", "Special Teams Props", "Kicking Pts O/U"),
+)
+
+
 class SubcategoryNotFound(LookupError):
     """The DraftKings league response no longer lists a category or subcategory by the name we look for."""
 
@@ -108,6 +128,20 @@ def fetch_draftkings(http: Http, stats: Iterable[str], on_response: OnResponse |
         ]
         payloads[name] = parts[0] if len(parts) == 1 else _merge(parts)
     return payloads
+
+
+def fetch_dk_league(http: Http, on_response: OnResponse | None = None) -> dict:
+    """The DraftKings league response: its Games, their main spread, total and moneyline, and the
+    category catalogue."""
+    return _get(http, DK_BOOK, "dk_league", DK_LEAGUE_URL, on_response)
+
+
+def fetch_dk_subcategory(http: Http, league: dict, sub: DkSubcategory, on_response: OnResponse | None = None) -> dict:
+    """One subcategory's response, looked up by name in `league` (merged when listed under several ids)."""
+    parts = [_get(http, DK_BOOK, f"dk_{sub.payload}", DK_SUBCATEGORY_URL.format(category_id=c, subcategory_id=s),
+                  on_response)
+             for c, s in dk_subcategory_ids(league, sub.category, sub.subcategory)]
+    return parts[0] if len(parts) == 1 else _merge(parts)
 
 
 def _merge(responses: list[dict]) -> dict:

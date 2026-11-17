@@ -15,7 +15,8 @@ from ffp.names import normalize_name
 Row = Mapping[str, object]
 Fetch = Callable[[int], Iterable[Row]]
 
-SUPPORTED_POSITIONS = frozenset({"QB", "RB", "WR", "TE"})
+SUPPORTED_POSITIONS = frozenset({"QB", "RB", "WR", "TE", "K"})
+DST = "DST"  # a team's D/ST: the position of the Player resolve_player returns for "Ravens D/ST"
 
 
 class PlayerError(ValueError):
@@ -31,7 +32,7 @@ class AmbiguousPlayerError(PlayerError):
 
 
 class UnsupportedPlayerError(PlayerError):
-    """A K, a D/ST or another position outside QB/RB/WR/TE."""
+    """A position outside QB/RB/WR/TE/K and D/ST (a punter, a linebacker)."""
 
 
 # Names books or people use that nflverse doesn't, as normalized name -> the
@@ -146,15 +147,13 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
 
     `text` is a player name, optionally followed by a team hint: "Name (TEAM)".
     Input and roster names both compare by `name_key` (`normalize_name`, then
-    the alias table); only QB/RB/WR/TE count. The hint keeps only the players on that team. A K, a D/ST ("Ravens
-    D/ST", "BAL DST", "Ravens") or any other position raises
-    UnsupportedPlayerError.
+    the alias table); only QB/RB/WR/TE/K count. The hint keeps only the players on that team. A team's
+    D/ST ("Ravens D/ST", "BAL DST", "Baltimore Defense", "Ravens", "D/ST (BAL)") resolves to
+    `dst_player`. Any other position raises UnsupportedPlayerError.
     """
     name, hint = _split_team_hint(text)
     if _names_a_dst(name):
-        raise UnsupportedPlayerError(
-            f'"{text}" looks like a team defense: D/ST is not supported yet, only QB/RB/WR/TE'
-        )
+        return dst_player(_dst_team(text, name, hint))
     team = _hint_team_code(hint) if hint is not None else None
     index = roster if isinstance(roster, Roster) else Roster(roster)
     same_name = index.named(name_key(name))
@@ -168,7 +167,7 @@ def resolve_player(text: str, roster: Sequence[RosterEntry]) -> Player:
             raise UnknownPlayerError(f'no "{name}" on {team}; found {found}')
         matches = on_team
     if not matches:
-        raise UnknownPlayerError(f'no QB/RB/WR/TE named "{name}" on a current NFL roster')
+        raise UnknownPlayerError(f'no QB/RB/WR/TE/K named "{name}" on a current NFL roster')
     if len(matches) > 1:
         candidates = _describe(matches)
         raise AmbiguousPlayerError(
@@ -186,12 +185,30 @@ def _describe(entries: Sequence[RosterEntry]) -> str:
 
 def _unsupported_message(text: str, entries: Sequence[RosterEntry]) -> str:
     found = _describe(entries)
-    if any(e.position == "K" for e in entries):
-        return f'"{text}" is a kicker ({found}): K is not supported yet, only QB/RB/WR/TE'
-    return f'"{text}" is not a QB/RB/WR/TE ({found}): only QB/RB/WR/TE are supported'
+    return f'"{text}" is not a QB/RB/WR/TE/K ({found}): only QB/RB/WR/TE/K and D/ST are supported'
+
+
+def dst_player(team: str) -> Player:
+    """A team's D/ST as a Player: position DST, named "BAL D/ST", id "DST-BAL"."""
+    return Player(f"{DST}-{team}", f"{team} D/ST", DST, team)
 
 
 _DST = re.compile(r"^(?:(?P<team>.*)\s)?(?:dst|d st|def|defense|defence)$")
+
+
+def _dst_team(text: str, name: str, hint: str | None) -> str:
+    """The team a D/ST name means: its words before "D/ST" ("Baltimore Ravens Defense"), a bare
+    team name ("Ravens"), or else the (TEAM) hint ("D/ST (BAL)")."""
+    match = _DST.match(normalize_name(name))
+    words = name.split()[: len(match["team"].split())] if match and match["team"] else [] if match else name.split()
+    if words:
+        try:
+            return team_code_from_book_name(" ".join(words))
+        except UnknownTeamError:
+            pass
+    if hint is not None:
+        return _hint_team_code(hint)
+    raise UnknownPlayerError(f'"{text}" looks like a D/ST but names no team; write it as "BAL D/ST"')
 
 
 def _names_a_dst(name: str) -> bool:
@@ -258,6 +275,9 @@ _OTHER_CODES = {"LAR": "LA", "JAC": "JAX", "WSH": "WAS", "ARZ": "ARI", "LVR": "L
 _SHARED_PREFIXES = {"LA": {"LA", "LAC"}, "NY": {"NYG", "NYJ"}}
 
 _BY_NICKNAME = {nickname.lower(): code for code, (_, nickname) in TEAMS.items()}
+# A city alone names a team only where one team plays there (FanDuel's "Baltimore Defense").
+_CITIES = [city for city, _ in TEAMS.values()]
+_BY_CITY = {city.lower(): code for code, (city, _) in TEAMS.items() if _CITIES.count(city) == 1}
 
 
 class UnknownTeamError(ValueError):
@@ -277,10 +297,13 @@ def team_code_from_book_name(name: str) -> str:
     """The nflverse team code for a team as a book or a person spells it.
 
     Accepts a code ("BAL", also "LAR"/"JAC"/"WSH"/"ARZ"/"LVR"), a nickname
-    ("Ravens"), DraftKings' "BAL Ravens" / "LA Chargers" and FanDuel's
-    "Baltimore Ravens" / "Los Angeles Chargers". Note nflverse's Rams are "LA".
+    ("Ravens"), DraftKings' "BAL Ravens" / "LA Chargers", FanDuel's
+    "Baltimore Ravens" / "Los Angeles Chargers", and a city only one team plays in
+    ("Baltimore", "Green Bay"). Note nflverse's Rams are "LA".
     """
     words = name.split()
+    if name.strip().lower() in _BY_CITY:
+        return _BY_CITY[name.strip().lower()]
     if len(words) == 1:
         code = _team_code_from_word(words[0])
         if code is not None:
@@ -333,6 +356,10 @@ class ScheduledGame:
     kickoff: str  # ISO 8601 UTC, e.g. "2026-11-17T01:15:00Z", like markets.Game.kickoff
     home_score: int | None = None  # None until the Game is final
     away_score: int | None = None
+    # nflverse's lines (Sprint 6, the last fallback for kickers and D/ST): spread_line > 0 means
+    # the home team is favoured by that many points. None when the schedule has none.
+    spread_line: float | None = None
+    total_line: float | None = None
 
     @property
     def scored(self) -> bool:
@@ -371,10 +398,19 @@ def load_schedule(season: int, fetch: Fetch | None = None) -> list[ScheduledGame
             kickoff=kickoff_utc(str(row["gameday"]), str(row["gametime"] or "13:00")),
             home_score=_score(row["home_score"]),
             away_score=_score(row["away_score"]),
+            spread_line=_line(row.get("spread_line")),
+            total_line=_line(row.get("total_line")),
         )
         for row in (fetch or _nflreadpy_schedules)(season)
     ]
     return sorted(games, key=lambda game: game.kickoff)
+
+
+def _line(value: object) -> float | None:
+    """A line from a polars row (float, None or NaN) or a CSV row ("-3.5", "" or "NA")."""
+    if not _present(value) or str(value).strip().upper() == "NA":
+        return None
+    return float(value)
 
 
 def _score(value: object) -> int | None:

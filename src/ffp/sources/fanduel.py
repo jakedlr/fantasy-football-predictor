@@ -10,7 +10,17 @@ import re
 from collections.abc import Iterator
 from datetime import datetime
 
-from ..markets import Game, MainLine, PropMarket, Rung, ladder_without_main_line_copy, parse_utc
+from ..markets import (
+    DST_TDS,
+    TEAM_POINTS,
+    Game,
+    GameLine,
+    MainLine,
+    PropMarket,
+    Rung,
+    ladder_without_main_line_copy,
+    parse_utc,
+)
 
 BOOK = "fanduel"
 
@@ -263,3 +273,85 @@ def parse_prop_markets(event_tab_json: dict, stat: str) -> list[PropMarket]:
             )
         )
     return prop_markets
+
+
+# --- Game Lines and team markets (Sprint 6) -------------------------------------------
+
+GAME_LINES_TAB = "popular"  # the event-page tab with the team totals and alternate team totals
+_ALT_OVER = re.compile(r"^Over \((?P<line>\d+(?:\.\d+)?)\)$")
+
+
+def _started(page_json: dict) -> set[str]:
+    return {g.game_id for g in parse_games(page_json) if g.started}
+
+
+def parse_game_lines(page_json: dict) -> list[GameLine]:
+    """Each Game's main spread ("MATCH_HANDICAP_(2-WAY)") and total ("TOTAL_POINTS_(OVER/UNDER)")
+    from the league page or any event-page tab. Started Games are left out."""
+    games = {g.game_id: g for g in parse_games(page_json)}
+    lines: dict[str, dict] = {}
+    for market in _markets(page_json):
+        event_id, kind = str(market.get("eventId")), market.get("marketType")
+        game = games.get(event_id)
+        if game is None or game.started:
+            continue
+        for runner in _active_runners(market):
+            if kind == "MATCH_HANDICAP_(2-WAY)" and runner.get("runnerName") == game.home:
+                lines.setdefault(event_id, {})["home_spread"] = float(runner["handicap"])
+            elif kind == "TOTAL_POINTS_(OVER/UNDER)" and runner.get("runnerName") == "Over":
+                lines.setdefault(event_id, {})["total"] = float(runner["handicap"])
+    return [GameLine(event_id, BOOK, e.get("home_spread"), e.get("total")) for event_id, e in lines.items()]
+
+
+def parse_team_totals(popular_json: dict) -> list[PropMarket]:
+    """Each team's points as a TEAM_POINTS Prop Market, from the "popular" event-page tab:
+    HOME/AWAY_TEAM_TOTAL_POINTS is the Main Line, HOME/AWAY_TEAM_ALTERNATE_TOTAL's "Over (21.5)"
+    runners the Rungs (21.5 is "22 or more"). `player` is the team as FD names it in the Game."""
+    games = {g.game_id: g for g in parse_games(popular_json)}
+    main: dict[Key, MainLine] = {}
+    rungs: dict[Key, dict[int, Rung]] = {}
+    for market in _markets(popular_json):
+        event_id, kind = str(market.get("eventId")), market.get("marketType", "")
+        game = games.get(event_id)
+        side = kind.split("_TEAM_", 1)[0]
+        if game is None or game.started or side not in ("HOME", "AWAY"):
+            continue
+        key = (game.home if side == "HOME" else game.away, event_id)
+        runners = _active_runners(market)
+        if kind.endswith("_TEAM_TOTAL_POINTS"):
+            sides = {r.get("runnerName"): r for r in runners}
+            if {"Over", "Under"} <= set(sides) and sides["Over"]["handicap"] == sides["Under"]["handicap"]:
+                main[key] = MainLine(float(sides["Over"]["handicap"]), _odds(sides["Over"]), _odds(sides["Under"]), BOOK)
+        elif kind.endswith("_TEAM_ALTERNATE_TOTAL"):
+            for runner in runners:
+                match = _ALT_OVER.match(runner.get("runnerName", ""))
+                if match is not None:
+                    threshold = int(float(match["line"])) + 1
+                    rungs.setdefault(key, {}).setdefault(threshold, Rung(threshold, _odds(runner), BOOK))
+    return [PropMarket(team, TEAM_POINTS, event_id, BOOK, main.get((team, event_id)),
+                       ladder_without_main_line_copy(list(rungs.get((team, event_id), {}).values()),
+                                                     main.get((team, event_id))), team)
+            for team, event_id in dict.fromkeys([*main, *rungs])]
+
+
+DST_SUFFIX = " Defense"
+
+
+def parse_dst_tds(td_scorer_json: dict) -> list[PropMarket]:
+    """Each team's D/ST TD Rungs from the TD scorer tab: "Baltimore Defense" runners in the
+    anytime/2+/3+ scorer markets. `player` is the team as FD names it there ("Baltimore",
+    "LA Chargers")."""
+    started = _started(td_scorer_json)
+    rungs: dict[Key, dict[int, Rung]] = {}
+    for market in _markets(td_scorer_json):
+        threshold = TD_MARKET_THRESHOLDS.get(market.get("marketType", ""))
+        event_id = str(market.get("eventId"))
+        if threshold is None or event_id in started:
+            continue
+        for runner in _active_runners(market):
+            name = runner.get("runnerName", "")
+            if name.endswith(DST_SUFFIX):
+                rungs.setdefault((name.removesuffix(DST_SUFFIX), event_id), {}).setdefault(
+                    threshold, Rung(threshold, _odds(runner), BOOK))
+    return [PropMarket(team, DST_TDS, event_id, BOOK, None, tuple(sorted(by.values(), key=lambda r: r.threshold)), team)
+            for (team, event_id), by in rungs.items()]

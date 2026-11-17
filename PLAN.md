@@ -9,7 +9,7 @@ Vocabulary: [GLOSSARY.md](GLOSSARY.md). Background: [RESEARCH.md](RESEARCH.md) a
 | # | Decision |
 |---|---|
 | Scoring | Built-in presets `standard`, `half-ppr`, `ppr`, plus custom files `scoring/*.json`, which override bundled ones. Default is the bundled `src/ffp/rules/espn-league.json`: full PPR, 4-pt pass TD, −2 INT, −2 fumble lost. Its D/ST tiers that the league page doesn't show are assumed to be ESPN defaults and flagged as assumptions in the file. |
-| Scope | QB/RB/WR/TE only. A K or DST name gets "not supported yet". Return TDs and fumble-recovery TDs are a listed omission. |
+| Scope | QB/RB/WR/TE from their Prop Markets; K and D/ST from the Game Lines and team markets (Sprint 6). Return TDs and fumble-recovery TDs scored by offensive players are a listed omission. |
 | Game | Each player's next scheduled Game, at the prices current at run time. If props aren't posted yet, skip the player with a "rerun closer to kickoff" message. |
 | Percentiles | Pₖ means P(points ≤ Pₖ) = k%. `--chance N` adds the chance of N or more points for a number the user supplies (the fixed round-threshold table was removed in Sprint 5). |
 | Live odds | DraftKings + FanDuel site endpoints ([ADR 0001](docs/adr/0001-sportsbook-site-endpoints-for-live-odds.md)). Kalshi is used only for backtesting. Every live run saves its raw responses to `snapshots/`. |
@@ -183,10 +183,38 @@ Two research agents looked into the two open rushing-yards issues from the Backt
   - A last-season game counts half a game in the recent-games average.
 - **S5.10 Rushing yards as a sum of carries** for RB, WR and TE (docs/adr/0002): an NB number of carries, each drawn from the position's per-carry yards in nflverse play-by-play. QBs keep the hurdle shifted gamma. The Backtest refits the gamma on the same Rungs and reports both.
 
-## Backlog (kickers and D/ST likely next)
+## Sprint 6 — Kickers and D/ST (approved 2026-11-17, done; results in research/kickers-dst.md)
+
+Research: two agents (kickers; D/ST), reports summarised in research/kickers-dst.md. Decisions (all approved):
+
+| Topic | Decision |
+|---|---|
+| Scope | Kickers and D/ST in one sprint, sharing the Game Line parsing (spread, total, team totals) that the backlog's game-line fallback will build on. |
+| Game-line-only predictions | Allowed for K and D/ST, flagged "from game lines". nflverse's schedule lines are the last fallback. |
+| Kicker markets | None in v1: the kicker model runs on the Implied Team Total. A live run with a K fetches DraftKings' kicker subcategories so Snapshots collect them; fitting to them waits for a Backtest on those Snapshots. |
+| D/ST markets | Analog Games tilted to the opponent's team-total Ladder and the D/ST anytime-TD price where a Book prices them. The opposing QB's INT line can come later. |
+| ESPN points allowed | Excludes the opponent's INT and fumble return TDs, counts special-teams return TDs; yards allowed are net of sack yards. Both listed as assumptions in espn-league.json until confirmed on the league page. |
+| Presets | `sleeper` gets Sleeper's K (missed PAT −1) and D/ST (forced fumble +1, its own points-allowed tiers, no yards tiers); `standard`/`half-ppr`/`ppr` get ESPN's defaults; `espn-league` keeps no missed-PAT penalty. |
+| Not in v1 (backlog) | Kicker team-tendency term, weather/wind, D/ST pass-rush and turnover features. |
+| History | Kickers: recent seasons with a season trend term, rebuilt each season. D/ST: Analog Games from 2015 on, recent seasons weighted more. |
+| Backtests | An nflverse walk-forward Backtest (fit on earlier seasons, test each of 2016–2025) for K and D/ST; Kalshi's 2026 K and D/ST fantasy-point lines as a market comparison, with D/ST tickers mapped in the Kalshi pull and wide-spread kicker lines kept as a separate group. |
+| Names | "BAL D/ST", "Ravens D/ST", "Baltimore Defense", "BAL DST" resolve to a team's D/ST; kickers by name like any player. |
+
+- **S6.1 Scoring.** Kicker and D/ST scoring from the `kicker`/`dst` sections of Scoring Rules; presets as above.
+- **S6.2 Game Lines.** Spread and total from both Books' league responses, team-total Ladders (DraftKings "Team Totals", FanDuel team totals and alternate team totals), D/ST anytime-TD prices; nflverse schedule lines as the fallback.
+- **S6.3 Kicker model** (`ffp.kicker`, `params/kicker.json`): FG and PAT attempts from the Implied Team Total (binomial GLMs, joined by a Gaussian copula), FG distance from recent seasons, make probability by distance with a season trend, PAT make rate.
+- **S6.4 D/ST model** (`ffp.dst`, `params/dst_games.json`): kernel-weighted Analog Games by the opponent's Implied Team Total, resampled whole, tilted to the markets, scored under any Scoring Rules.
+- **S6.5 Players and routing.** K and D/ST resolve and get a Score Distribution in OUTPUT.md.
+- **S6.6 Backtests.** `scripts/backtest_k_dst.py` (nflverse walk-forward) and a K and D/ST cut against Kalshi's fantasy-point lines.
+
+## Backlog
+
+- **Kickers from DraftKings' FG Made and PAT Made Ladders**, once live runs have saved a few weeks of them (every live run with a K snapshots them): does fitting attempts to them beat the Game Lines alone?
+- **D/ST tilt to the opposing QB's INT line** where a Book prices it.
+- **Kicker team-tendency term and weather/wind; D/ST pass-rush and turnover features** (Sprint 6 research: each adds about 1 point of R² or less, or the data is mixed or patchy).
+- **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against the model's P(D/ST TD ≥ 1): the pull maps D/ST targets but leaves their Rungs out (`dst_rung`).
 
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
-- **Kicker and D/ST** from team totals and opponent totals (likely Sprint 6).
 - **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
 - **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
