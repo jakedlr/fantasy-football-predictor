@@ -114,6 +114,16 @@ python scripts/build_params.py [--out src/ffp/params] [--seasons 2021-2025] \
                                [--dispersion-seasons 2015-2021] [--draws 40000]
 ```
 
+### Backtest data (Sprint 5)
+
+The Kalshi backtest reads settled Kalshi NFL player-prop markets and their last pre-kickoff bid/ask from a git-ignored cache. Fill it, or bring it up to date, with:
+
+```bash
+python -m ffp.sources.kalshi pull --root data/kalshi --since 2025-10-01   # prints counts and drop reasons
+```
+
+The pull needs the network. It is paced to 4 requests/s and can be resumed: a rerun fetches only what is still missing. A full history pull is about 35k requests, roughly 2.5 h. A weekly top-up takes under a hundred requests. `ffp.sources.kalshi.load_rungs(root)` and its siblings read the cache offline.
+
 ### Layout
 
 ```
@@ -121,7 +131,7 @@ src/ffp/
   cli.py             `ffp predict`
   predict.py         INPUT.md → players and Games → Prop Markets → fits → Score Distributions
   players.py         name → nflverse gsis_id, position, team; next Game
-  sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP
+  sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP; kalshi.py: backtest markets
   markets.py, odds.py, fair.py   Prop Market types, devig, Fair Probabilities
   distributions.py   Stat Distribution families and their fits
   base_rates.py      fumbles lost and 2-pt from nflverse Base Rates
@@ -148,4 +158,4 @@ Keep this README current. Any change to behaviour, usage, options, supported pos
 
 ## Data and licences
 
-Player data is from [nflverse](https://github.com/nflverse) (CC-BY 4.0), accessed with `nflreadpy`. Sportsbook prices are fetched for personal use, and raw snapshots are gitignored.
+Player data is from [nflverse](https://github.com/nflverse) (CC-BY 4.0), accessed with `nflreadpy`. Sportsbook prices are fetched for personal use, and raw snapshots are gitignored. Kalshi's historical market data is pulled and cached (in `data/kalshi/`, gitignored) for personal research, which Kalshi's terms allow.

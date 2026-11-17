@@ -177,7 +177,10 @@ Week 9 live, n = 4,280 two-sided Rungs. The hourly candle ending ≤ kickoff is 
 ## 5. Kickoff times
 Kalshi markets carry `occurrence_datetime`, but it is ≈ kickoff + 3 h (SNF Nov 15: 04:20Z for a 01:20Z kickoff) and is null on 2025 markets. `open_time` and `close_time` aren't kickoffs either. **Join to nflverse.** Parse `YYMONDD` + team letters from the event ticker, take nflverse `load_schedules([2025, 2026])` rows with `gameday` equal to that date, and match the team set (aliases `LA`→`LAR`, and `JAC` / `WSH` for safety). Then kickoff = `gameday` + `gametime` in America/New_York, converted to UTC. All regular-season and postseason events matched. Only Aug 2026 preseason events don't.
 
-## 6. Terms of use: **not verified**
+## 6. Terms of use: confirmed by the user
+
+**Update (S5.1):** the user read the terms and confirmed that pulling and caching historical market data for personal research is allowed. The notes below are from the research wave.
+
 - `https://docs.kalshi.com/` says: "By continuing to use or access Kalshi's API, you are agreeing to be bound to our Developer Agreement", which links to `https://kalshi.com/developer-agreement`.
 - I could not read that agreement. kalshi.com returned HTTP 429 to the web-fetch agent for `/developer-agreement`, `/regulatory/rulebook` and `/terms`, and a direct curl was blocked by this session's permission policy. **Whether personal, non-commercial research with a local cache is allowed is therefore unconfirmed. Someone should read the Developer Agreement in a browser before S5.1 caches the full history.**
 - What the docs do say (`https://docs.kalshi.com/getting_started/rate_limits.md`):
