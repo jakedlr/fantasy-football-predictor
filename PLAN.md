@@ -173,6 +173,16 @@ From `research/backtest-kalshi.md`'s proposals:
 - **S5.7 Interceptions** anchored on the 1+ price.
 - **S5.8 Chance of a chosen threshold.** The fixed "chance of N+ points" table (5, 10, ... 30) is removed; `--chance N` reports the chance of N or more points for numbers the user supplies.
 
+## Sprint 5.6 — RB rushing yards (approved 2026-11-17, done; results in research/backtest-kalshi.md)
+
+Two research agents looked into the two open rushing-yards issues from the Backtest (findings in research/backtest-kalshi.md, "Sprint 5.6"). One Backtest run checks both changes.
+
+- **S5.9 Estimated rushing yards.** Three changes, each checked across seasons (fit on one, test on the other):
+  - Rushing yards come from the player's expected *rushing* TDs (TDs × his rushing TD share) × rushing yards per rushing TD, instead of total TDs × yards per TD, so receiving TDs no longer turn into rushing yards.
+  - An RB's rushing yards from TDs are capped by c·TD^b, a line in logs through priced RBs' fitted means (`estimate_cap` in `market_calibration.json`). A back with a high TD price gets fewer yards per TD.
+  - A last-season game counts half a game in the recent-games average.
+- **S5.10 Rushing yards as a sum of carries** for RB, WR and TE (docs/adr/0002): an NB number of carries, each drawn from the position's per-carry yards in nflverse play-by-play. QBs keep the hurdle shifted gamma. The Backtest refits the gamma on the same Rungs and reports both.
+
 ## Backlog (kickers and D/ST likely next)
 
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
@@ -181,6 +191,6 @@ From `research/backtest-kalshi.md`'s proposals:
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
 - **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
 - **Workhorse-RB correlation override** (≥55% carry share): the Kalshi Backtest saw −0.16 against the matrix's −0.05, 1.8 se on 244 player-games; re-test after the 2026 season.
-- **Low-volume RB rushing yards** (mean < 20 yd) still get 10.1% below zero against 1.5% observed (131 player-games, shift 5).
-- **Estimated RB rushing yards** run 3.6 yards high (PIT p = 0.004, 676 player-games): revisit the carries/TD ratios they come from.
+- **Estimated RB rushing yards** still fail the PIT after Sprint 5.6 (p = 0.011, n = 676): bias −1.5 yards overall, −4.9 at estimated means of 40+; estimated low-volume backs go below zero 5.2% of the time (priced ones 1.6%), so a per-carry distribution for backups may help.
+- **Kalshi underprices low-volume RB upside:** on RBs with a rushing-yards mean under 20, 40+ is priced at 8.4% and happens 19.1% of the time (n = 115; 30+ and 50+ likewise). No distribution can fix this. A market-side correction needs validating on one season against the other, and 2025 has only 23 such games.
 - **TD vig prior** for DraftKings/FanDuel: test against Kalshi's prices for the same players once our snapshots cover enough weeks.

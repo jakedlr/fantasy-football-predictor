@@ -10,7 +10,7 @@ PARAMS = {
     "stat_ratios": {
         "receptions": {"receiving_yards": {"WR": 0.08, "RB": 0.12, "QB": None}},
         "receiving_yards": {"receptions": {"WR": 12.5}},
-        "rushing_yards": {"carries": {"RB": 4.0}, "rush_rec_tds": {"RB": 100.0}},
+        "rushing_yards": {"carries": {"RB": 4.0}, "rushing_tds": {"RB": 100.0}},
         "rush_rec_tds": {"rushing_yards": {"RB": 0.009, "WR": 0.01}, "receiving_yards": {"RB": 0.004, "WR": 0.006}},
         "passing_tds": {"passing_yards": {"QB": 0.006}},
     }
@@ -24,9 +24,9 @@ def test_from_another_priced_stat_alone():
 
 def test_the_first_priced_source_is_used():
     # Rushing yards come from carries when carries are priced, not from TDs.
-    means = {"carries": 15.0, "rush_rec_tds": 0.5}
-    assert estimate_mean("rushing_yards", "RB", means, None, PARAMS) == pytest.approx(60.0)
-    assert estimate_mean("rushing_yards", "RB", {"rush_rec_tds": 0.5}, None, PARAMS) == pytest.approx(50.0)
+    means = {"carries": 15.0, "rushing_tds": 0.5}
+    assert estimate_mean("rushing_yards", "RB", means, None, PARAMS, {}) == pytest.approx(60.0)
+    assert estimate_mean("rushing_yards", "RB", {"rushing_tds": 0.5}, None, PARAMS, {}) == pytest.approx(50.0)
 
 
 def test_touchdowns_sum_a_rushing_and_a_receiving_part():
@@ -87,10 +87,10 @@ def test_recent_games_are_the_last_n_before_the_game():
     fetch = {2025: rows(2025, range(1, 18), receptions=2, receiving_yards=20),
              2026: rows(2026, range(1, 6), receptions=6, receiving_yards=80)}.get
     recent = load_recent_games(2026, fetch=fetch, before=(2026, 4), n=8)["p1"]
-    # Weeks 1-3 of 2026 and the last 5 of 2025.
-    assert recent.games == 8
-    assert recent.totals["receptions"] == 3 * 6 + 5 * 2
-    assert recent.mean("receiving_yards") == pytest.approx((3 * 80 + 5 * 20) / 8)
+    # Weeks 1-3 of 2026 and the last 5 of 2025 (at half weight, S5.9).
+    assert recent.games == pytest.approx(3 + 2.5)
+    assert recent.totals["receptions"] == pytest.approx(3 * 6 + 2.5 * 2)
+    assert recent.mean("receiving_yards") == pytest.approx((3 * 80 + 2.5 * 20) / 5.5)
 
 
 def test_touchdowns_are_rushing_plus_receiving():
@@ -105,9 +105,44 @@ def test_an_unstarted_season_and_a_failed_fetch():
             raise ConnectionError("404 not found")
         return rows(season, [17, 18], receptions=4)
 
-    assert load_recent_games(2027, fetch=not_yet)["p1"].games == 2
+    assert load_recent_games(2027, fetch=not_yet)["p1"].games == 1  # two 2026 games at half weight
 
     def broken(season):
         raise ValueError("bad parquet")
 
     assert load_recent_games(2026, fetch=broken) == {}
+
+
+# --- S5.9: rushing yards from rushing TDs, the cap, last season at half weight -------------
+
+CAL = {"estimate_cap": {"rushing_yards": {"RB": {"applies_to": "rushing_tds", "source": "rush_rec_tds",
+                                                  "c": 90.0, "b": 0.8}}}}
+S56 = {"stat_ratios": {"rushing_yards": {"carries": {"RB": 4.0, "WR": 6.0}, "rushing_tds": {"RB": 135.0, "WR": 60.0}}}}
+
+
+def test_rushing_yards_come_from_the_players_expected_rushing_tds():
+    # 0.3 TDs, 80% of them rushing: 0.24 × 135 = 32.4, under the cap 90 × 0.3^0.8 = 34.3.
+    means = {"rush_rec_tds": 0.3, "rushing_tds": 0.24}
+    assert estimate_mean("rushing_yards", "RB", means, None, S56, CAL) == pytest.approx(32.4)
+
+
+def test_a_high_td_price_is_capped():
+    # 0.9 TDs, all rushing: 121.5 linear, capped at 90 × 0.9^0.8.
+    means = {"rush_rec_tds": 0.9, "rushing_tds": 0.9}
+    assert estimate_mean("rushing_yards", "RB", means, None, S56, CAL) == pytest.approx(90 * 0.9**0.8)
+
+
+def test_the_cap_is_for_the_td_route_and_its_position_only():
+    # From carries: no cap. A WR: no cap.
+    assert estimate_mean("rushing_yards", "RB", {"carries": 30.0, "rush_rec_tds": 0.9, "rushing_tds": 0.9},
+                         None, S56, CAL) == pytest.approx(120.0)
+    assert estimate_mean("rushing_yards", "WR", {"rush_rec_tds": 0.9, "rushing_tds": 0.9}, None, S56, CAL) == pytest.approx(54.0)
+
+
+def test_last_seasons_games_count_half():
+    fetch = {2025: rows(2025, range(1, 18), receptions=2),
+             2026: rows(2026, range(1, 6), receptions=6)}.get
+    recent = load_recent_games(2026, fetch=fetch, before=(2026, 4), n=8)["p1"]
+    # Weeks 1-3 of 2026 at full weight, the last 5 of 2025 at half.
+    assert recent.games == pytest.approx(3 + 0.5 * 5)
+    assert recent.totals["receptions"] == pytest.approx(3 * 6 + 0.5 * 5 * 2)

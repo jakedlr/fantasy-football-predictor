@@ -46,7 +46,7 @@ WITHIN_MIN_GAMES = 6
 ESTIMATE_SOURCES = {
     "receptions": ("receiving_yards",),
     "receiving_yards": ("receptions",),
-    "rushing_yards": ("carries", "rush_rec_tds"),
+    "rushing_yards": ("carries", "rushing_tds"),  # rushing TDs: the player's TDs × his rushing share (S5.9)
     "passing_yards": ("passing_tds",),
     "passing_tds": ("passing_yards",),
     "passing_interceptions": ("passing_yards",),
@@ -58,6 +58,7 @@ STAT_EXPR = {
     **{c: pl.col(c) for c in ("receptions", "receiving_yards", "rushing_yards", "carries", "passing_yards",
                               "passing_tds", "passing_interceptions")},
     "rush_rec_tds": pl.col("rushing_tds") + pl.col("receiving_tds"),
+    "rushing_tds": pl.col("rushing_tds"),
 }
 
 # Per-player rushing TD share (nflverse-data.md 6, S4.3): kappa pseudo expected-TDs shrink the
@@ -132,6 +133,9 @@ class Raw:
     snap_counts: pl.DataFrame
     players: pl.DataFrame
     schedules: pl.DataFrame
+    # Play-by-play rush attempts (season, season_type, rusher_player_id, rushing_yards,
+    # two_point_attempt) in the dispersion seasons: per-carry yards (S5.10). None skips them.
+    rush_plays: pl.DataFrame | None = None
 
 
 def parse_seasons(text: str) -> list[int]:
@@ -143,15 +147,17 @@ def parse_seasons(text: str) -> list[int]:
     return sorted(out)
 
 
-def load_nflverse(seasons: list[int]) -> Raw:  # pragma: no cover - network
+def load_nflverse(seasons: list[int], pbp_seasons: list[int]) -> Raw:  # pragma: no cover - network
     import nflreadpy as nfl
 
     nfl.config.update_config(cache_mode="filesystem")
+    rush_cols = ["season", "season_type", "rusher_player_id", "rushing_yards", "two_point_attempt"]
     return Raw(
         nfl.load_player_stats(seasons),
         nfl.load_snap_counts(seasons),
         nfl.load_players(),
         nfl.load_schedules(seasons),
+        nfl.load_pbp(pbp_seasons).filter(pl.col("rush_attempt") == 1).select(rush_cols),
     )
 
 
@@ -579,6 +585,33 @@ def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[st
     return out
 
 
+# Per-carry yards (S5.10): the sum-of-carries rushing model's carry distribution, per position;
+# TE borrows WR's (few TE carries), as for the carries relation. QBs keep the shifted gamma.
+PER_CARRY_POSITIONS = ("RB", "WR")
+PER_CARRY_BORROW = {"TE": "WR"}
+
+
+def per_carry_yards(rush_plays: pl.DataFrame, players: pl.DataFrame, position: str) -> dict:
+    """The pmf of one regular-season carry's rushing yards for players listed at `position`
+    (nflverse players.position), two-point tries excluded: {"lo", "pmf", "n", "mean"},
+    pmf[i] = P(X = lo + i)."""
+    ids = players.filter(pl.col("position") == position).select(pl.col("gsis_id").alias("rusher_player_id"))
+    y = (rush_plays.filter(pl.col("season_type") == "REG", pl.col("two_point_attempt").fill_null(0) == 0)
+         .join(ids, on="rusher_player_id", how="semi")["rushing_yards"].fill_null(0).to_numpy().astype(int))
+    if not len(y):
+        raise ValueError(f"no carries for position {position}")
+    lo = int(y.min())
+    pmf = np.bincount(y - lo) / len(y)
+    return {"lo": lo, "pmf": [float(f"{p:.4g}") for p in pmf], "n": int(len(y)), "mean": round(float(y.mean()), 4)}
+
+
+def per_carry_params(rush_plays: pl.DataFrame, players: pl.DataFrame) -> dict:
+    out = {p: per_carry_yards(rush_plays, players, p) for p in PER_CARRY_POSITIONS}
+    for pos, lender in PER_CARRY_BORROW.items():
+        out[pos] = dict(out[lender])
+    return out
+
+
 # ---------------------------------------------------------------- build
 
 
@@ -648,6 +681,13 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
                              "shifted-gamma shifts are inputs, not fitted; QB relations on starters (trailing "
                              "4-game pass attempts >= 20); see RELATIONS in the script for the per-position mu floors"),
                   **dispersion_params(dgames, implied_team_totals(raw.schedules), shifts, runtime_pi0=runtime_pi0)}
+    if raw.rush_plays is not None:
+        dispersion["per_carry_yards_note"] = (
+            f"one REG carry's rushing yards from nflverse play-by-play, {season_label(dispersion_seasons)}, two-point "
+            "tries excluded, by players.position; pmf[i] = P(X = lo + i); TE borrows WR. RB/WR/TE rushing yards "
+            "are a sum of carries (ffp.distributions.CarriesCompound, S5.10)")
+        dispersion["per_carry_yards"] = per_carry_params(raw.rush_plays, raw.players)
+        dispersion["borrowed"]["per_carry_yards"] = dict(PER_CARRY_BORROW)
     return {"correlation": correlation, "base_rates": base, "dispersion": dispersion}
 
 
@@ -660,7 +700,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     seasons, dseasons = parse_seasons(args.seasons), parse_seasons(args.dispersion_seasons)
-    raw = load_nflverse(sorted(set(seasons) | set(dseasons)))
+    raw = load_nflverse(sorted(set(seasons) | set(dseasons)), dseasons)
     docs = build(raw, seasons, dseasons, existing_shifts(args.out), draws=args.draws, today=dt.date.today().isoformat(),
                  runtime_pi0=calibrated_pi0(args.out))
     args.out.mkdir(parents=True, exist_ok=True)

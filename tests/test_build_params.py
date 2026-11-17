@@ -254,7 +254,8 @@ def test_stat_ratios_hand_computed():
     assert r["rush_rec_tds"]["rushing_yards"]["RB"] == 0.0125
     assert r["rush_rec_tds"]["receiving_yards"]["RB"] == 0.0  # his TD was rushing
     assert set(r["rush_rec_tds"]) == {"rushing_yards", "receiving_yards"}
-    assert r["rushing_yards"]["rush_rec_tds"]["QB"] == 40.0
+    # Rushing yards per rushing TD (S5.9: from the player's expected rushing TDs).
+    assert r["rushing_yards"]["rushing_tds"]["QB"] == 40.0
 
 
 # ---------------------------------------------------------------- dispersion
@@ -538,3 +539,18 @@ def test_the_sd_relation_is_fitted_with_the_runtime_pi0(tmp_path):
     (tmp_path / "market_calibration.json").write_text(json.dumps({"pi0": {"rushing_yards": {"RB": {"c0": 4.0, "c1": -2.5}}}}))
     assert bp.calibrated_pi0(tmp_path) == {"rushing_yards": {"RB": {"c0": 4.0, "c1": -2.5}}}
     assert bp.calibrated_pi0(tmp_path / "nowhere") == {}
+
+
+def test_per_carry_yards_by_position():
+    # S5.10: one REG carry's yards, two-point tries and other positions left out; TE borrows WR.
+    plays = pl.DataFrame({
+        "season": [2020] * 7,
+        "season_type": ["REG", "REG", "REG", "REG", "POST", "REG", "REG"],
+        "rusher_player_id": ["rb", "rb", "rb", "rb", "rb", "rb", "wr"],
+        "rushing_yards": [-2, 3, 3, 10, 50, 2, 8],
+        "two_point_attempt": [0, 0, None, 0, 0, 1, 0],
+    })
+    players = pl.DataFrame({"gsis_id": ["rb", "wr"], "position": ["RB", "WR"]})
+    out = bp.per_carry_params(plays, players)
+    assert out["RB"] == {"lo": -2, "pmf": [0.25, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0.25], "n": 4, "mean": 3.5}
+    assert out["TE"] == out["WR"] == {"lo": 8, "pmf": [1.0], "n": 1, "mean": 8.0}

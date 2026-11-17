@@ -50,8 +50,9 @@ def test_without_the_sd_prior_a_wide_player_is_recovered_exactly(stat, make, pos
     rel = rushing_yards_sd_relation(mu, position) if position == "RB" else passing_yards_sd_relation(mu)
     truth = make(mu, 1.4 * rel, position)
     pts = points_from(truth, thresholds)
-    free = fit_yards(stat, pts, position, sd_prior=0.0)
-    shrunk = fit_yards(stat, pts, position)
+    family = "gamma" if stat == "rushing_yards" else None  # an RB's production fit is a sum of carries
+    free = fit_yards(stat, pts, position, sd_prior=0.0, family=family)
+    shrunk = fit_yards(stat, pts, position, family=family)
     assert free.sd == pytest.approx(truth.sd, rel=2e-3)
     assert shrunk.sd < free.sd
 

@@ -134,13 +134,19 @@ class WeeklyStats:
         return out
 
     def last_games(self, columns: Sequence[str], n: int, since_season: int,
-                   before: Before | None = None) -> dict[str, tuple[int, list[float]]]:
+                   before: Before | None = None, *, from_season: int | None = None,
+                   earlier_weight: float = 1.0) -> dict[str, tuple[float, list[float]]]:
         """Per player with any game in the window: (games, column totals) over his last `n`
-        games from `since_season` to before `before`, played games without a stat row included."""
+        games from `since_season` to before `before`, played games without a stat row included.
+
+        A game in a season before `from_season` counts `earlier_weight` times, in both the game
+        count and the totals (a last-season game says less about this season's role)."""
         out = {}
         for pid, games in self._games.items():
             start, end = self._span(pid, since_season, before)
             last = games[max(start, end - n):end]
             if last:
-                out[pid] = (len(last), [sum(number(row.get(c)) for _, row in last) for c in columns])
+                w = [earlier_weight if from_season is not None and season < from_season else 1.0
+                     for (season, _), _ in last]
+                out[pid] = (sum(w), [sum(wi * number(row.get(c)) for wi, (_, row) in zip(w, last)) for c in columns])
         return out
