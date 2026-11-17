@@ -46,35 +46,35 @@
   "rushing_yards": {
     "RB": {
       "family": "hurdle_shifted_gamma",
-      "shift": 10.0,
+      "shift": 3.0,
       "pi0_c0": 6.23,
       "pi0_c1": -2.645,
-      "sd_a": 3.496,
-      "sd_b": 0.581
+      "sd_a": 4.002,
+      "sd_b": 0.556
     },
     "QB": {
       "family": "hurdle_shifted_gamma",
-      "shift": 10.0,
+      "shift": 7.0,
       "pi0_c0": 0.655,
       "pi0_c1": -1.05,
-      "sd_a": 2.271,
-      "sd_b": 0.661
+      "sd_a": 2.184,
+      "sd_b": 0.681
     },
     "WR": {
       "family": "hurdle_shifted_gamma",
-      "shift": 10.0,
+      "shift": 3.0,
       "pi0_c0": 2.941,
       "pi0_c1": -1.745,
-      "sd_a": 3.883,
-      "sd_b": 0.464
+      "sd_a": 3.3,
+      "sd_b": 0.533
     },
     "TE": {
       "family": "hurdle_shifted_gamma",
-      "shift": 10.0,
+      "shift": 3.0,
       "pi0_c0": 2.941,
       "pi0_c1": -1.745,
-      "sd_a": 3.883,
-      "sd_b": 0.464
+      "sd_a": 3.3,
+      "sd_b": 0.533
     }
   },
   "carries": {

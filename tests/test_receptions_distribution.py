@@ -158,13 +158,13 @@ def test_receiving_yards_fit_with_a_given_pi0_keeps_it():
 
 
 def test_receiving_yards_main_line_only_with_a_given_pi0_reproduces_the_main_line():
-    from ffp.distributions import MAIN_LINE_ONLY_KAPPA, receiving_yards_sd_relation
+    from ffp.distributions import main_line_only_kappa, receiving_yards_sd_relation
 
     fit = fit_receiving_yards([FairPoint(53, 0.47, 3.0)], "WR", pi0=0.08)
     assert fit.pi0 == 0.08
     assert fit.sf(np.array([53]))[0] == pytest.approx(0.47, abs=1e-9)
     assert fit.sd == pytest.approx(
-        MAIN_LINE_ONLY_KAPPA * receiving_yards_sd_relation(fit.mean, "WR", 0.08), rel=1e-9
+        main_line_only_kappa("receiving_yards", "WR") * receiving_yards_sd_relation(fit.mean, "WR", 0.08), rel=1e-9
     )
 
 

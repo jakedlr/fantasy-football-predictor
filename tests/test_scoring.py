@@ -152,3 +152,38 @@ def test_a_json_name_in_the_working_directory_is_read_as_a_path(tmp_path, monkey
     monkeypatch.chdir(tmp_path)
     write_rules(tmp_path, {"name": "here", "offense": {"receptions": 2}}, name="here")
     assert load_rules("here.json").offense["receptions"] == 2
+
+
+def test_sleeper_preset_is_ppr_with_minus_one_interceptions():
+    # Kalshi's fantasy-points markets settle on Sleeper's default full PPR
+    # (research/kalshi-fantasy-points.md): the ppr preset but an INT costs -1.
+    assert dict(load_rules("sleeper").offense) == {
+        "passing_yards": 0.04,
+        "passing_tds": 4,
+        "passing_interceptions": -1,
+        "passing_2pt": 2,
+        "rushing_yards": 0.1,
+        "rushing_tds": 6,
+        "rushing_2pt": 2,
+        "receptions": 1,
+        "receiving_yards": 0.1,
+        "receiving_tds": 6,
+        "receiving_2pt": 2,
+        "fumbles_lost": -2,
+    }
+
+
+def test_sleeper_preset_scores_qb_game():
+    # 287 pass yds, 2 pass TD, 2 INT, 1 pass 2-pt, 31 rush yds, 1 rush TD, 1 fumble lost
+    # 287 * 0.04 = 11.48; 2 * 4 = 8; 2 * -1 = -2; 1 * 2 = 2; 31 * 0.1 = 3.1; 6; -2
+    # 11.48 + 8 - 2 + 2 + 3.1 + 6 - 2 = 26.58
+    line = {
+        "passing_yards": 287,
+        "passing_tds": 2,
+        "passing_interceptions": 2,
+        "passing_2pt": 1,
+        "rushing_yards": 31,
+        "rushing_tds": 1,
+        "fumbles_lost": 1,
+    }
+    assert score(line, load_rules("sleeper")) == pytest.approx(26.58)

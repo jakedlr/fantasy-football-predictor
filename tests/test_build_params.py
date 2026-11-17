@@ -227,6 +227,36 @@ def test_td_share_constants_hand_computed():
     assert share["prior_seasons"] == 2
 
 
+def test_stat_ratios_hand_computed():
+    # S5.4: an Estimated Stat's mean from another stat's mean, e.g. receptions = receiving yards / 12.
+    def pos(p, rows):
+        return stat_rows([{"player_id": p, "position": p, "season": 2023, "week": i, "game_id": f"g{i}", **r}
+                          for i, r in enumerate(rows)])
+
+    qual = {
+        "QB": pos("QB", [{"passing_yards": 250.0, "passing_tds": 2.0, "passing_interceptions": 1.0, "attempts": 30.0,
+                          "sacks_suffered": 2.0, "carries": 4.0, "rushing_yards": 20.0, "rushing_tds": 1.0},
+                         {"passing_yards": 150.0, "carries": 6.0, "rushing_yards": 20.0}]),
+        "RB": pos("RB", [{"carries": 20.0, "rushing_yards": 80.0, "rushing_tds": 1.0, "receptions": 2.0,
+                          "receiving_yards": 20.0, "targets": 3.0}]),
+        "WR": pos("WR", [{"receptions": 5.0, "receiving_yards": 60.0, "receiving_tds": 1.0, "targets": 8.0}]),
+        "TE": pos("TE", [{"receptions": 4.0, "receiving_yards": 40.0, "targets": 6.0, "receiving_tds": 1.0}]),
+    }
+    r = bp.base_rates(qual)["stat_ratios"]
+    assert r["receptions"]["receiving_yards"] == {"QB": None, "RB": 0.1, "WR": 0.08333, "TE": 0.1}
+    assert r["receiving_yards"]["receptions"]["WR"] == 12.0
+    assert r["rushing_yards"]["carries"] == {"QB": 4.0, "RB": 4.0, "WR": None, "TE": None}
+    assert r["passing_tds"]["passing_yards"]["QB"] == 0.005
+    assert r["passing_interceptions"]["passing_yards"]["QB"] == 0.0025
+    assert r["passing_yards"]["passing_tds"]["QB"] == 200.0
+    # TDs by component: receiving TDs per receiving yard, rushing TDs per rushing yard.
+    assert r["rush_rec_tds"]["receiving_yards"]["WR"] == pytest.approx(1 / 60, abs=1e-4)
+    assert r["rush_rec_tds"]["rushing_yards"]["RB"] == 0.0125
+    assert r["rush_rec_tds"]["receiving_yards"]["RB"] == 0.0  # his TD was rushing
+    assert set(r["rush_rec_tds"]) == {"rushing_yards", "receiving_yards"}
+    assert r["rushing_yards"]["rush_rec_tds"]["QB"] == 40.0
+
+
 # ---------------------------------------------------------------- dispersion
 
 
@@ -298,7 +328,7 @@ def test_fit_nb_relation_recovers_size_law():
 
 def test_existing_shifts_reads_committed_dispersion(tmp_path):
     assert bp.existing_shifts(tmp_path) == bp.DEFAULT_SHIFT
-    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 10.0, "RB": 10.0, "WR": 10.0, "TE": 10.0}  # research Q1a
+    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 7.0, "RB": 3.0, "WR": 3.0, "TE": 3.0}  # S5.6, Kalshi Backtest
     (tmp_path / "dispersion.json").write_text(json.dumps({
         "receiving_yards": {"WR": {"shift": 4.1}},
         "rushing_yards": {"QB": {"shift": 8.0}},

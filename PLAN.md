@@ -11,7 +11,7 @@ Vocabulary: [GLOSSARY.md](GLOSSARY.md). Background: [RESEARCH.md](RESEARCH.md) a
 | Scoring | Built-in presets `standard`, `half-ppr`, `ppr`, plus custom files `scoring/*.json`, which override bundled ones. Default is the bundled `src/ffp/rules/espn-league.json`: full PPR, 4-pt pass TD, −2 INT, −2 fumble lost. Its D/ST tiers that the league page doesn't show are assumed to be ESPN defaults and flagged as assumptions in the file. |
 | Scope | QB/RB/WR/TE only. A K or DST name gets "not supported yet". Return TDs and fumble-recovery TDs are a listed omission. |
 | Game | Each player's next scheduled Game, at the prices current at run time. If props aren't posted yet, skip the player with a "rerun closer to kickoff" message. |
-| Percentiles | Pₖ means P(points ≤ Pₖ) = k%. Output also includes "chance of N+ points" for a few round thresholds. |
+| Percentiles | Pₖ means P(points ≤ Pₖ) = k%. `--chance N` adds the chance of N or more points for a number the user supplies (the fixed round-threshold table was removed in Sprint 5). |
 | Live odds | DraftKings + FanDuel site endpoints ([ADR 0001](docs/adr/0001-sportsbook-site-endpoints-for-live-odds.md)). Kalshi is used only for backtesting. Every live run saves its raw responses to `snapshots/`. |
 | Devig | Logit-shift (odds-ratio) vig, calibrated on each book's Main Line. Without a Main Line, a fixed per-book/market vig. Fair Probabilities are forced to decrease as the threshold rises (isotonic). One fit uses both books' Rungs, with Main Lines weighted ×3. |
 | Stat Distributions | Per `research/stat-distributions.md`:<br>- **Receiving and rushing yards:** point mass at 0 + shifted gamma.<br>- **Passing yards:** normal + a small mass at 0.<br>- **Receptions:** negative binomial.<br>- **Pass TDs:** Binomial(11, μ/11).<br>- **INTs:** Poisson.<br>- **Rush+rec TDs:** Poisson from anytime TD, split into rushing vs receiving by historical share.<br><br>Fits are by weighted least squares in logit space, on mean and ln sd with a prior on ln sd taken from the dispersion relation. Yards fits also fit P(0), with a wide prior (sd 0.5 in logit) centred on its relation to the mean, so a low-volume player's Main Line isn't missed (Sprint 1 review, finding 2). With only a Main Line: sd = 0.93 × the relation and P(0) on its relation. |
@@ -150,12 +150,36 @@ Done when a QB, RB, WR and TE each get a full Score Distribution and the suite p
 - **S4.3 Position matrices** for QB and RB (one per position, no workhorse override), and the **per-player rushing TD share** for all four positions (research/nflverse-data.md section 6): volume share v = (ρr·C + κ·m)/(ρr·C + ρt·T + κ) from the player's carries C and targets T, then share = (R + k·v)/(N + k) from his rushing TDs R of N rush+rec TDs; κ = 2, k = 30; window this season to date + the previous 2 seasons. It splits both TDs and 2-pt conversions. History comes from nflverse weekly player stats fetched at runtime; no history, or nflverse unreachable (logged), gives the position share m.
 - ~~S4.4 QB fumbles from sacks.~~ Dropped (Sprint 4 planning): no book offers a QB sacks-taken market, and research/nflverse-data.md finds QB fumbles lost barely vary by usage, so the flat per-game rate stays.
 
-## Backlog (later sprints, order decided after Sprint 4)
+## Sprint 5 — Kalshi backtest
 
-- **Backtest on Kalshi** (Oct 2025 → now): pull settled Ladders and pre-kickoff candles, then report PIT histograms, P(≥k) reliability, CRPS and pinball loss. Compare against an independent-stats baseline. Recalibrate the dispersion relations and the gamma-vs-lognormal choice on real devigged Ladders.
+**Research wave:** Kalshi coverage per stat, Oct 2025 → now (settled games, players, Ladders; `/historical` before the 2026-09-17 cutoff and the live endpoints after), bid/ask spreads and which pre-kickoff price to use; Kalshi's API terms for personal research use; the Sleeper scoring that Kalshi's fantasy-points contracts settle on.
+
+**Build wave:** 3 subagents in two steps: the Kalshi source (S5.1) and the `sleeper` preset + outcomes + metrics (S5.3) in parallel, then the backtest runner (S5.2) on their interfaces. The full history pull (~35k requests, resumable) runs after S5.1 merges.
+
+Done when `research/backtest-kalshi.md` reports calibration per stat, position and fantasy points, with proposed recalibrations listed for approval.
+
+- **S5.1 Kalshi fetcher.** Settled markets and the last pre-kickoff candle into git-ignored `data/kalshi/`; each Kalshi Ladder becomes a Prop Market whose Fair Probability is the bid/ask mid (an exchange charges no vig).
+- **S5.2 Backtest runner** (`scripts/backtest_kalshi.py`): the full pipeline on Kalshi's Ladders per Game, scored against nflverse outcomes. Per stat: PIT histograms, P(≥k) reliability, CRPS. Headline: fantasy points under Sleeper scoring (2026 only: Kalshi's fantasy-points markets start in Week 1), P5–P95 calibration, and model vs market: our P(points > X) against each KXNFLFFPTS line, and our mean against the KXNFLFFPTSLADDER price (a scalar contract, $0.01 per point). Every metric also for an independent-stats baseline (no copula).
+- **S5.3 `sleeper` Scoring Rules preset** (Sleeper default full PPR, −1 per INT; research/kalshi-fantasy-points.md), nflverse outcomes per player-game, and the shared metric functions.
+- **Findings change nothing automatically.** Each proposed recalibration (dispersion relations, κ, rushing shift, gamma vs lognormal, TD vig prior, conditional receptions→yards, workhorse override) is brought to the user for approval.
+
+### Sprint 5 follow-up (approved 2026-11-16, done; results in research/backtest-kalshi.md)
+
+From `research/backtest-kalshi.md`'s proposals:
+
+- **S5.4 Estimated Stats.** A player with at least one priced core stat gets his missing core stats estimated (method chosen by hiding priced stats in the Backtest: from his other priced stats, from his recent nflverse games, or a blend) and flagged "estimated: <stat> (no market)". "incomplete" stays only where no estimate is possible. A player with no Prop Markets is still skipped.
+- **S5.5 κ per stat and position** for Main-Line-only fits, from the Backtest's market-implied sd ratios, in place of 0.93 everywhere.
+- **S5.6 Rushing yards near zero.** Rebuild the rushing params with a smaller shift (5 and 7 tried) and a P(0) relation fitted on higher-volume players; adopt the best only if the RB rushing-yards PIT passes and fantasy-point coverage is no worse.
+- **S5.7 Interceptions** anchored on the 1+ price.
+- **S5.8 Chance of a chosen threshold.** The fixed "chance of N+ points" table (5, 10, ... 30) is removed; `--chance N` reports the chance of N or more points for numbers the user supplies.
+
+## Backlog (kickers and D/ST likely next)
+
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
-- **Kicker and D/ST** from team totals and opponent totals.
-- **Conditional receptions→yards model** or a supervised alternative, adopted only if the backtest shows the copula is miscalibrated.
+- **Kicker and D/ST** from team totals and opponent totals (likely Sprint 6).
+- **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
 - **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
-- **Workhorse-RB correlation override** (≥55% carry share: RuYd–Rec −0.12 vs +0.02 pooled), adopted only if the backtest shows it matters.
+- **Workhorse-RB correlation override** (≥55% carry share): the Kalshi Backtest saw −0.16 against the matrix's −0.05, 1.8 se on 244 player-games; re-test after the 2026 season.
+- **Low-volume RB rushing yards** (mean < 20 yd) still get 7.8% below zero against 1.6% observed (127 player-games).
+- **TD vig prior** for DraftKings/FanDuel: test against Kalshi's prices for the same players once our snapshots cover enough weeks.

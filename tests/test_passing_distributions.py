@@ -7,6 +7,7 @@ import pytest
 from scipy import stats
 from scipy.special import expit
 
+from ffp.distributions import main_line_only_kappa as kappa
 from ffp import params
 from ffp.distributions import (
     PASS_TD_ATTEMPTS,
@@ -166,7 +167,7 @@ def test_main_line_only_fit_reproduces_the_main_line(line, over, under):
     p = fair_over(over, under)
     fit = fit_passing_yards([FairPoint(math.floor(line) + 1, p, 3.0)])
     assert fit.sf(np.array([line]))[0] == pytest.approx(p, abs=1e-9)
-    assert fit.sd == pytest.approx(0.93 * passing_yards_sd_relation(fit.mean), rel=1e-9)
+    assert fit.sd == pytest.approx(kappa("passing_yards", "QB") * passing_yards_sd_relation(fit.mean), rel=1e-9)
     assert fit.pi0 == pytest.approx(passing_yards_pi0_relation(fit.mean))
     assert line - 15 < fit.mean < line + 15
 
@@ -295,3 +296,16 @@ def test_a_low_main_line_is_not_split_into_two_humps(line):
     assert fit.pi0 == pytest.approx(passing_yards_pi0_relation(PASSING_PI0_MU_FLOOR), rel=1e-9)
     assert fit.pi0 < 0.03
     assert fit.m == pytest.approx(line, abs=5)
+
+
+def test_interceptions_are_pinned_on_the_one_plus_price():
+    # S5.7 (Kalshi Backtest): on a Ladder with no Main Line the 2+ and 3+ Rungs, fatter than a
+    # Poisson, pulled the rate up: the fit read P(1+) = 0.264 where the prices said 0.250.
+    from ffp.distributions import fit_interceptions
+
+    ladder = [FairPoint(1, 0.25, 1.0), FairPoint(2, 0.045, 1.0), FairPoint(3, 0.008, 1.0)]
+    fit = fit_interceptions(ladder)
+    assert fit.sf(np.array([1]))[0] == pytest.approx(0.25, abs=1e-9)  # was 0.307
+    assert fit.mean == pytest.approx(-math.log(0.75), rel=1e-9)
+    # Without a 1+ point the other points are fitted as before.
+    assert 0 < fit_interceptions([FairPoint(2, 0.045, 1.0), FairPoint(3, 0.008, 1.0)]).mean < 1

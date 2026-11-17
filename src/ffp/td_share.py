@@ -66,8 +66,13 @@ def rushing_td_share(position: str, history: TdHistory | None = None, params: Ma
     return float((h.rushing_tds + k * v) / (h.rushing_tds + h.receiving_tds + k))
 
 
-def load_td_history(season: int, fetch: Fetch | None = None, params: Mapping | None = None) -> dict[str, TdHistory]:
+def load_td_history(
+    season: int, fetch: Fetch | None = None, params: Mapping | None = None, before: tuple[int, int] | None = None
+) -> dict[str, TdHistory]:
     """Every player's TdHistory over `season` to date + the previous `prior_seasons`, by gsis_id.
+
+    `before=(season, week)` keeps only rows strictly before that week (the rows' own
+    `season` and `week`), so a Backtest of a past Game sees no stats from it or later.
 
     `fetch(season)` returns nflverse `load_player_stats` weekly rows; it defaults to
     nflreadpy (network, cached by nflreadpy). Every row counts (REG and POST); nulls
@@ -91,6 +96,8 @@ def load_td_history(season: int, fetch: Fetch | None = None, params: Mapping | N
                 pid = row.get("player_id")
                 if not _present(pid):
                     continue
+                if before is not None and (int(row["season"]), int(row["week"])) >= before:
+                    continue
                 acc = totals.setdefault(str(pid), [0.0] * len(_COUNTS))
                 for i, col in enumerate(_COUNTS):
                     acc[i] += _count(row.get(col))
@@ -110,5 +117,5 @@ def _count(value: object) -> float:
 def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network
     import nflreadpy  # imported here so tests and offline runs never need it
 
-    cols = ["player_id", *_COUNTS]
+    cols = ["player_id", "season", "week", *_COUNTS]
     return nflreadpy.load_player_stats(season).select(cols).to_dicts()

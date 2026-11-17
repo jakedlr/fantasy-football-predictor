@@ -41,6 +41,25 @@ CORRELATION_STATS = {
 # "Meaningful usage" filters (nflverse-data.md 3, "Sample and filters").
 QUALIFY = {"QB": ("attempts", 15), "RB": ("offense_pct", 0.30), "WR": ("offense_pct", 0.50), "TE": ("offense_pct", 0.50)}
 WITHIN_MIN_GAMES = 6
+# Estimated Stats (S5.4): a core stat with no Prop Market gets its mean from another stat's
+# fitted mean times the position's pooled ratio between the two. stat -> the stats it can come from.
+ESTIMATE_SOURCES = {
+    "receptions": ("receiving_yards",),
+    "receiving_yards": ("receptions",),
+    "rushing_yards": ("carries", "rush_rec_tds"),
+    "passing_yards": ("passing_tds",),
+    "passing_tds": ("passing_yards",),
+    "passing_interceptions": ("passing_yards",),
+    "rush_rec_tds": ("rushing_yards", "receiving_yards"),  # summed: rushing TDs per rushing yard + receiving TDs per receiving yard
+}
+# The part of a stat a source predicts, where that is not the whole stat.
+ESTIMATE_COMPONENT = {("rush_rec_tds", "rushing_yards"): "rushing_tds", ("rush_rec_tds", "receiving_yards"): "receiving_tds"}
+STAT_EXPR = {
+    **{c: pl.col(c) for c in ("receptions", "receiving_yards", "rushing_yards", "carries", "passing_yards",
+                              "passing_tds", "passing_interceptions")},
+    "rush_rec_tds": pl.col("rushing_tds") + pl.col("receiving_tds"),
+}
+
 # Per-player rushing TD share (nflverse-data.md 6, S4.3): kappa pseudo expected-TDs shrink the
 # volume share toward m, k pseudo-TDs shrink the TD history toward the volume share, over this
 # season to date + `prior_seasons` previous seasons.
@@ -85,10 +104,12 @@ RELATIONS = (
 # (stat-distributions.md "Sample": QB trailing attempts >= 20).
 TRAILING_QUALIFY = {"QB": ("attempts", 20.0)}
 # The shifted gamma's shift is an input, not fitted (research Q1a: 5 for WR/TE receiving,
-# 10 for RB receiving and all rushing). A committed dispersion.json overrides these.
+# 10 for RB receiving). A committed dispersion.json overrides these.
 DEFAULT_SHIFT = {
     "receiving_yards": {"WR": 5.0, "TE": 5.0, "RB": 10.0},
-    "rushing_yards": {"QB": 10.0, "RB": 10.0, "WR": 10.0, "TE": 10.0},
+    # Rushing: 3 for RB/WR/TE and 7 for QB (kneel-downs) since the Kalshi Backtest (S5.6): with 10,
+    # low-volume backs got 7.7% below zero against 1.4% observed, and no RB reached -5.
+    "rushing_yards": {"QB": 7.0, "RB": 3.0, "WR": 3.0, "TE": 3.0},
 }
 PROXY_FEATURES = ["trail8", "trail4", "trail8_usage", "trail4_usage", "season_to_date", "trail_snap", "implied_total"]
 PMF_FLOOR = 1e-6
@@ -296,6 +317,12 @@ def base_rates(qual: dict[str, pl.DataFrame]) -> dict:
         d = total(pos, pl.col(den))
         return round(total(pos, pl.col(num)) / d, 4) if d else None
 
+    def stat_ratio(pos: str, stat: str, src: str) -> float | None:
+        """Pooled stat / src (S5.4), e.g. receptions per receiving yard; None with no src."""
+        d = total(pos, STAT_EXPR[src])
+        num = ESTIMATE_COMPONENT.get((stat, src))
+        return float(f"{total(pos, pl.col(num) if num else STAT_EXPR[stat]) / d:.4g}") if d else None
+
     touches = pl.col("carries") + pl.col("receptions")
     rush_rec_2pt = pl.col("rushing_2pt_conversions") + pl.col("receiving_2pt_conversions")
     n = {p: qual[p].height for p in qual}
@@ -313,6 +340,10 @@ def base_rates(qual: dict[str, pl.DataFrame]) -> dict:
         "qb_fumbles_lost_per_carry": round(total("QB", pl.col("rushing_fumbles_lost")) / total("QB", pl.col("carries")), 4),
         "yards_per_carry": {p: (round(total(p, pl.col("rushing_yards")) / c, 3) if (c := total(p, pl.col("carries"))) else None)
                             for p in SKILL},
+        "stat_ratios": {
+            stat: {src: {p: stat_ratio(p, stat, src) for p in SKILL} for src in sources}
+            for stat, sources in ESTIMATE_SOURCES.items()
+        },
         "td_share": {
             "rho_rush": {p: ratio(p, "rushing_tds", "carries") for p in SKILL},
             "rho_rec": {p: ratio(p, "receiving_tds", "targets") for p in SKILL},

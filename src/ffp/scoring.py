@@ -65,15 +65,18 @@ _STANDARD_OFFENSE = {
 }
 
 
-def _preset(name: str, points_per_reception: float) -> ScoringRules:
-    offense = {**_STANDARD_OFFENSE, "receptions": points_per_reception}
-    return ScoringRules(name=name, offense=_offense(offense, name))
+def _preset(name: str, **changes: float) -> ScoringRules:
+    """Standard scoring with `changes` (points per unit by Scoring Stat) applied."""
+    return ScoringRules(name=name, offense=_offense({**_STANDARD_OFFENSE, **changes}, name))
 
 
 PRESETS = {
-    "standard": _preset("standard", 0),
-    "half-ppr": _preset("half-ppr", 0.5),
-    "ppr": _preset("ppr", 1),
+    "standard": _preset("standard"),
+    "half-ppr": _preset("half-ppr", receptions=0.5),
+    "ppr": _preset("ppr", receptions=1),
+    # Sleeper's default full PPR, which Kalshi's fantasy-points markets settle on
+    # (research/kalshi-fantasy-points.md): an interception costs -1, not -2.
+    "sleeper": _preset("sleeper", receptions=1, passing_interceptions=-1),
 }
 
 

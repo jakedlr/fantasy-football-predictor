@@ -173,3 +173,22 @@ def test_prior_seasons_come_from_the_params():
     p["td_share"]["prior_seasons"] = 1
     load_td_history(2026, fetch=fetch_from({}, calls), params=p)
     assert sorted(calls) == [2025, 2026]
+
+
+def test_before_keeps_only_rows_strictly_before_that_season_and_week():
+    # The Backtest's no-look-ahead rule: a Game in 2026 Week 3 sees 2024, 2025 and 2026 Weeks 1-2.
+    rows = {
+        2024: [row("P1", 2024, 19, "POST", carries=4)],
+        2025: [row("P1", 2025, 18, carries=10, rushing_tds=1)],
+        2026: [row("P1", 2026, 2, carries=20), row("P1", 2026, 3, carries=99, rushing_tds=9),
+               row("P1", 2026, 4, carries=99), row("P2", 2026, 3, targets=9)],
+    }
+    hist = load_td_history(2026, fetch=fetch_from(rows), params=fake_params(), before=(2026, 3))
+    assert hist == {"P1": TdHistory(carries=34, rushing_tds=1)}
+
+
+def test_before_reads_week_and_season_from_csv_strings():
+    rows = {2026: [{"player_id": "P1", "season": "2026", "week": "2", "carries": "5"},
+                   {"player_id": "P1", "season": "2026", "week": "10", "carries": "7"}]}
+    hist = load_td_history(2026, fetch=fetch_from(rows), params=fake_params(), before=(2026, 10))
+    assert hist == {"P1": TdHistory(carries=5)}

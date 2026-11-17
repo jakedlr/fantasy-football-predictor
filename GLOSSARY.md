@@ -24,11 +24,19 @@ _Avoid_: League settings
 The historical per-game frequency of a Scoring Stat that no book offers, such as fumbles lost or 2-point conversions.
 _Avoid_: Default rate, prior
 
+**Estimated Stat**:
+A Scoring Stat with no Prop Market for this player in this Game, whose Stat Distribution is estimated from his other stats or recent games.
+_Avoid_: Fallback stat, imputed stat, filled stat
+
 ## Markets
 
 **Game**:
 One scheduled NFL game. A sportsbook's "event" means a Game.
 _Avoid_: Event, matchup, fixture
+
+**Book**:
+A sportsbook or prediction exchange that prices Prop Markets: DraftKings, FanDuel or Kalshi. An exchange's prices carry no vig.
+_Avoid_: Sportsbook (when an exchange is meant too), site, operator
 
 **Prop Market**:
 A book's offer on one player's Scoring Stat or Usage Stat in one Game.

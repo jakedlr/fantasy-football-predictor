@@ -35,6 +35,10 @@ DEFAULT_PRIOR_C = math.log(1.15)
 # don't bear it out. The longshots carry the larger c (favourite-longshot bias).
 TD_PRIOR_C = 0.20
 
+# Kalshi is an exchange: no vig, and its Prop Markets (ffp.sources.kalshi.to_prop_markets) have no Main
+# Line, so pass prior_c={"kalshi": KALSHI_PRIOR_C} and fair_points returns the bid/ask mids.
+KALSHI_PRIOR_C = 0.0
+
 
 def fair_points(
     markets: Sequence[PropMarket],

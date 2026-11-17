@@ -309,21 +309,53 @@ def _only(stat_markets, *, stats):
     return [BookOdds(b.book, b.games, [m for m in b.markets if m.stat in stats]) for b in stat_markets]
 
 
-def test_a_wr_with_no_receptions_market_is_flagged_incomplete(nflverse, books, monkeypatch):
-    # S3.5
+def test_a_wr_with_no_receptions_market_gets_estimated_receptions(nflverse, books, monkeypatch):
+    # S5.4 (was S3.5 "incomplete: missing receptions"): the Backtest found a missing stat counted
+    # as 0 under-predicts by 1.5-5 points.
+    from ffp import params
+
     calls = _capture_simulation(monkeypatch)
     [zay], [] = run(["Zay Flowers"], nflverse, _only(books, stats={"receiving_yards", "rush_rec_tds"}))
-    assert "incomplete: missing receptions" in zay.flags
+    assert zay.flags == ["estimated: receptions (no market)"]
     [(dists, _)] = calls
-    assert "receptions" not in dists
-    # Without receptions, the yards P(0) is fitted from the yards markets as before.
+    # With no recent games given: receiving yards × the WR receptions per receiving yard.
+    ratio = params.load("base_rates")["stat_ratios"]["receptions"]["receiving_yards"]["WR"]
+    assert dists["receptions"].mean == pytest.approx(ratio * dists["receiving_yards"].mean, rel=1e-6)
+    assert zay.stats["receptions"].books == [] and zay.stats["receptions"].rungs == 0
+    # The yards P(0) was fitted from the yards markets: the estimate doesn't feed back into a market fit.
     assert dists["receiving_yards"].pi0 > 0
 
 
-def test_a_wr_with_no_td_market_is_flagged_incomplete(nflverse, books):
+def test_recent_games_move_an_estimated_stat(nflverse, books, monkeypatch):
+    from ffp.estimates import RecentGames
+
+    calls = _capture_simulation(monkeypatch)
+    only = _only(books, stats={"receiving_yards", "rush_rec_tds"})
+    run(["Zay Flowers"], nflverse, only)
+    busy = {"00-0039064": RecentGames(games=8, totals={"receptions": 80.0})}  # 10 catches a game
+    run(["Zay Flowers"], nflverse, only, recent_games=busy)
+    [(without, _), (with_recent, _)] = calls
+    assert with_recent["receptions"].mean > without["receptions"].mean + 1
+
+
+def test_a_stat_nothing_can_estimate_stays_incomplete(nflverse, books):
+    # Only a TD market, no recent games: nothing says how many catches or yards.
+    [zay], [] = run(["Zay Flowers"], nflverse, _only(books, stats={"rush_rec_tds"}))
+    assert "incomplete: missing receptions" in zay.flags
+    assert "incomplete: missing receiving yards" in zay.flags
+    assert "receptions" not in zay.stats
+
+
+def test_a_wr_with_no_td_market_gets_estimated_touchdowns(nflverse, books):
+    from ffp import params
+
     [zay], [] = run(["Zay Flowers"], nflverse, _only(books, stats={"receiving_yards", "receptions"}))
-    assert "incomplete: missing touchdowns" in zay.flags
-    assert "receiving_tds" not in zay.stats
+    assert zay.flags == ["estimated: touchdowns (no market)"]
+    # Receiving TDs per receiving yard × his receiving-yards mean (he has no rushing yards here).
+    rate = params.load("base_rates")["stat_ratios"]["rush_rec_tds"]["receiving_yards"]["WR"]
+    total = zay.stats["receiving_tds"].mean + zay.stats["rushing_tds"].mean
+    assert total == pytest.approx(rate * zay.stats["receiving_yards"].mean, rel=1e-6)
+    assert zay.stats["receiving_tds"].books == []
 
 
 def test_a_wr_with_only_a_td_market_is_predicted_and_flagged(nflverse, books):
@@ -341,8 +373,8 @@ def test_one_failed_fit_flags_that_stat_and_keeps_the_rest(nflverse, books, monk
 
     monkeypatch.setattr(ffp.predict, "fit_receptions", fail)
     [zay], [] = run(["Zay Flowers"], nflverse, books)
-    assert "incomplete: could not fit receptions (out of reach)" in zay.flags
-    assert "receiving_yards" in zay.stats
+    assert "estimated: receptions (could not fit its market)" in zay.flags
+    assert "receiving_yards" in zay.stats and "receptions" in zay.stats
 
 
 def test_a_player_whose_every_fit_fails_is_skipped(nflverse, books, monkeypatch):
@@ -434,15 +466,19 @@ def test_an_rb_without_a_carries_market_gets_carries_from_rushing_yards(nflverse
     assert not any("carries" in f for f in henry.flags)  # a Usage Stat is never flagged
 
 
-def test_an_rb_with_no_carries_or_rushing_yards_gets_the_per_game_fumble_rate(nflverse, books, monkeypatch):
+def test_an_rb_with_no_carries_or_rushing_yards_gets_estimated_rushing_yards(nflverse, books, monkeypatch):
+    # Before S5.4 he had no rushing yards at all and the per-game fumble rate.
     from ffp import params
 
     calls = _capture_simulation(monkeypatch)
     no_rushing = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat not in ("carries", "rushing_yards")])
                   for b in books]
-    run(["Derrick Henry"], nflverse, no_rushing)
+    [henry], [] = run(["Derrick Henry"], nflverse, no_rushing)
+    assert henry.flags == ["estimated: rushing yards (no market)"]
     [(dists, _)] = calls
-    assert dists["fumbles_lost"].mean == pytest.approx(params.load("base_rates")["fumbles_lost_per_game"]["RB"])
+    br = params.load("base_rates")
+    touches = dists["rushing_yards"].mean / br["yards_per_carry"]["RB"] + dists["receptions"].mean
+    assert dists["fumbles_lost"].mean == pytest.approx(br["fumbles_lost_per_touch"]["RB"] * touches, rel=1e-9)
 
 
 def test_a_player_with_only_a_carries_market_has_no_markets(nflverse, books):
@@ -481,7 +517,8 @@ def test_a_qb_gets_passing_and_rushing_stats(nflverse, books, monkeypatch):
 def test_a_qb_without_a_passing_yards_market_is_flagged(nflverse, books):
     no_pass = [BookOdds(b.book, b.games, [m for m in b.markets if m.stat != "passing_yards"]) for b in books]
     [herbert], [] = run(["Justin Herbert"], nflverse, no_pass)
-    assert "incomplete: missing passing yards" in herbert.flags
+    assert herbert.flags == ["estimated: passing yards (no market)"]
+    assert 100 < herbert.stats["passing_yards"].mean < 400
 
 
 def test_a_wr_with_a_rushing_market_gets_rushing_yards(nflverse, books, monkeypatch):
