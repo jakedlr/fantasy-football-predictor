@@ -201,3 +201,19 @@ def test_the_weekly_download_keeps_every_column_a_reader_uses():
     used = {c for cols in (*outcomes.COLUMNS.values(), *estimates.COLUMNS.values()) for c in cols}
     used |= set(td_share._COUNTS) | {"player_id", "game_id", "season", "week"}
     assert used <= set(weekly.PLAYER_STATS_COLUMNS)
+
+
+def test_the_backtest_carry_shares_survive_the_column_selection():
+    # The Backtest's carry shares divide by the team's carries: without "team" every player
+    # fell into one team, and the RB workhorse cut came out wrong.
+    from ffp import weekly
+    from ffp.backtest import trailing_carry_shares
+
+    def row(pid, team, week, carries):
+        full = {"player_id": pid, "game_id": f"2025_{week:02d}_A_B", "season": 2025, "week": week, "team": team,
+                "carries": carries, "position_group": "RB"}
+        return {c: full.get(c) for c in weekly.PLAYER_STATS_COLUMNS}
+
+    rows = [row(pid, team, w, c) for w in range(1, 6) for pid, team, c in (("a", "A", 20), ("b", "B", 10))]
+    shares = trailing_carry_shares(rows)
+    assert shares["2025_05_A_B", "a"] == pytest.approx(1.0) and shares["2025_05_A_B", "b"] == pytest.approx(1.0)

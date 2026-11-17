@@ -63,10 +63,11 @@ def memoized(fetch: Fetch) -> Fetch:
 
 
 # The weekly columns any reader uses (ffp.outcomes.COLUMNS, ffp.estimates.COLUMNS,
-# ffp.td_share._COUNTS, plus the keys): the file has over 100, and several seasons of them
-# as dicts would be held in memory. tests/test_td_share.py checks the readers stay covered.
+# ffp.td_share._COUNTS, the Backtest's carry shares by team, plus the keys): the file has over
+# 100, and several seasons of them as dicts would be held in memory. tests/test_td_share.py
+# checks the readers stay covered.
 PLAYER_STATS_COLUMNS = (
-    "player_id", "game_id", "season", "week",
+    "player_id", "game_id", "season", "week", "team",
     "passing_yards", "passing_tds", "passing_interceptions", "passing_2pt_conversions",
     "carries", "rushing_yards", "rushing_tds", "rushing_2pt_conversions",
     "targets", "receptions", "receiving_yards", "receiving_tds", "receiving_2pt_conversions",
