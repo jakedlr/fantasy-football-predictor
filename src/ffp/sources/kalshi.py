@@ -1,20 +1,43 @@
 """Kalshi's settled NFL player-prop markets → Backtest inputs (PLAN S5.1).
 
 Market semantics, the price rule and the drop rules are from research/kalshi.md.
+
+Reading (cache only, no network):
+    load_rungs(root) -> [KalshiRung]                 Ladder Rungs, P(Y >= threshold) = mid
+    load_fantasy_lines(root) -> [KalshiFantasyLine]  KXNFLFFPTS, P(points > line) = mid
+    load_fantasy_means(root) -> [KalshiFantasyMean]  KXNFLFFPTSLADDER, mid = expected points / 100
+    drop_counts(root) -> Counter{(series, reason)}   what was left out, and why
+    to_prop_markets(rungs) -> [PropMarket]           book "kalshi"; fair_points(markets,
+                                                     prior_c={"kalshi": fair.KALSHI_PRIOR_C}) = the mids
+Fetching:
+    pull(root, seasons, http=None, since=None, ...)  resumable, ≤ 4 requests/s
+    python -m ffp.sources.kalshi pull --root data/kalshi --since 2025-10-01
+
+Which stats exist when: receiving_yards, rushing_yards, passing_yards from 2025 Week 5;
+receptions from 2025 Week 8; passing_tds from 2025 Week 12; carries and passing_interceptions
+from 2026 Week 1 only. rush_rec_tds: 1+ and 2+ Rungs in 2025 (KXNFLANYTD, KXNFL2TD), 1+/2+/3+ in
+2026 (KXNFLTD). Fantasy points lines from 2026 Week 1, means from 2026 Week 2.
 """
 
+import argparse
 import json
+import logging
 import re
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..markets import PropMarket, Rung, parse_utc
-from ..players import ScheduledGame, UnknownTeamError, _present, team_code_from_book_name
+from ..players import ScheduledGame, UnknownTeamError, _present, load_schedule, team_code_from_book_name
 from .fanduel import TD_STAT
+from .http import FetchError
 
 _EASTERN = ZoneInfo("America/New_York")
 
@@ -208,7 +231,7 @@ def player_directory(targets: Iterable[Mapping]) -> dict[str, dict]:
     out = {}
     for t in targets:
         details = t.get("details") or {}
-        if details.get("league") != "NFL":
+        if details.get("league") != "NFL" or t.get("type", "football_player") != "football_player":
             continue
         source_id = t.get("source_id") or (t.get("source_ids") or {}).get("source_3_id")
         out[t["id"]] = {"name": t.get("name"), "position": details.get("position"), "source_id": source_id}
@@ -266,6 +289,7 @@ class Cache:
     games.json             the nflverse Games of the pulled seasons, with kickoffs in UTC
     quotes.jsonl           one kickoff quote per line, appended as candles arrive:
                            {ticker, bid, ask, end, volume, interval (1 or 60 minutes; None: no candle)}
+    listing.json           how far each series has been listed, so a rerun lists only what's new
     """
 
     def __init__(self, root: str | Path = DEFAULT_ROOT):
@@ -505,3 +529,318 @@ def to_prop_markets(rungs: Iterable[KalshiRung]) -> list[PropMarket]:
         )
         for (game_id, _, stat), rs in groups.items()
     ]
+
+
+# --- the network -----------------------------------------------------------------------
+
+BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
+RATE = 4.0  # requests a second at most; research/kalshi.md saw no 429 at this pace
+PAGE = 1000  # markets per listing page (Kalshi's maximum)
+BATCH = 100  # tickers per live candlesticks request (Kalshi's maximum)
+MINUTE_WINDOW = 3600  # 1-minute candles over the hour before kickoff
+HOUR_WINDOW = 24 * 3600  # the fallback: hourly candles over the day before
+RELIST_OVERLAP = 7 * 24 * 3600  # a live listing re-reads the last week before the previous listing
+
+log = logging.getLogger(__name__)
+
+Fetch = Callable[[str], tuple]  # url -> (status, body, headers), like ffp.sources.http
+
+
+class NotFound(FetchError):
+    """HTTP 404."""
+
+
+def urllib_fetch(url: str) -> tuple[int, bytes, dict]:
+    """A plain GET: Kalshi's public market data needs no key and no browser impersonation."""
+    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "ffp/0.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, r.read(), dict(r.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(), dict(e.headers or {})
+
+
+def api_url(path: str, **params) -> str:
+    """BASE_URL + path, with params (those not None) in the order given."""
+    query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+    return BASE_URL + path + ("?" + query if query else "")
+
+
+class KalshiHttp:
+    """GETs JSON from Kalshi's public API, at most `rate` requests a second. A 429 is waited out
+    (1, 2, 4, ... s: Kalshi sends no Retry-After) and retried. Nothing raw is written to disk:
+    `pull` keeps only compact records. `fetch` is injected so tests never touch the network."""
+
+    def __init__(self, fetch: Fetch = urllib_fetch, rate: float = RATE, retries: int = 5,
+                 sleep=time.sleep, clock=time.monotonic):
+        self.fetch, self.gap, self.retries, self.sleep, self.clock = fetch, 1 / rate, retries, sleep, clock
+        self.requests = 0
+        self._next = float("-inf")
+
+    def get_json(self, url: str):
+        for attempt in range(self.retries + 1):
+            wait = self._next - self.clock()
+            if wait > 0:
+                self.sleep(wait)
+            self._next = self.clock() + self.gap
+            self.requests += 1
+            status, body, *_ = self.fetch(url)
+            if status == 429 and attempt < self.retries:
+                log.warning("HTTP 429 from %s: waiting %ds", url, 2 ** attempt)
+                self.sleep(2 ** attempt)
+                continue
+            if status == 404:
+                raise NotFound(f"HTTP 404 from {url}")
+            if status != 200:
+                raise FetchError(f"HTTP {status} from {url}")
+            try:
+                return json.loads(body)
+            except ValueError:
+                raise FetchError(f"non-JSON response from {url}") from None
+        raise AssertionError("unreachable")
+
+
+def _paged(http, path: str, key: str, **params) -> Iterator[dict]:
+    cursor = None
+    while True:
+        page = http.get_json(api_url(path, **params, cursor=cursor))
+        yield from page.get(key) or []
+        cursor = page.get("cursor")
+        if not cursor or not page.get(key):
+            return
+
+
+def _ts(moment: str) -> int:
+    return int(parse_utc(moment).timestamp())
+
+
+@dataclass(frozen=True)
+class PullReport:
+    """What one `pull` did, and what the cache now holds."""
+
+    requests: int
+    listed: dict[str, int]  # {series: markets listed in this pull}
+    quotes_fetched: int  # markets whose kickoff quote this pull looked up
+    rungs: int  # usable, in the whole cache
+    fantasy_lines: int
+    fantasy_means: int
+    drops: Counter  # drop_counts of the whole cache
+
+
+def pull(root: str | Path = DEFAULT_ROOT, seasons: Iterable[int] = (2025, 2026), http=None,
+         since: date | None = None, series: Iterable[str] = SERIES,
+         schedule_fetch: Callable | None = None, roster_fetch: RosterFetch | None = None) -> PullReport:
+    """Bring the cache under `root` up to date from Kalshi's API. Resumable: run it again after an
+    interruption, or each week, and only what's missing is fetched.
+
+    1. The nflverse schedule of `seasons` (kickoffs) → games.json.
+    2. Every settled market of `series`, from /historical/markets (settled before
+       /historical/cutoff; listed once per cutoff) and /markets?status=settled (incremental) →
+       markets/<SERIES>.json, compacted. Markets of Games before `since` are skipped.
+    3. The football_player directory and nflverse rosters → players.json, when a market names a
+       player not in it yet.
+    4. The kickoff quote of every market that survives the drop rules and has none yet →
+       quotes.jsonl: 1-minute candles over the hour before kickoff, else hourly over the day
+       before; one request per historical market, ≤ 100 live markets per request.
+
+    `http` is anything with get_json(url) (default KalshiHttp()). `schedule_fetch(season)` and
+    `roster_fetch(season)` default to nflreadpy, as in ffp.players.
+    """
+    cache, http, seasons, series = Cache(root), http or KalshiHttp(), sorted(set(seasons)), list(series)
+    unknown = [s for s in series if s not in SERIES]
+    if unknown:
+        raise ValueError(f"unknown Kalshi series {', '.join(unknown)} (known: {', '.join(SERIES)})")
+    start = getattr(http, "requests", 0)
+
+    games = [g for s in seasons for g in load_schedule(s, schedule_fetch)]
+    cache.save_games(games)
+    cutoff = parse_utc(http.get_json(api_url("/historical/cutoff"))["market_settled_ts"])
+    listed = {s: _list_markets(http, cache, s, cutoff, since) for s in series}
+    _update_players(http, cache, series, seasons, roster_fetch)
+    fetched = _fetch_quotes(http, cache, series, cutoff, since, {g.game_id for g in games})
+
+    rungs, lines, means, drops = _load(root)
+    return PullReport(getattr(http, "requests", 0) - start, listed, fetched, len(rungs), len(lines), len(means),
+                      drops)
+
+
+def _list_markets(http, cache: Cache, series: str, cutoff: datetime, since: date | None) -> int:
+    """List the series' settled markets into the cache; the number listed.
+
+    The historical listing changes only when the cutoff moves, so it is read once per cutoff
+    (listing.json remembers it, and from which `since`). The live listing is read each pull
+    from `since`, or from a week before the previous live listing.
+    """
+    state = cache._read("listing.json", {})
+    mine = state.setdefault(series, {})
+    wanted = since and since.isoformat()
+    since_ts = int(datetime.combine(since, datetime.min.time(), UTC).timestamp()) if since else None
+    sources = []
+
+    hist = mine.get("historical")  # {"cutoff", "since"} of the last historical listing
+    if not (hist and hist["cutoff"] == cutoff.isoformat() and _covers(hist["since"], wanted)) and (
+            since is None or since < cutoff.date()):
+        sources.append(("historical", _paged(http, "/historical/markets", "markets", series_ticker=series,
+                                             limit=PAGE)))
+    live = mine.get("live")  # {"at", "since"}: listed at `at`, back to `since`
+    live_since = wanted
+    if live and _covers(live["since"], wanted):
+        since_ts, live_since = max(since_ts or 0, live["at"] - RELIST_OVERLAP), live["since"]
+    listed_at = int(time.time())
+    sources.append(("live", _paged(http, "/markets", "markets", series_ticker=series, status="settled",
+                                   limit=PAGE, min_close_ts=since_ts)))
+    n = 0
+    for name, markets in sources:
+        keep = [compact_market(m) for m in markets
+                if since is None or parse_ticker(m["ticker"]).game_date >= since]
+        cache.save_markets(series, keep)
+        n += len(keep)
+        if name == "historical":
+            mine["historical"] = {"cutoff": cutoff.isoformat(), "since": wanted}
+    mine["live"] = {"at": listed_at, "since": live_since}
+    cache._write("listing.json", state)
+    log.info("%s: %d markets listed", series, n)
+    return n
+
+
+def _covers(held: str | None, wanted: str | None) -> bool:
+    """Whether a listing back to `held` (None: everything) covers one back to `wanted`."""
+    return held is None or (wanted is not None and wanted >= held)
+
+
+def _update_players(http, cache: Cache, series: list[str], seasons: list[int], roster_fetch) -> None:
+    players = cache.players()
+    wanted = {m["player"] for s in series for m in cache.markets(s).values() if m.get("player")}
+    if wanted - players.keys():
+        directory = player_directory(_paged(http, "/structured_targets", "structured_targets",
+                                            type="football_player", page_size=2000))
+        players.update({u: {**p, "gsis_id": None} for u, p in directory.items() if u not in players})
+    for uuid in sorted(wanted - players.keys()):  # D/ST, "No TD", or not in the directory listing
+        try:
+            target = http.get_json(api_url(f"/structured_targets/{uuid}")).get("structured_target") or {}
+        except NotFound:
+            target = {}
+        found = player_directory([target]) if target.get("id") else {}
+        players[uuid] = {**found.get(uuid, {"name": target.get("name"), "position": None, "source_id": None}),
+                         "gsis_id": None}
+    if any(p.get("source_id") and not p.get("gsis_id") for p in players.values()):
+        to_gsis = sportradar_to_gsis(seasons, roster_fetch)
+        for p in players.values():
+            if p.get("source_id") and not p.get("gsis_id"):
+                p["gsis_id"] = to_gsis.get(p["source_id"])
+    cache.save_players(players)
+
+
+def _fetch_quotes(http, cache: Cache, series: list[str], cutoff: datetime, since: date | None,
+                  game_ids: set[str]) -> int:
+    """Kickoff quotes for every market that passes the pre-price drop rules and has none yet."""
+    players, have = cache.players(), cache.quotes().keys()
+    game_of = _event_matcher(cache.games())
+    historical, live = [], {}
+    for s in series:
+        for m in cache.markets(s).values():
+            game = game_of(m["ticker"])
+            if (m["ticker"] in have or game is None or game.game_id not in game_ids
+                    or (since and _eastern_date(game.kickoff) < since)
+                    or _market_drop_reason(s, m, game, players) is not None):
+                continue
+            ko = _ts(game.kickoff)
+            if m.get("settled") and parse_utc(m["settled"]) < cutoff:
+                historical.append((m["ticker"], ko))
+            else:
+                live.setdefault((parse_ticker(m["ticker"]).event, ko), []).append(m["ticker"])
+    total = len(historical) + sum(map(len, live.values()))
+    log.info("kickoff quotes to fetch: %d historical, %d live", len(historical), total - len(historical))
+    done = 0
+    for ticker, ko in historical:
+        def candles(interval, window, _chunk, ticker=ticker, ko=ko):  # one market per request
+            page = http.get_json(api_url(f"/historical/markets/{ticker}/candlesticks", start_ts=ko - window,
+                                         end_ts=ko, period_interval=interval))
+            return {ticker: page.get("candlesticks") or []}
+        try:
+            _quote_batch(cache, [ticker], ko, candles)
+        except NotFound:
+            log.warning("no historical candles for %s; tried again next pull", ticker)
+        done += 1
+        if done % 500 == 0:
+            log.info("kickoff quotes: %d / %d", done, total)
+    for (_, ko), tickers in live.items():
+        for i in range(0, len(tickers), BATCH):
+            def candles(interval, window, chunk, ko=ko):
+                page = http.get_json(api_url("/markets/candlesticks", market_tickers=",".join(chunk),
+                                             start_ts=ko - window, end_ts=ko, period_interval=interval))
+                return {x.get("market_ticker"): x.get("candlesticks") or [] for x in page.get("markets") or []}
+            _quote_batch(cache, tickers[i:i + BATCH], ko, candles)
+            done += len(tickers[i:i + BATCH])
+            log.info("kickoff quotes: %d / %d", done, total)
+    return total
+
+
+def _quote_batch(cache: Cache, tickers: list[str], ko: int, candles) -> None:
+    """Append each ticker's kickoff quote: minute candles first, then hourly for those with none.
+
+    `candles(interval, window, tickers)` returns {ticker: raw candles}.
+    """
+    missing = tickers
+    for interval, window in ((1, MINUTE_WINDOW), (60, HOUR_WINDOW)):
+        got = candles(interval, window, missing)
+        still = []
+        for t in missing:
+            quote = kickoff_quote(got.get(t, []), ko)
+            if quote:
+                cache.append_quote(_quote_record(t, quote, interval))
+            else:
+                still.append(t)
+        missing = still
+        if not missing:
+            return
+    for t in missing:
+        cache.append_quote(_quote_record(t, None, None))
+
+
+def _quote_record(ticker: str, quote: Quote | None, interval: int | None) -> dict:
+    if quote is None:
+        return {"ticker": ticker, "bid": None, "ask": None, "end": None, "volume": 0.0, "interval": None}
+    return {"ticker": ticker, "bid": quote.bid, "ask": quote.ask, "end": quote.end, "volume": quote.volume,
+            "interval": interval}
+
+
+# --- CLI -------------------------------------------------------------------------------
+
+
+def _season_of(day: date) -> int:
+    """The NFL season a date falls in: Mar–Dec of year Y and Jan–Feb of Y+1 are season Y."""
+    return day.year if day.month >= 3 else day.year - 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m ffp.sources.kalshi",
+                                     description="Kalshi's settled NFL player props → the Backtest cache.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("pull", help="fetch what's missing from the cache, then print counts and drop reasons")
+    p.add_argument("--root", type=Path, default=DEFAULT_ROOT, help=f"cache directory (default {DEFAULT_ROOT})")
+    p.add_argument("--since", type=date.fromisoformat, help="skip Games before this date, e.g. 2025-10-01")
+    p.add_argument("--seasons", type=int, nargs="+",
+                   help="nflverse seasons to join (default: --since's season, or 2025, through this season)")
+    p.add_argument("--series", nargs="+", default=list(SERIES), help="Kalshi series (default: all used)")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    first = _season_of(args.since) if args.since else 2025
+    seasons = args.seasons or list(range(first, _season_of(date.today()) + 1))
+    report = pull(args.root, seasons, since=args.since, series=args.series)
+    print(format_report(report))
+    return 0
+
+
+def format_report(report: PullReport) -> str:
+    lines = [f"requests: {report.requests}   kickoff quotes fetched: {report.quotes_fetched}",
+             f"usable: {report.rungs} Rungs, {report.fantasy_lines} fantasy lines, "
+             f"{report.fantasy_means} fantasy means", "", "listed this pull:"]
+    lines += [f"  {s:<18} {n}" for s, n in report.listed.items()]
+    lines += ["", "dropped (whole cache):"]
+    lines += [f"  {s:<18} {reason:<16} {n}" for (s, reason), n in sorted(report.drops.items())]
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
