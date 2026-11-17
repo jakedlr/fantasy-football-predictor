@@ -4,15 +4,22 @@ from datetime import date
 
 import pytest
 
+from ffp.players import ScheduledGame
 from ffp.sources import fanduel
 from ffp.sources.kalshi import (
     FANTASY_LINE_SERIES,
     FANTASY_MEAN_SERIES,
     LADDER_SERIES,
     SERIES,
+    Quote,
     fantasy_line,
+    kickoff_quote,
+    match_game,
     parse_ticker,
+    player_directory,
+    price_drop_reason,
     rung_threshold,
+    sportradar_to_gsis,
 )
 
 # --- tickers and thresholds ------------------------------------------------------------
@@ -88,3 +95,107 @@ def test_series_map_to_our_stats():
     assert (FANTASY_LINE_SERIES, FANTASY_MEAN_SERIES) == ("KXNFLFFPTS", "KXNFLFFPTSLADDER")
     assert set(SERIES) == set(LADDER_SERIES) | {FANTASY_LINE_SERIES, FANTASY_MEAN_SERIES}
     assert not [s for s in SERIES if any(v in s for v in ("PROT", "PRECISE", "ESCALATOR", "LADDERREC"))]
+
+
+# --- the price rule --------------------------------------------------------------------
+
+KO = 1794792000  # 2026-11-16T01:20:00Z, SNF PIT @ CIN
+
+
+def _live_candle(end, bid, ask, volume="0.00"):
+    return {"end_period_ts": end, "volume_fp": volume,
+            "yes_bid": {"close_dollars": bid}, "yes_ask": {"close_dollars": ask}}
+
+
+def _historical_candle(end, bid, ask, volume="0.00"):
+    return {"end_period_ts": end, "volume": volume, "yes_bid": {"close": bid}, "yes_ask": {"close": ask}}
+
+
+def test_kickoff_quote_is_the_last_candle_ending_at_or_before_kickoff():
+    candles = [_live_candle(KO - 120, "0.40", "0.42"), _live_candle(KO, "0.44", "0.45", "12.00"),
+               _live_candle(KO + 60, "0.70", "0.72", "900.00")]  # in-game: cut
+    assert kickoff_quote(candles, KO) == Quote(bid=0.44, ask=0.45, end=KO, volume=12.0)
+
+
+def test_kickoff_quote_reads_historical_field_names():
+    assert kickoff_quote([_historical_candle(KO - 60, "0.5200", "0.5600", "2.00")], KO) == Quote(
+        0.52, 0.56, KO - 60, 2.0)
+
+
+def test_kickoff_quote_is_none_when_every_candle_is_in_game():
+    assert kickoff_quote([_live_candle(KO + 60, "0.4", "0.5")], KO) is None
+    assert kickoff_quote([], KO) is None
+
+
+def test_a_missing_side_reads_as_none():
+    q = kickoff_quote([{"end_period_ts": KO, "yes_bid": {}, "yes_ask": {"close_dollars": "0.03"}}], KO)
+    assert (q.bid, q.ask) == (None, 0.03)
+
+
+@pytest.mark.parametrize("bid, ask, reason", [
+    (0.44, 0.45, None),
+    (0.40, 0.50, None),  # a spread of exactly $0.10 is kept
+    (0.40, 0.51, "wide_spread"),
+    (0.0, 0.03, "one_sided"),  # far tail: no bid
+    (None, 0.03, "one_sided"),
+    (0.97, 1.0, "one_sided"),  # no ask
+    (0.97, None, "one_sided"),
+])
+def test_price_drop_rule(bid, ask, reason):
+    assert price_drop_reason(Quote(bid, ask, KO, 0.0)) == reason
+
+
+# --- kickoff join ----------------------------------------------------------------------
+
+
+def _game(game_id, away, home, kickoff):
+    season, week = int(game_id[:4]), int(game_id[5:7])
+    return ScheduledGame(game_id, season, week, home, away, kickoff)
+
+
+GAMES = [
+    _game("2026_10_PIT_CIN", "PIT", "CIN", "2026-11-16T01:20:00Z"),  # SNF: Nov 15 in ET
+    _game("2026_10_LA_SEA", "LA", "SEA", "2026-11-15T21:25:00Z"),
+    _game("2025_05_KC_JAX", "KC", "JAX", "2025-10-07T00:15:00Z"),
+    _game("2026_11_PIT_CIN", "CIN", "PIT", "2026-11-23T18:00:00Z"),
+]
+
+
+def test_an_event_joins_the_nflverse_game_on_its_eastern_date_and_teams():
+    assert match_game("KXNFLRECYDS-26NOV15PITCIN", GAMES).game_id == "2026_10_PIT_CIN"
+
+
+def test_kalshi_team_codes_lar_and_jac_join_nflverse_la_and_jax():
+    assert match_game("KXNFLREC-26NOV15LARSEA", GAMES).game_id == "2026_10_LA_SEA"
+    assert match_game("KXNFLRECYDS-25OCT06KCJAC", GAMES).game_id == "2025_05_KC_JAX"
+
+
+def test_team_order_does_not_matter_and_the_date_must():
+    assert match_game("KXNFLREC-26NOV15SEALAR", GAMES).game_id == "2026_10_LA_SEA"
+    assert match_game("KXNFLREC-26NOV16PITCIN", GAMES) is None
+    assert match_game("KXNFLREC-26AUG13DETCIN", GAMES) is None  # preseason: not in the schedule
+
+
+# --- players ---------------------------------------------------------------------------
+
+
+def test_player_directory_keeps_nfl_players_with_their_sportradar_id():
+    targets = [
+        {"id": "u1", "name": "Ja'Marr Chase", "source_id": "sr1",
+         "details": {"league": "NFL", "position": "WR"}},
+        {"id": "u2", "name": "George French II", "source_id": "sr2",
+         "details": {"league": "NCAAFB", "position": "DB"}},
+        {"id": "u3", "name": "Old Format", "source_ids": {"source_3_id": "sr3"},
+         "details": {"league": "NFL", "position": "RB"}},
+    ]
+    assert player_directory(targets) == {
+        "u1": {"name": "Ja'Marr Chase", "position": "WR", "source_id": "sr1"},
+        "u3": {"name": "Old Format", "position": "RB", "source_id": "sr3"},
+    }
+
+
+def test_sportradar_ids_map_to_gsis_ids_through_nflverse_rosters():
+    rows = {2025: [{"sportradar_id": "sr1", "gsis_id": "00-0036900"}, {"sportradar_id": None, "gsis_id": "x"}],
+            2026: [{"sportradar_id": "sr9", "gsis_id": "00-0041489"}]}
+    assert sportradar_to_gsis([2025, 2026], fetch=rows.__getitem__) == {
+        "sr1": "00-0036900", "sr9": "00-0041489"}

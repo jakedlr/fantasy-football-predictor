@@ -4,11 +4,15 @@ Market semantics, the price rule and the drop rules are from research/kalshi.md.
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
+from ..players import ScheduledGame, UnknownTeamError, _present, team_code_from_book_name
 from .fanduel import TD_STAT
+
+_EASTERN = ZoneInfo("America/New_York")
 
 BOOK = "kalshi"
 
@@ -89,3 +93,129 @@ def fantasy_line(market: Mapping) -> float:
     if suffix is None:
         raise ValueError(f"no line in {market['ticker']!r}")
     return float(suffix.replace("P", "."))
+
+
+# --- the price rule --------------------------------------------------------------------
+
+MAX_SPREAD = 0.10  # dollars; a wider book is dropped
+_CENT = 1e-9  # float slack when comparing dollar prices
+
+
+@dataclass(frozen=True)
+class Quote:
+    """The closing yes bid and ask of one candle, in dollars. None: that side had no order."""
+
+    bid: float | None
+    ask: float | None
+    end: int  # the candle's end_period_ts (Unix seconds)
+    volume: float  # contracts traded in the candle
+
+
+def _dollars(side: Mapping | None) -> float | None:
+    side = side or {}
+    value = side.get("close_dollars", side.get("close"))
+    return None if value in (None, "") else float(value)
+
+
+def kickoff_quote(candles: list[Mapping], kickoff_ts: int) -> Quote | None:
+    """The last candle ending at or before kickoff, or None if there is none.
+
+    Trading runs on in-game, so every later candle is cut. Reads both the live
+    (close_dollars, volume_fp) and the historical (close, volume) field names.
+    """
+    before = [c for c in candles if c["end_period_ts"] <= kickoff_ts]
+    if not before:
+        return None
+    c = max(before, key=lambda c: c["end_period_ts"])
+    volume = c.get("volume_fp", c.get("volume"))
+    return Quote(_dollars(c.get("yes_bid")), _dollars(c.get("yes_ask")), int(c["end_period_ts"]),
+                 float(volume) if volume not in (None, "") else 0.0)
+
+
+def price_drop_reason(quote: Quote) -> str | None:
+    """Why a Rung's kickoff quote can't give a Fair Probability, or None if it can.
+
+    "one_sided": no bid (or a 0 bid) or no ask below $1, nearly always a far-tail Rung.
+    "wide_spread": ask − bid above MAX_SPREAD. Otherwise the Fair Probability is the mid.
+    """
+    if not quote.bid or quote.ask is None or quote.ask >= 1 - _CENT:
+        return "one_sided"
+    if quote.ask - quote.bid > MAX_SPREAD + _CENT:
+        return "wide_spread"
+    return None
+
+
+# --- the kickoff join ------------------------------------------------------------------
+
+
+def _team_codes(letters: str) -> list[frozenset[str]]:
+    """Every way `letters` ("PITCIN", "KCJAC", "LARSEA") splits into two nflverse team codes."""
+    splits = []
+    for i in range(2, len(letters) - 1):
+        try:
+            a, b = team_code_from_book_name(letters[:i]), team_code_from_book_name(letters[i:])
+        except UnknownTeamError:
+            continue
+        splits.append(frozenset((a, b)))
+    return splits
+
+
+def _eastern_date(kickoff: str) -> date:
+    return datetime.fromisoformat(kickoff.replace("Z", "+00:00")).astimezone(_EASTERN).date()
+
+
+def match_game(ticker: str, games: Iterable[ScheduledGame]) -> ScheduledGame | None:
+    """The nflverse Game a Kalshi event or market ticker is on, or None (preseason, other seasons).
+
+    Joined on the event's Eastern date and the set of its two teams: Kalshi runs the
+    codes together, mostly away then home, and spells LA as LAR and JAX as JAC.
+    """
+    t = parse_ticker(ticker)
+    pairs = _team_codes(t.teams)
+    for game in games:
+        if frozenset((game.home, game.away)) in pairs and _eastern_date(game.kickoff) == t.game_date:
+            return game
+    return None
+
+
+# --- players ---------------------------------------------------------------------------
+
+
+def player_directory(targets: Iterable[Mapping]) -> dict[str, dict]:
+    """Kalshi football_player structured targets → {uuid: {name, position, source_id}}, NFL only.
+
+    `source_id` is the nflverse sportradar_id (research/kalshi.md §1). The directory also
+    lists college players; they are left out.
+    """
+    out = {}
+    for t in targets:
+        details = t.get("details") or {}
+        if details.get("league") != "NFL":
+            continue
+        source_id = t.get("source_id") or (t.get("source_ids") or {}).get("source_3_id")
+        out[t["id"]] = {"name": t.get("name"), "position": details.get("position"), "source_id": source_id}
+    return out
+
+
+RosterFetch = Callable[[int], Iterable[Mapping]]
+
+
+def sportradar_to_gsis(seasons: Iterable[int], fetch: RosterFetch | None = None) -> dict[str, str]:
+    """{sportradar_id: gsis_id} from nflverse rosters of `seasons`.
+
+    `fetch(season)` returns nflverse `load_rosters` rows; it defaults to nflreadpy
+    (network, cached by nflreadpy), like players.load_roster.
+    """
+    out = {}
+    for season in seasons:
+        for row in (fetch or _nflreadpy_rosters)(season):
+            sid, gsis = row.get("sportradar_id"), row.get("gsis_id")
+            if _present(sid) and _present(gsis):
+                out[str(sid)] = str(gsis)
+    return out
+
+
+def _nflreadpy_rosters(season: int) -> list[dict]:
+    import nflreadpy  # imported here so tests and offline runs never need it
+
+    return nflreadpy.load_rosters(season).to_dicts()
