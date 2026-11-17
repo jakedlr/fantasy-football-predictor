@@ -51,7 +51,7 @@ from ffp.players import (
 )
 from ffp.report import PlayerResult, SkippedPlayer, StatDetail, chances
 from ffp.scoring import ScoringRules
-from ffp.simulate import simulate_scores
+from ffp.simulate import DEFAULT_SAMPLES, DEFAULT_SEED, ScoreDistribution, simulate_scores
 from ffp.sources import draftkings, fanduel
 from ffp.td_share import TdHistory, rushing_td_share
 
@@ -380,8 +380,8 @@ def predict(
     Receptions set receiving yards' P(0); the anytime-TD rate is split into
     rushing and receiving TDs by the position's share; fumbles lost and 2-pt
     come from Base Rates. The stats are sampled together through the
-    position's latent correlation matrix, `correlation` "within" (default) or
-    "pooled" (S3.6). The rushing/receiving split of TDs and 2-pt is the
+    position's latent correlation matrix, `correlation` "within" (default),
+    "pooled" (S3.6) or "none" (independent). The rushing/receiving split of TDs and 2-pt is the
     player's own, from `td_history` (td_share.load_td_history, keyed by gsis_id);
     without it, the position share. A position's core stat without a market,
     or whose fit fails, is left out and flagged "incomplete" (S3.5). With no book pricing the Game at all,
@@ -392,11 +392,12 @@ def predict(
     for target in targets:
         priced, by_stat = _markets_for(target, books)
         # A Usage Stat alone (a carries line) is nothing to score: the player has no markets.
-        if not any(markets for stat, markets in by_stat.items() if stat not in USAGE_STATS):
+        if not has_scoring_markets(by_stat):
             skipped.append(SkippedPlayer(target.name, NO_MARKETS if priced else PROPS_NOT_POSTED))
             continue
         share = rushing_td_share(target.player.position, (td_history or {}).get(target.player.gsis_id))
-        fitted = _fit_markets(target, by_stat, on_fair_points, share)
+        report = None if on_fair_points is None else (lambda stat, pts, t=target: on_fair_points(t, stat, pts))
+        fitted = fit_player(target.player.position, by_stat, share, on_fair_points=report)
         if not fitted.dists:
             reason = f"could not fit any of its markets ({'; '.join(fitted.errors)})"
             skipped.append(SkippedPlayer(target.name, reason))
@@ -405,8 +406,13 @@ def predict(
     return results, skipped
 
 
+def has_scoring_markets(by_stat: Mapping[str, Sequence[PropMarket]]) -> bool:
+    """Whether any market is for a Scoring Stat: a Usage Stat alone (a carries line) is nothing to score."""
+    return any(markets for stat, markets in by_stat.items() if stat not in USAGE_STATS)
+
+
 @dataclass
-class _Fitted:
+class Fitted:
     """One player's fitted market stats: Stat Distributions by Scoring Stat, their report
     details (what each was fitted from), and the "incomplete" flags and fit errors."""
 
@@ -416,12 +422,26 @@ class _Fitted:
     errors: list[str]
     rushing_share: float  # the player's rushing share of TDs, which also splits his 2-pt
     usage: dict[str, StatDistribution]  # Usage Stats (carries): only their means are used
+    tds: StatDistribution | None = None  # rush + rec TDs as fitted, before the split
 
 
-def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_points, share: float) -> _Fitted:
-    position = target.player.position
+def fit_player(
+    position: str,
+    by_stat: Mapping[str, Sequence[PropMarket]],
+    share: float,
+    prior_c: Mapping[str, float] | None = None,
+    on_fair_points: Callable[[str, list[FairPoint]], None] | None = None,
+) -> Fitted:
+    """Fit one player's market stats from his Prop Markets by stat (any books), for `position`.
+
+    Each stat's markets are devigged by `fair_points` (a book's vig from its Main Line,
+    else from `prior_c[book]`, else the stat's prior: TD_PRIOR_C for TDs); pass
+    prior_c={"kalshi": KALSHI_PRIOR_C} for an exchange. Receptions set receiving yards'
+    P(0); carries are a Usage Stat; the TD total is split by `share` (td_share).
+    `on_fair_points(stat, points)` sees each stat's Fair Probabilities.
+    """
     core = CORE_STATS[position]
-    fitted = _Fitted({}, {}, [], [], share, {})
+    fitted = Fitted({}, {}, [], [], share, {})
 
     def fit(stat: str, fitter):
         markets = by_stat.get(stat)
@@ -430,9 +450,9 @@ def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_p
             if stat in core:
                 fitted.flags.append(f"incomplete: missing {label}")
             return None
-        points = fair_points(markets, default_c=PRIOR_C.get(stat, DEFAULT_PRIOR_C))
+        points = fair_points(markets, prior_c=prior_c, default_c=PRIOR_C.get(stat, DEFAULT_PRIOR_C))
         if on_fair_points is not None:
-            on_fair_points(target, stat, points)
+            on_fair_points(stat, points)
         try:
             dist = fitter(points)
         except FitError as error:  # a bug or bad configuration raises something else and stops the run
@@ -461,6 +481,7 @@ def _fit_markets(target: Target, by_stat: dict[str, list[PropMarket]], on_fair_p
         fit("passing_interceptions", fit_interceptions)
     tds = fit(TD_STAT, fit_touchdowns)
     if tds is not None:
+        fitted.tds = tds
         details = fitted.details.pop(TD_STAT)
         del fitted.dists[TD_STAT]
         rushing, receiving = split_touchdowns(tds, share)
@@ -497,8 +518,9 @@ def _markets_for(target: Target, books: Sequence[BookOdds]) -> tuple[bool, dict[
     return priced, by_stat
 
 
-def _player_result(target: Target, fitted: _Fitted, rules: ScoringRules, correlation: str | None) -> PlayerResult:
-    position = target.player.position
+def stat_distributions(position: str, fitted: Fitted) -> dict[str, StatDistribution]:
+    """The Stat Distributions to simulate: the fitted Scoring Stats plus the position's Base Rates
+    (fumbles lost from expected touches, 2-pt split by the player's TD share)."""
     receptions, carries = fitted.dists.get("receptions"), fitted.usage.get("carries")
     rushing_yards = fitted.dists.get("rushing_yards")
     stat_dists = dict(fitted.dists)
@@ -509,7 +531,30 @@ def _player_result(target: Target, fitted: _Fitted, rules: ScoringRules, correla
         rushing_share=fitted.rushing_share,
         rushing_yards_mean=None if rushing_yards is None else rushing_yards.mean,
     ))
-    scores = simulate_scores(stat_dists, rules, corr=params.correlation(position, correlation))
+    return stat_dists
+
+
+NO_CORRELATION = "none"  # the `correlation` kind that samples every stat independently
+
+
+def score_player(
+    position: str,
+    fitted: Fitted,
+    rules: ScoringRules,
+    correlation: str | None = None,
+    n: int = DEFAULT_SAMPLES,
+    seed: int = DEFAULT_SEED,
+) -> ScoreDistribution:
+    """The player's Score Distribution: `stat_distributions` simulated through the position's
+    latent correlation matrix `correlation` ("within" by default, "pooled"), or independently
+    for "none"."""
+    corr = None if correlation == NO_CORRELATION else params.correlation(position, correlation)
+    return simulate_scores(stat_distributions(position, fitted), rules, n=n, seed=seed, corr=corr)
+
+
+def _player_result(target: Target, fitted: Fitted, rules: ScoringRules, correlation: str | None) -> PlayerResult:
+    position = target.player.position
+    scores = score_player(position, fitted, rules, correlation)
     game = target.game
     return PlayerResult(
         player=target.name,
