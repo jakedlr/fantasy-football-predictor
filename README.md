@@ -124,6 +124,23 @@ python -m ffp.sources.kalshi pull --root data/kalshi --since 2025-10-01   # prin
 
 The pull needs the network. It is paced to 4 requests/s and can be resumed: a rerun fetches only what is still missing. A full history pull is about 35k requests, roughly 2.5 h. A weekly top-up takes under a hundred requests. `ffp.sources.kalshi.load_rungs(root)` and its siblings read the cache offline.
 
+Run the backtest on that cache:
+
+```bash
+python scripts/backtest_kalshi.py --root data/kalshi --jobs 8   # [--out data/backtest] [--seasons 2025 2026]
+                                                               # [--samples 4000] [--seed N] [--limit N] [--no-diagnostics]
+```
+
+For each player-game with Kalshi Rungs it runs the production fit and simulation (`predict.fit_player` and `score_player`, with Kalshi's bid/ask mids as the Fair Probabilities and the `sleeper` preset). It uses no look-ahead: the position comes from that week's nflverse roster, and the TD share from history before the Game. Each Score Distribution is simulated twice with the same seed, once through the copula and once with independent stats as the baseline. Both are scored against nflverse outcomes. Outcomes and rosters come from `nflreadpy`, which needs the network once and then reads its cache.
+
+The run writes three files to `--out` (git-ignored):
+
+- `records.jsonl`: one record per player-game. The run resumes from it and recomputes only records whose inputs changed.
+- `summary.json`: the pooled metrics.
+- `tables.md`: the tables behind [research/backtest-kalshi.md](research/backtest-kalshi.md).
+
+The metrics are PIT, CRPS and P(≥k) reliability per stat against Kalshi's own mids, plus fantasy-point coverage and the model against KXNFLFFPTS and KXNFLFFPTSLADDER. The recalibration diagnostics cover free-fit dispersion, the rushing shift, gamma vs lognormal, PIT dependence against the copula, and the TD mids. The logic is in `ffp.backtest`.
+
 ### Layout
 
 ```
@@ -142,8 +159,10 @@ src/ffp/
   snapshots.py       raw responses saved per live run
   outcomes.py        Backtest outcomes: actual stats per player-game from nflverse
   metrics.py         Backtest metrics: PIT, CRPS, reliability/Brier, coverage, pinball, log loss
+  backtest.py        the Kalshi Backtest: per player-game records, summaries, report tables
   params/            committed model parameters (scripts/build_params.py)
 scripts/build_params.py   regenerates params/ from nflverse
+scripts/backtest_kalshi.py   runs the Kalshi Backtest (ffp.backtest)
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
 ```
