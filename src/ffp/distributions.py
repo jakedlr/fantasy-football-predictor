@@ -1159,11 +1159,13 @@ def fit_passing_tds(points: Sequence[FairPoint]) -> Binomial:
 
 
 def _int_pin(points: Sequence[FairPoint]) -> FairPoint | None:
-    """The point an interceptions fit is pinned on: the Main Line's when there is one (its Over is
-    two-sided, the best-devigged price, whatever its line), else the 1+ Rung, else none."""
-    main = [p for p in points if p.weight >= MAIN_LINE_WEIGHT]
+    """The point an interceptions fit is pinned on: a Main Line's when there is one (its Over is
+    two-sided, the best-devigged price, whatever its line), else the 1+ Rung, else none. When the
+    books' Main Lines differ, the line most books post wins, then the lower one. Chosen by Main
+    Line count, not merged weight: Rungs merged onto a 2+ point must not outweigh the 1+ Main Line."""
+    main = [p for p in points if p.main_lines]
     if main:
-        return max(main, key=lambda p: p.weight)
+        return max(main, key=lambda p: (p.main_lines, -p.threshold))
     return next((p for p in points if p.threshold == 1), None)
 
 

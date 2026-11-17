@@ -260,7 +260,7 @@ def test_live_books_fetch_game_lines_team_totals_and_kicker_markets():
 
     http = _TeamHttp()
     now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
-    books = load_live_books(http, [IND_HOU], now, stats=[], kickers=True, dsts=True)
+    books = load_live_books(http, [IND_HOU], now, stats=[], kickers=True, dst_games=[IND_HOU], kicker_ladders=True)
     dk, fd = books
     assert GameLine("34118011", "draftkings", -12.5, 44.5) in dk.lines
     assert {m.player for m in dk.team_markets} == {"IND Colts", "HOU Texans"}
@@ -276,6 +276,20 @@ def test_live_books_fetch_game_lines_team_totals_and_kicker_markets():
     assert texans.stats["points_allowed"].mean == pytest.approx(16, abs=1.5)
 
 
+def test_only_dst_games_and_snapshot_runs_cost_extra_requests():
+    # Review of PRs 9-11: FanDuel's popular and TD tabs came for every Game, and the kicker
+    # Ladders (snapshot-only) on every run with a K.
+    from ffp.predict import load_live_books
+
+    http = _TeamHttp()
+    now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+    dk, fd = load_live_books(http, [IND_HOU], now, stats=[], kickers=True)
+    asked = " ".join(http.urls)
+    assert "tab=popular" not in asked and not fd.team_markets and not dk.team_markets
+    assert "/subcategories/17131" not in asked
+    assert GameLine("34118011", "draftkings", -12.5, 44.5) in dk.lines  # a kicker still gets the Game Lines
+
+
 def test_draftkings_kicker_ladders_parse_like_any_prop_market():
     # Snapshotted for a later Backtest (PLAN Sprint 6): the existing parser reads them.
     [fg] = draftkings.parse_prop_markets(read("dk_nfl_kicker_17131.json"), None, "fg_made")
@@ -283,3 +297,13 @@ def test_draftkings_kicker_ladders_parse_like_any_prop_market():
     [pts] = draftkings.parse_prop_markets(read("dk_nfl_kicker_17132.json"), read("dk_nfl_kicker_17062.json"),
                                           "kicking_points")
     assert pts.main_line.line == 5.5 and [r.threshold for r in pts.ladder] == [4, 8, 10]
+
+
+def test_fixture_books_carry_the_team_totals():
+    # Review of PRs 9-11: fixture runs left the team totals out, so the D/ST tilt went untested offline.
+    from ffp.markets import TEAM_POINTS
+    from ffp.predict import load_fixture_books
+
+    dk, fd = load_fixture_books(FIXTURES)
+    assert any(m.stat == TEAM_POINTS for m in dk.team_markets)
+    assert any(m.stat == TEAM_POINTS for m in fd.team_markets)

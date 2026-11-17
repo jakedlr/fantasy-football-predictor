@@ -633,6 +633,21 @@ def test_opponent_return_td_points_include_the_try():
     assert d["A"]["kickoff_return_tds"] == 1 and d["B"]["interception_return_tds"] == 1
 
 
+def test_a_try_after_a_timeout_still_counts():
+    # Review of PRs 9-11: only the very next play was read, so a timeout before the try dropped it.
+    plays = pl.DataFrame([
+        _play(play_id=1.0, play_type="pass", posteam="A", defteam="B", interception=1.0, touchdown=1.0, td_team="B"),
+        _play(play_id=2.0, play_type="no_play", posteam="B", defteam="A"),  # timeout
+        _play(play_id=3.0, play_type="extra_point", posteam="B", defteam="A", extra_point_result="good"),
+        # A walk-off return TD with no try: the next try belongs to a later TD and is not borrowed.
+        _play(play_id=4.0, play_type="punt", posteam="A", defteam="B", touchdown=1.0, td_team="B"),
+        _play(play_id=5.0, play_type="run", posteam="A", defteam="B", touchdown=1.0, td_team="A"),
+        _play(play_id=6.0, play_type="extra_point", posteam="A", defteam="B", extra_point_result="good"),
+    ])
+    d = {r["team"]: r for r in bp.dst_games(plays, SCHEDULE_6, [2024]).to_dicts()}
+    assert (d["A"]["opponent_defensive_tds_points"], d["A"]["opponent_return_tds_points"]) == (7, 6)
+
+
 def test_dumps_keeps_one_row_per_line():
     text = bp.dumps({"source": "x", "columns": ["a", "b"], "rows": [[1, 2.5], [3, None]]})
     assert json.loads(text) == {"source": "x", "columns": ["a", "b"], "rows": [[1, 2.5], [3, None]]}

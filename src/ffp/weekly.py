@@ -62,11 +62,24 @@ def memoized(fetch: Fetch) -> Fetch:
     return once
 
 
+# The weekly columns any reader uses (ffp.outcomes.COLUMNS, ffp.estimates.COLUMNS,
+# ffp.td_share._COUNTS, plus the keys): the file has over 100, and several seasons of them
+# as dicts would be held in memory. tests/test_td_share.py checks the readers stay covered.
+PLAYER_STATS_COLUMNS = (
+    "player_id", "game_id", "season", "week",
+    "passing_yards", "passing_tds", "passing_interceptions", "passing_2pt_conversions",
+    "carries", "rushing_yards", "rushing_tds", "rushing_2pt_conversions",
+    "targets", "receptions", "receiving_yards", "receiving_tds", "receiving_2pt_conversions",
+    "sack_fumbles_lost", "rushing_fumbles_lost", "receiving_fumbles_lost",
+)
+
+
 def nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network
-    """nflverse weekly player stats for `season` (network; nflreadpy caches on disk)."""
+    """nflverse weekly player stats for `season`, PLAYER_STATS_COLUMNS only (network; nflreadpy
+    caches on disk)."""
     import nflreadpy  # imported here so tests and offline runs never need it
 
-    return nflreadpy.load_player_stats(season, summary_level="week").to_dicts()
+    return nflreadpy.load_player_stats(season, summary_level="week").select(PLAYER_STATS_COLUMNS).to_dicts()
 
 
 def played_games(snaps: Iterable[Mapping], roster: Iterable[Mapping]) -> set[tuple[str, str]]:

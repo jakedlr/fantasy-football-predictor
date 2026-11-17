@@ -191,7 +191,7 @@ Research: two agents (kickers; D/ST), reports summarised in research/kickers-dst
 |---|---|
 | Scope | Kickers and D/ST in one sprint, sharing the Game Line parsing (spread, total, team totals) that the backlog's game-line fallback will build on. |
 | Game-line-only predictions | Allowed for K and D/ST, flagged "from game lines". nflverse's schedule lines are the last fallback. |
-| Kicker markets | None in v1: the kicker model runs on the Implied Team Total. A live run with a K fetches DraftKings' kicker subcategories so Snapshots collect them; fitting to them waits for a Backtest on those Snapshots. |
+| Kicker markets | None in v1: the kicker model runs on the Implied Team Total. A live run with a K that saves a Snapshot fetches DraftKings' kicker subcategories so Snapshots collect them; fitting to them waits for a Backtest on those Snapshots. |
 | D/ST markets | Analog Games tilted to the opponent's team-total Ladder and the D/ST anytime-TD price where a Book prices them. The opposing QB's INT line can come later. |
 | ESPN points allowed | Excludes the opponent's INT and fumble return TDs, counts special-teams return TDs; yards allowed are net of sack yards. Both listed as assumptions in espn-league.json until confirmed on the league page. |
 | Presets | `sleeper` gets Sleeper's K (missed PAT −1) and D/ST (forced fumble +1, its own points-allowed tiers, no yards tiers); `standard`/`half-ppr`/`ppr` get ESPN's defaults; `espn-league` keeps no missed-PAT penalty. |
@@ -207,12 +207,20 @@ Research: two agents (kickers; D/ST), reports summarised in research/kickers-dst
 - **S6.5 Players and routing.** K and D/ST resolve and get a Score Distribution in OUTPUT.md.
 - **S6.6 Backtests.** `scripts/backtest_k_dst.py` (nflverse walk-forward) and a K and D/ST cut against Kalshi's fantasy-point lines.
 
+### Review of PRs 9–11 (approved 2026-11-17, done)
+
+- Scoring tiers must follow on with no gap or overlap (a skipped tier used to score as the tier below); a value above a closed last tier scores 0.
+- The interceptions fit pins on a Main Line chosen by how many books post it, not by merged weight (Rungs merged onto a 2+ point could outweigh the 1+ Main Line).
+- `dst_games`: a TD's try is the scoring team's next try play, not the next row (a timeout in between dropped it). 30 of 6,056 team-games changed; the Backtest barely moved (D/ST CRPS 3.428 → 3.429).
+- Fixture runs load the team totals; Kalshi's D/ST KXNFLFFPTSLADDER markets drop as `dst_mean`, and wide lines kept on request are not counted as drops; a D/ST hint naming another team is an error.
+- Fewer requests: FanDuel's D/ST tabs only for Games with a D/ST; DraftKings' kicker Ladders only when a Snapshot is saved; no nflverse weekly stats for a K/D/ST-only run, and only the columns used otherwise.
+
 ## Backlog
 
-- **Kickers from DraftKings' FG Made and PAT Made Ladders**, once live runs have saved a few weeks of them (every live run with a K snapshots them): does fitting attempts to them beat the Game Lines alone?
+- **Kickers from DraftKings' FG Made and PAT Made Ladders**, once live runs have saved a few weeks of them (every live run with a K that saves a Snapshot keeps them): does fitting attempts to them beat the Game Lines alone?
 - **D/ST tilt to the opposing QB's INT line** where a Book prices it.
 - **Kicker team-tendency term and weather/wind; D/ST pass-rush and turnover features** (Sprint 6 research: each adds about 1 point of R² or less, or the data is mixed or patchy).
-- **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against the model's P(D/ST TD ≥ 1): the pull maps D/ST targets but leaves their Rungs out (`dst_rung`).
+- **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against the model's P(D/ST TD ≥ 1): the pull maps D/ST targets but leaves their Rungs out (`dst_rung`; their KXNFLFFPTSLADDER markets `dst_mean`).
 
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
 - **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).

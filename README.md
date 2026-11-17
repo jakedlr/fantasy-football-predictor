@@ -107,8 +107,8 @@ A live run makes a few network calls:
 
 - DraftKings and FanDuel site endpoints ([ADR 0001](docs/adr/0001-sportsbook-site-endpoints-for-live-odds.md)). Passing markets are fetched only when a QB is listed.
   - A D/ST adds DraftKings' team totals and TD scorer, and FanDuel's "popular" and TD scorer tabs for its Game.
-  - A kicker adds four DraftKings kicker subcategories. The model doesn't use them yet; they are saved in the snapshot for a later backtest.
-- nflverse, through `nflreadpy`, for rosters, the schedule and weekly player stats (TD history).
+  - A kicker adds four DraftKings kicker subcategories, only when the run saves a snapshot (not with `--no-snapshot`). The model doesn't use them yet; they are kept for a later backtest.
+- nflverse, through `nflreadpy`, for rosters, the schedule and weekly player stats (TD history and recent games). A run of only kickers and D/STs skips the weekly player stats.
 
 ## Scoring Rules
 
@@ -117,7 +117,7 @@ The bundled default is `src/ffp/rules/espn-league.json`. Presets `standard`, `ha
 - `standard`, `half-ppr` and `ppr` use ESPN's default kicker and D/ST scoring.
 - `sleeper` is Sleeper's default full PPR, which Kalshi's fantasy-points markets settle on: `ppr` with −1 per interception instead of −2. It also uses Sleeper's kicker and D/ST rules: missed PAT −1, forced fumble +1, and its own Points Allowed tiers with no Yards Allowed tiers.
 
-A rules file's `kicker` section scores FGs by distance tiers, plus PATs and misses. Its `dst` section scores the D/ST counts and the Points Allowed and Yards Allowed tiers. `points_allowed_excludes` can leave the opponent's defensive TDs and/or return TDs out of Points Allowed. Custom leagues go in `scoring/<name>.json` and override a bundled file of the same name ([scoring/README.md](scoring/README.md)).
+A rules file's `kicker` section scores FGs by distance tiers, plus PATs and misses. Its `dst` section scores the D/ST counts and the Points Allowed and Yards Allowed tiers. Tiers are whole-number ranges (`max` inclusive) that must follow on with no gap or overlap: list every tier, including those worth 0 points. Only the last tier may leave `max` open (`null`). `points_allowed_excludes` can leave the opponent's defensive TDs and/or return TDs out of Points Allowed. Custom leagues go in `scoring/<name>.json` and override a bundled file of the same name ([scoring/README.md](scoring/README.md)).
 
 ## Development
 

@@ -260,8 +260,10 @@ def load_fixture_books(fixtures: Path) -> list[BookOdds]:
     ]
     receiving_tab = tabs["receiving-props"]
     dk_league, fd_league = read("dk_nfl_league.json"), read("fd_nfl_league.json")
-    dk_team = draftkings.parse_dst_tds(read("dk_nfl_td_scorer.json"))
-    fd_team = fanduel.parse_dst_tds(tabs["td-scorer-props"])
+    dk_team = draftkings.parse_team_totals(read("dk_nfl_team_totals.json")) + draftkings.parse_dst_tds(
+        read("dk_nfl_td_scorer.json"))
+    fd_team = fanduel.parse_team_totals(read("fd_nfl_event_popular_tab.json")) + fanduel.parse_dst_tds(
+        tabs["td-scorer-props"])
     return [
         BookOdds(draftkings.BOOK, draftkings.parse_games(ladder), dk_markets, draftkings.parse_game_lines(dk_league),
                  dk_team),
@@ -287,16 +289,18 @@ def load_live_books(
     on_response: Callable | None = None,
     stats: Sequence[str] | None = None,
     kickers: bool = False,
-    dsts: bool = False,
+    dst_games: Sequence[ScheduledGame] = (),
+    kicker_ladders: bool = False,
 ) -> list[BookOdds]:
     """Both books' Prop Markets for `stats` (default MARKET_STATS) in `games`, fetched live.
 
     Pass `market_stats_for(positions)` so a run with no QB doesn't fetch passing markets.
 
-    With `kickers` or `dsts` (Sprint 6) each book's Game Lines come too (the league responses
-    already carry them). `dsts` adds the team totals (DraftKings' "Team Totals"; FanDuel's
-    "popular" tab, one request per Game) and the D/ST TD prices. `kickers` fetches DraftKings'
-    kicker subcategories only so the Snapshot keeps them (PLAN Sprint 6: the model doesn't use them).
+    With `kickers` or `dst_games` (Sprint 6) each book's Game Lines come too (the league responses
+    already carry them). `dst_games`, the Games with a D/ST to predict, adds the team totals
+    (DraftKings' "Team Totals"; FanDuel's "popular" tab, one request per Game, for those Games
+    only) and the D/ST TD prices. `kicker_ladders` fetches DraftKings' kicker subcategories, only
+    so a Snapshot keeps them (PLAN Sprint 6: the model doesn't use them): pass it when saving one.
 
     DraftKings serves every Game in one set of subcategory responses per stat;
     each stat is fetched on its own, so a stat it doesn't list yet costs only
@@ -321,6 +325,7 @@ def load_live_books(
         except failures as error:
             log.warning("DraftKings %s left out: %s", MARKET_STATS[stat], _describe(error))
     dk_lines, dk_team = [], []
+    dsts = bool(dst_games)
     if kickers or dsts:
         try:
             league = live.fetch_dk_league(http, on_response=on_response)
@@ -330,7 +335,7 @@ def load_live_books(
             log.warning("DraftKings Game Lines left out: %s", _describe(error))
             league = None
         wanted_dk = [*(live.DK_TEAM_TOTALS, live.DK_TD_SCORER)] if dsts else []
-        wanted_dk += list(live.DK_KICKER_SUBCATEGORIES) if kickers else []
+        wanted_dk += list(live.DK_KICKER_SUBCATEGORIES) if kicker_ladders else []
         for name in wanted_dk if league is not None else []:
             try:
                 payload = live.fetch_dk_subcategory(http, league, name, on_response=on_response)
@@ -352,12 +357,13 @@ def load_live_books(
         return books
     fd_lines = fanduel.parse_game_lines(fd_league) if kickers or dsts else []
     wanted = sorted({g.game_id for g in fd_games for s in games if _same_game(g, s)})
-    tabs = live.fd_tabs(stats)
+    wanted_dst = {g.game_id for g in fd_games for s in dst_games if _same_game(g, s)}
+    prop_tabs = live.fd_tabs(stats)
+    dst_tabs = [fanduel.GAME_LINES_TAB, fanduel.TABS[TD_STAT]]
     fd_team: list[PropMarket] = []
-    if dsts:
-        tabs = list(dict.fromkeys([*tabs, fanduel.GAME_LINES_TAB, fanduel.TABS[TD_STAT]]))
     fd_markets = []
     for event_id in wanted:  # one event at a time, so one failed event costs only its own Game
+        tabs = list(dict.fromkeys([*prop_tabs, *dst_tabs])) if event_id in wanted_dst else prop_tabs
         for tab in tabs:
             try:
                 [payload] = live.fetch_fanduel_events(http, [event_id], tabs=[tab], on_response=on_response).values()
@@ -371,7 +377,7 @@ def load_live_books(
                     fd_markets += fanduel.parse_prop_markets(payload, stat)
                 except failures as error:
                     log.warning("FanDuel event %s %s left out: %s", event_id, MARKET_STATS[stat], _describe(error))
-            if dsts:
+            if event_id in wanted_dst:
                 try:
                     if tab == fanduel.GAME_LINES_TAB:
                         fd_team += fanduel.parse_team_totals(payload)

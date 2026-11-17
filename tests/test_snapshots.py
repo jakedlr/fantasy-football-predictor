@@ -37,8 +37,8 @@ def test_run_writes_raw_responses_and_fair_probabilities_under_date(tmp_path):
             "stat": "receiving_yards",
             "game_id": "123",
             "points": [
-                {"threshold": 70, "prob": 0.5, "weight": 3.0},
-                {"threshold": 100, "prob": 0.22, "weight": 1.0},
+                {"threshold": 70, "prob": 0.5, "weight": 3.0, "main_lines": 0},
+                {"threshold": 100, "prob": 0.22, "weight": 1.0, "main_lines": 0},
             ],
         }
     ]
@@ -55,7 +55,7 @@ def test_fair_points_are_keyed_by_player_and_stat(tmp_path):
         ("A", "receptions"),
         ("A", "receiving_yards"),
     ]
-    assert saved[0]["points"] == [{"threshold": 5, "prob": 0.45, "weight": 3.0}]
+    assert saved[0]["points"] == [{"threshold": 5, "prob": 0.45, "weight": 3.0, "main_lines": 0}]
     assert saved[0]["game_id"] == "9"
 
 

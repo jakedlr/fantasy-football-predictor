@@ -442,6 +442,7 @@ def drop_counts(root: str | Path = DEFAULT_ROOT) -> Counter:
                      on KXNFLFFPTSLADDER, which always settles "scalar": no numeric value)
     unmapped_player  the player uuid has no gsis_id ("No TD", or no nflverse match; a D/ST is "DST-<team>")
     dst_rung         a D/ST's TD Rung: only D/ST fantasy-point lines are used (Sprint 6), so no quote is fetched
+    dst_mean         a D/ST's KXNFLFFPTSLADDER (expected points) market: not used either, likewise
     not_fetched      no candles pulled yet
     no_candle        no candle ended at or before kickoff, minute or hourly
     one_sided        no bid, or no ask below $1
@@ -466,7 +467,7 @@ def _market_drop_reason(series: str, market: Mapping, game: ScheduledGame | None
     if not gsis_id:
         return "unmapped_player"
     if series != FANTASY_LINE_SERIES and gsis_id.startswith(f"{DST}-"):
-        return "dst_rung"
+        return "dst_mean" if series == FANTASY_MEAN_SERIES else "dst_rung"
     return None
 
 
@@ -496,10 +497,9 @@ def _load(root, keep_wide: bool = False):
                 else:
                     reason = price_drop_reason(Quote(q["bid"], q["ask"], q["end"], q["volume"]))
             wide = keep_wide and series == FANTASY_LINE_SERIES and reason == "wide_spread"
-            if reason is not None:
+            if reason is not None and not wide:  # a wide line kept on request is not a drop
                 drops[(series, reason)] += 1
-                if not wide:
-                    continue
+                continue
             player = players[market["player"]]
             head = (game.game_id, game.season, game.week, game.kickoff, player["gsis_id"], player["name"])
             if series == FANTASY_LINE_SERIES:

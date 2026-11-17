@@ -192,3 +192,12 @@ def test_before_reads_week_and_season_from_csv_strings():
                    {"player_id": "P1", "season": "2026", "week": "10", "carries": "7"}]}
     hist = load_td_history(2026, fetch=fetch_from(rows), params=fake_params(), before=(2026, 10))
     assert hist == {"P1": TdHistory(carries=5)}
+
+
+def test_the_weekly_download_keeps_every_column_a_reader_uses():
+    # Review of PRs 9-11: the shared loader kept all 100+ columns; it now selects these.
+    from ffp import estimates, outcomes, td_share, weekly
+
+    used = {c for cols in (*outcomes.COLUMNS.values(), *estimates.COLUMNS.values()) for c in cols}
+    used |= set(td_share._COUNTS) | {"player_id", "game_id", "season", "week"}
+    assert used <= set(weekly.PLAYER_STATS_COLUMNS)

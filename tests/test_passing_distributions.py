@@ -316,8 +316,24 @@ def test_an_interceptions_main_line_beats_a_one_plus_rung():
     from ffp.distributions import fit_interceptions
 
     main_over = 0.15  # P(2+) from the Main Line
-    fit = fit_interceptions([FairPoint(1, 0.45, 1.0), FairPoint(2, main_over, 3.0)])
+    fit = fit_interceptions([FairPoint(1, 0.45, 1.0), FairPoint(2, main_over, 3.0, main_lines=1)])
     assert fit.sf(np.array([2]))[0] == pytest.approx(main_over, abs=1e-9)
     # A 0.5 Main Line is the 1+ point itself: pinned on it, as before.
-    fit = fit_interceptions([FairPoint(1, 0.4, 3.0), FairPoint(2, 0.09, 1.0)])
+    fit = fit_interceptions([FairPoint(1, 0.4, 3.0, main_lines=1), FairPoint(2, 0.09, 1.0)])
     assert fit.sf(np.array([1]))[0] == pytest.approx(0.4, abs=1e-9)
+
+
+def test_merged_rungs_do_not_outweigh_the_one_plus_main_line():
+    # Review of PRs 9-11: pinned on the heaviest merged point, a 2+ point carrying one book's 1.5
+    # Main Line plus another's 2+ Rung (weight 4) beat the 0.5 Main Line (weight 3).
+    from ffp.distributions import fit_interceptions
+    from ffp.fair import _merge_thresholds
+
+    merged = _merge_thresholds([FairPoint(1, 0.4, 3.0, main_lines=1), FairPoint(2, 0.1, 3.0, main_lines=1),
+                                FairPoint(2, 0.1, 1.0)])
+    assert [p.main_lines for p in merged] == [1, 1] and merged[1].weight > merged[0].weight
+    assert fit_interceptions(merged).sf(np.array([1]))[0] == pytest.approx(0.4, abs=1e-9)
+    # The line more books post wins.
+    two_books = _merge_thresholds([FairPoint(2, 0.1, 3.0, main_lines=1), FairPoint(2, 0.1, 3.0, main_lines=1),
+                                   FairPoint(1, 0.4, 3.0, main_lines=1)])
+    assert fit_interceptions(two_books).sf(np.array([2]))[0] == pytest.approx(0.1, abs=1e-9)

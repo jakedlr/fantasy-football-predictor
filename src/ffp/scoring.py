@@ -172,14 +172,19 @@ def _dst(section: dict, source: str) -> dict:
 
 
 def _check_tiers(tiers: list, source: str) -> None:
-    """Tiers in ascending order, each {"min", "max", "points"}, max None only on the last."""
+    """Whole-number tiers {"min", "max", "points"} (max inclusive), each starting one past the
+    previous tier's max: no gaps, no overlaps. Only the last tier may have no max (open-ended)."""
     for i, tier in enumerate(tiers):
         if set(tier) != {"min", "max", "points"}:
             raise ValueError(f"{source}: a tier needs exactly min, max and points: {tier}")
         if tier["max"] is None and i != len(tiers) - 1:
             raise ValueError(f"{source}: only the last tier may have no max")
-        if i and tier["min"] <= tiers[i - 1]["min"]:
-            raise ValueError(f"{source}: tiers must ascend by min")
+        if tier["max"] is not None and tier["max"] < tier["min"]:
+            raise ValueError(f"{source}: a tier's max is below its min: {tier}")
+        if i and tier["min"] != tiers[i - 1]["max"] + 1:
+            prev = tiers[i - 1]
+            raise ValueError(f"{source}: tiers must follow on with no gap or overlap: {prev['min']}-{prev['max']} "
+                             f"then {tier['min']}-{tier['max']} (expected the next tier to start at {prev['max'] + 1})")
 
 
 PRESETS = {
@@ -254,13 +259,17 @@ def score(stat_line: Mapping, rules: ScoringRules):
 
 
 def _tier_points(values, tiers: list) -> np.ndarray:
-    """Each value's tier points (a value below the first tier gets the first tier's)."""
+    """Each value's tier points. Tiers follow on (_check_tiers), so the tier is the last one whose
+    min the value reaches; a value below the first tier gets the first tier's points (negative
+    Yards Allowed), one above a closed last tier gets none."""
     values = np.asarray(values, dtype=float)
     if not tiers:
         return np.zeros_like(values)
     mins = np.array([t["min"] for t in tiers], dtype=float)
     points = np.array([t["points"] for t in tiers], dtype=float)
-    return points[np.maximum(np.searchsorted(mins, values, side="right") - 1, 0)]
+    out = points[np.maximum(np.searchsorted(mins, values, side="right") - 1, 0)]
+    top = tiers[-1]["max"]
+    return out if top is None else np.where(values > top, 0.0, out)
 
 
 def score_kicker(stat_line: Mapping, rules: ScoringRules):

@@ -779,7 +779,8 @@ def dst_games(plays: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int]) 
     - A non-offensive TD is one the team not in possession scored, or any kickoff-return TD. On a
       scrimmage play it is an INT or fumble return TD; on a kick play a return TD (a lost fumble
       there is a fumble return TD, a blocked kick a blocked-kick return TD).
-    - The opponent's defensive and return TD points include the try that followed (the next play).
+    - The opponent's defensive and return TD points include the try that followed (the next try
+      play by the scoring team before any other TD; plays in between, such as a timeout, are skipped).
     - Yards Allowed: the opponent's yards on run, pass and kneel plays (sacks count negative),
       two-point tries left out.
     """
@@ -788,9 +789,19 @@ def dst_games(plays: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int]) 
          .with_columns(C("sack", "interception", "safety", "punt_blocked", "touchdown", "fumble_lost",
                          "two_point_attempt").fill_null(0))
          .sort("game_id", "play_id"))
-    nxt = C("posteam").shift(-1).over("game_id")
-    try_points = (pl.when((nxt == C("td_team")) & (C("extra_point_result").shift(-1).over("game_id") == "good")).then(1)
-                  .when((nxt == C("td_team")) & (C("two_point_conv_result").shift(-1).over("game_id") == "success")).then(2)
+    # The try after a TD: the next try play in the game, if the scoring team's and no other TD came
+    # first. Not just the next play: a timeout, penalty or review can sit in between.
+    is_try = (C("play_type") == "extra_point") | (C("two_point_attempt") == 1)
+    result = (pl.when(C("extra_point_result") == "good").then(1)
+              .when(C("two_point_conv_result") == "success").then(2).otherwise(0))
+    marker = (C("touchdown") == 1) | is_try  # a TD ends the search for the previous TD's try
+    p = p.with_columns(
+        pl.when(marker).then(pl.when(is_try).then(result).otherwise(-1)).alias("_try_points"),
+        pl.when(marker).then(pl.when(is_try).then(C("posteam")).otherwise(pl.lit(""))).alias("_try_team"),
+    ).with_columns(
+        C("_try_points", "_try_team").shift(-1).backward_fill().over("game_id"),
+    )
+    try_points = (pl.when((C("_try_team") == C("td_team")) & (C("_try_points") > 0)).then(C("_try_points"))
                   .otherwise(0))
     # fill_null(False): a null (no FG on a punt) would otherwise drop the play from every test below.
     kick = (C("play_type").is_in(_KICK_PLAYS) | (C("punt_blocked") == 1)).fill_null(False)

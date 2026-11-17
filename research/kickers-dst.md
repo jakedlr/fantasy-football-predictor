@@ -85,12 +85,13 @@ There are 5,522 team-games, 2,000 draws each.
 | Kicker model | ESPN league | **2.561** | 0.27 | 91.6% | 57.0% | +0.05 |
 | Kicker baseline | ESPN league | 2.595 | 0.04 | 93.0% | 56.4% | +0.17 |
 | Kicker model | Sleeper | **2.591** | 0.03 | 91.6% | 56.7% | +0.03 |
-| D/ST model | ESPN league | **3.428** | 0.16 | 91.6% | 54.8% | −0.17 |
-| D/ST baseline | ESPN league | 3.660 | 0.08 | 91.4% | 52.8% | −0.16 |
-| D/ST model | Sleeper | **3.320** | 0.03 | 92.4% | 57.1% | −0.12 |
+| D/ST model | ESPN league | **3.429** | 0.23 | 91.6% | 54.8% | −0.17 |
+| D/ST baseline | ESPN league | 3.661 | 0.08 | 91.4% | 52.8% | −0.16 |
+| D/ST model | Sleeper | **3.321** | 0.02 | 92.4% | 57.1% | −0.12 |
 
 - **CRPS:** the D/ST model beats its baseline in every season, by 6% overall. The kicker model beats its baseline in 9 of 10 seasons, by about 1.3%. That is all the kicker's thin signal allows.
 - **Bias:** under 0.6 points in every season, for both.
+- **D/ST rows after the PR 9–11 review:** the table now counts a try that followed a timeout (30 team-games changed). D/ST CRPS moved by 0.001.
 - **The P25–P75 interval covers 55–57%, not 50%.** Fantasy scores here are whole numbers, and a score equal to P25 or P75 counts as covered, so the middle interval looks a little wide. The baselines show the same.
 
 ## Backtest: Kalshi's 2026 fantasy-point lines (Sleeper scoring)
@@ -112,8 +113,8 @@ These are the model's predictions from nflverse's closing lines and the committe
 
 ## Backlog
 
-- **Fit kickers to DraftKings' FG Made and PAT Made Ladders** once live runs have saved a few weeks of them. Every live run with a K now snapshots them.
+- **Fit kickers to DraftKings' FG Made and PAT Made Ladders** once live runs have saved a few weeks of them. Every live run with a K that saves a snapshot now keeps them.
 - **Tilt D/ST to the opposing QB's INT line** where one is priced.
 - **Kicker:** a team-tendency term (data mixed), and weather/wind (data patchy).
 - **D/ST:** pass-rush and turnover features (each adds about 1 point of R²).
-- **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against our P(D/ST TD ≥ 1). The pull now maps D/ST targets but leaves those Rungs out (`dst_rung`).
+- **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against our P(D/ST TD ≥ 1). The pull now maps D/ST targets but leaves those Rungs out (`dst_rung`), and its D/ST KXNFLFFPTSLADDER markets too (`dst_mean`).
