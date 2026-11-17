@@ -7,6 +7,7 @@ from pathlib import Path
 from ffp import predict as pipeline
 from ffp.markets import parse_utc
 from ffp.params import CORRELATION_KINDS
+from ffp import weekly
 from ffp.estimates import load_recent_games
 from ffp.players import load_roster, load_schedule
 from ffp.td_share import load_td_history
@@ -99,8 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     # Stats. Fetched only once odds are in hand (a failed odds fetch costs no nflverse download);
     # fixture runs stay offline (position shares, estimates from the other priced stats only).
     live = bool(books) and not args.fixtures
-    td_history = load_td_history(season) if live else {}
-    recent_games = load_recent_games(season) if live else {}
+    td_history, recent_games = {}, {}
+    if live:
+        stats = weekly.memoized(weekly.nflreadpy_player_stats)  # one download, both loaders
+        td_history = load_td_history(season, fetch=stats)
+        recent_games = load_recent_games(season, fetch=stats, played=_played(season))
 
     results, unfitted = pipeline.predict(
         targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,
@@ -118,6 +122,15 @@ def main(argv: list[str] | None = None) -> int:
     where = f"; snapshot in {snapshot.run_dir}" if snapshot else ""
     print(f"Wrote {args.output_dir / 'OUTPUT.md'}: {len(results)} players, {len(skipped)} skipped{where}")
     return 0
+
+
+def _played(season: int) -> set[tuple[str, str]]:
+    """Games played this season and last (snap counts), so recent games count games with no stat row."""
+    try:
+        return weekly.load_played([season - 1, season])
+    except Exception as error:  # noqa: BLE001 - without it, averages count only games with stats
+        log.warning("snap counts unavailable (%s); recent games count only games with a stat", error)
+        return set()
 
 
 # A snapshot is history for later backtests: failing to write one is reported, never fatal.

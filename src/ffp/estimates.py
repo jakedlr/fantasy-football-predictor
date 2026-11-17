@@ -14,13 +14,13 @@ The Stat Distribution around the mean is the stat's family on its dispersion rel
 """
 
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Mapping, Set
 from dataclasses import dataclass, field
 
 from ffp import distributions as dist
 from ffp import params as _params
+from ffp import weekly
 from ffp.distributions import FitError, StatDistribution, prob_zero
-from ffp.players import _present
 
 log = logging.getLogger(__name__)
 
@@ -43,8 +43,7 @@ COLUMNS = {
 # + receiving TDs per receiving yard × receiving yards); the others take the first known source.
 _SUM_SOURCES = (TD_STAT,)
 
-Row = Mapping[str, object]
-Fetch = Callable[[int], Iterable[Row]]
+Fetch = weekly.Fetch
 
 
 @dataclass(frozen=True)
@@ -116,53 +115,38 @@ def estimated_distribution(
 
 
 def load_recent_games(
-    season: int, fetch: Fetch | None = None, before: tuple[int, int] | None = None, n: int = RECENT_GAMES
+    season: int,
+    fetch: Fetch | None = None,
+    before: tuple[int, int] | None = None,
+    n: int = RECENT_GAMES,
+    played: Set[tuple[str, str]] = frozenset(),
 ) -> dict[str, RecentGames]:
     """Every player's last `n` games in `season` to date and the season before, by gsis_id.
 
     `fetch(season)` returns nflverse `load_player_stats` weekly rows (default nflreadpy,
-    network, cached); a row is a game the player recorded a stat in. `before=(season, week)`
-    keeps only rows strictly before that week, for a Backtest. Before week 1 the current
-    season's file doesn't exist (a 404): it has no rows. Any other failure is logged and
-    gives no recent games, so estimates fall back to the other priced stats.
+    network, cached). nflverse has a row only for a game with a stat in it, so pass the
+    games he played as `played` (`weekly.load_played`, from snap counts): a game without
+    a stat row then counts as a game with zeros, instead of being skipped and inflating
+    his averages. `before=(season, week)` keeps only games strictly before that week, for
+    a Backtest. Before week 1 the current season's file doesn't exist: it has no rows. Any
+    other failure is logged and gives no recent games, so estimates fall back to the
+    other priced stats.
     """
-    fetch = fetch or _nflreadpy_player_stats
-    games: dict[str, list[tuple[tuple[int, int], Row]]] = {}
     try:
-        for s in (season - 1, season):
-            try:
-                rows = fetch(s)
-            except ConnectionError as e:
-                if s == season and "404" in str(e):
-                    continue
-                raise
-            for row in rows:
-                pid = row.get("player_id")
-                if not _present(pid):
-                    continue
-                when = (int(row["season"]), int(row["week"]))
-                if before is None or when < before:
-                    games.setdefault(str(pid), []).append((when, row))
+        rows = weekly.fetch_seasons(fetch or weekly.nflreadpy_player_stats, (season - 1, season), season)
+        stats = weekly.WeeklyStats((r for season_rows in rows.values() for r in season_rows), played)
     except Exception as e:  # noqa: BLE001 - any data failure degrades to estimates from priced stats
         log.warning("recent games unavailable (%s); Estimated Stats use the other priced stats only", e)
         return {}
+    return recent_games(stats, season, before, n)
+
+
+def recent_games(stats: "weekly.WeeklyStats", season: int, before: tuple[int, int] | None = None,
+                 n: int = RECENT_GAMES) -> dict[str, RecentGames]:
+    """`load_recent_games` from an already built index (the Backtest asks once per week)."""
+    columns = [c for cols in COLUMNS.values() for c in cols]
     out = {}
-    for pid, played in games.items():
-        last = [row for _, row in sorted(played, key=lambda g: g[0])[-n:]]
-        totals = {stat: sum(_number(row.get(c)) for row in last for c in cols) for stat, cols in COLUMNS.items()}
-        out[pid] = RecentGames(len(last), totals)
+    for pid, (games, sums) in stats.last_games(columns, n, season - 1, before).items():
+        by_column = dict(zip(columns, sums))
+        out[pid] = RecentGames(games, {stat: sum(by_column[c] for c in cols) for stat, cols in COLUMNS.items()})
     return out
-
-
-def _number(value: object) -> float:
-    """A stat from a polars row (number or None) or a CSV row (text, "" or "NA")."""
-    if not _present(value) or str(value).strip().upper() == "NA":
-        return 0.0
-    return float(value)
-
-
-def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network
-    import nflreadpy  # imported here so tests and offline runs never need it
-
-    cols = ["player_id", "season", "week", *sorted({c for cs in COLUMNS.values() for c in cs})]
-    return nflreadpy.load_player_stats(season).select(cols).to_dicts()

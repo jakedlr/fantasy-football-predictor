@@ -138,8 +138,9 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
     roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
     monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
     monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
-    monkeypatch.setattr(ffp.cli, "load_td_history", lambda season: {})
-    monkeypatch.setattr(ffp.cli, "load_recent_games", lambda season: {})
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda season, **kw: {})
+    monkeypatch.setattr(ffp.cli, "load_recent_games", lambda season, **kw: {})
+    monkeypatch.setattr(ffp.cli, "_played", lambda season: set())
     seen_games = []
 
     seen_stats = []
@@ -188,6 +189,7 @@ def test_a_live_run_with_nobody_to_price_makes_no_requests(tmp_path, monkeypatch
     monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
     monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
     monkeypatch.setattr(ffp.cli, "load_recent_games", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    monkeypatch.setattr(ffp.cli, "_played", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("Not A Player\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
@@ -205,6 +207,7 @@ def test_a_live_run_whose_odds_fail_fetches_no_td_history(tmp_path, monkeypatch)
     monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: [])
     monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
     monkeypatch.setattr(ffp.cli, "load_recent_games", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    monkeypatch.setattr(ffp.cli, "_played", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("Zay Flowers\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
