@@ -181,5 +181,6 @@ From `research/backtest-kalshi.md`'s proposals:
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
 - **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
 - **Workhorse-RB correlation override** (≥55% carry share): the Kalshi Backtest saw −0.16 against the matrix's −0.05, 1.8 se on 244 player-games; re-test after the 2026 season.
-- **Low-volume RB rushing yards** (mean < 20 yd) still get 7.8% below zero against 1.6% observed (127 player-games).
+- **Low-volume RB rushing yards** (mean < 20 yd) still get 10.1% below zero against 1.5% observed (131 player-games, shift 5).
+- **Estimated RB rushing yards** run 3.6 yards high (PIT p = 0.004, 676 player-games): revisit the carries/TD ratios they come from.
 - **TD vig prior** for DraftKings/FanDuel: test against Kalshi's prices for the same players once our snapshots cover enough weeks.
