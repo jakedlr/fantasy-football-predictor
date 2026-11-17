@@ -328,7 +328,7 @@ def test_fit_nb_relation_recovers_size_law():
 
 def test_existing_shifts_reads_committed_dispersion(tmp_path):
     assert bp.existing_shifts(tmp_path) == bp.DEFAULT_SHIFT
-    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 10.0, "RB": 10.0, "WR": 10.0, "TE": 10.0}  # research Q1a
+    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 7.0, "RB": 3.0, "WR": 3.0, "TE": 3.0}  # S5.6, Kalshi Backtest
     (tmp_path / "dispersion.json").write_text(json.dumps({
         "receiving_yards": {"WR": {"shift": 4.1}},
         "rushing_yards": {"QB": {"shift": 8.0}},

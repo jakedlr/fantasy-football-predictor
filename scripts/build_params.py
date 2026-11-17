@@ -104,10 +104,12 @@ RELATIONS = (
 # (stat-distributions.md "Sample": QB trailing attempts >= 20).
 TRAILING_QUALIFY = {"QB": ("attempts", 20.0)}
 # The shifted gamma's shift is an input, not fitted (research Q1a: 5 for WR/TE receiving,
-# 10 for RB receiving and all rushing). A committed dispersion.json overrides these.
+# 10 for RB receiving). A committed dispersion.json overrides these.
 DEFAULT_SHIFT = {
     "receiving_yards": {"WR": 5.0, "TE": 5.0, "RB": 10.0},
-    "rushing_yards": {"QB": 10.0, "RB": 10.0, "WR": 10.0, "TE": 10.0},
+    # Rushing: 3 for RB/WR/TE and 7 for QB (kneel-downs) since the Kalshi Backtest (S5.6): with 10,
+    # low-volume backs got 7.7% below zero against 1.4% observed, and no RB reached -5.
+    "rushing_yards": {"QB": 7.0, "RB": 3.0, "WR": 3.0, "TE": 3.0},
 }
 PROXY_FEATURES = ["trail8", "trail4", "trail8_usage", "trail4_usage", "season_to_date", "trail_snap", "implied_total"]
 PMF_FLOOR = 1e-6

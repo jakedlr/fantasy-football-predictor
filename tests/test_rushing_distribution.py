@@ -26,9 +26,11 @@ POSITIONS = ("RB", "QB", "WR", "TE")
 
 
 def relation(position):
-    """The rushing-yards relations from the committed params (scripts/build_params.py)."""
+    """The rushing-yards relations from the committed params: dispersion.json (scripts/build_params.py),
+    with the P(0) relation refitted on priced players (market_calibration.json, S5.6) where there is one."""
     p = params.load("dispersion")["rushing_yards"][position]
-    return p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"], p["shift"]
+    pi0 = params.load("market_calibration")["pi0"].get("rushing_yards", {}).get(position, {})
+    return pi0.get("c0", p["pi0_c0"]), pi0.get("c1", p["pi0_c1"]), p["sd_a"], p["sd_b"], p["shift"]
 
 
 def pi0_relation(mu, position):

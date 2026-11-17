@@ -3,10 +3,34 @@
   "main_line_only_kappa_note": "book-implied sd / the dispersion relation's sd (free fit, players with >= 4 Rungs): the sd a Main-Line-only fit uses is kappa x the relation. default is the pre-Backtest working value, used where the Backtest has too few player-games",
   "main_line_only_kappa": {
     "default": 0.93,
-    "receiving_yards": {"WR": 0.94, "TE": 0.99, "RB": 1.06},
-    "rushing_yards": {"RB": 0.86, "QB": 1.03},
-    "passing_yards": {"QB": 0.86}
+    "receiving_yards": {
+      "WR": 0.94,
+      "TE": 0.99,
+      "RB": 1.06
+    },
+    "rushing_yards": {
+      "RB": 0.86,
+      "QB": 1.03
+    },
+    "passing_yards": {
+      "QB": 0.86
+    }
   },
   "pi0_note": "P(0) relations refitted on players the market priced (logistic in ln of the fitted mean), replacing the nflverse-proxy relation in dispersion.json, which includes players with no role that week",
-  "pi0": {}
+  "pi0": {
+    "rushing_yards": {
+      "RB": {
+        "c0": 4.323,
+        "c1": -2.507,
+        "n": 1098,
+        "zeros": 23
+      },
+      "QB": {
+        "c0": 0.895,
+        "c1": -1.24,
+        "n": 551,
+        "zeros": 59
+      }
+    }
+  }
 }
