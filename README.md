@@ -1,6 +1,6 @@
 # Fantasy Football Predictor (`ffp`)
 
-`ffp` turns DraftKings and FanDuel player prop prices into a fantasy-point distribution for each player's next NFL game. For every QB, RB, WR and TE you list, it reports Score Percentiles (P5, P25, P50, P75, P95) and the chance of reaching 5, 10, 15 or more points.
+`ffp` turns DraftKings and FanDuel player prop prices into a fantasy-point distribution for each player's next NFL game. For every QB, RB, WR and TE you list, it reports Score Percentiles (P5, P25, P50, P75, P95). With `--chance N` it also reports the chance of N or more points for numbers you choose.
 
 How it works: each prop Ladder (for example "70+ receiving yards at −260") is devigged into Fair Probabilities. A Stat Distribution is fitted to those for every stat that scores points. The stats are then sampled together through a Gaussian copula and scored under your league's Scoring Rules, 20,000 Monte Carlo draws per player.
 
@@ -58,6 +58,7 @@ ffp predict INPUT.md                        # live odds, default league rules
 ffp predict INPUT.md --scoring half-ppr     # a preset: standard, half-ppr, ppr, sleeper
 ffp predict INPUT.md --scoring my-league    # scoring/my-league.json (see scoring/README.md)
 ffp predict INPUT.md --correlation pooled   # pooled instead of within-player correlations
+ffp predict INPUT.md --chance 14.5 --chance 20   # also: chance of 14.5+ and of 20+ points
 ffp predict INPUT.md --output-dir out/ --no-snapshot
 ```
 
@@ -75,12 +76,13 @@ Options:
 | `--now TIME` | Predict as if it were this time (ISO 8601, UTC unless an offset is given). |
 | `--scoring NAME_OR_FILE` | Scoring Rules. Default is `espn-league` (full PPR, 4-pt pass TD, −2 INT, −2 fumble lost). |
 | `--correlation within\|pooled` | Copula matrix. Default is `within`. |
+| `--chance N` | Also report each player's chance of N or more points. Repeat for several numbers. |
 | `--output-dir DIR` | Where `OUTPUT.md` and `output.json` are written. Default is `.`. |
 | `--snapshots DIR` / `--no-snapshot` | Where a live run saves its raw responses and Fair Probabilities (default `snapshots/`, gitignored), or skip saving them. |
 
 Output:
 
-- **`OUTPUT.md`:** a percentile table, chance-of-N+ points, flags and assumptions.
+- **`OUTPUT.md`:** a percentile table, flags and assumptions, plus a chance table when `--chance` is given.
 - **`output.json`:** the same, plus per-stat detail (mean, median, books used, Rung count).
 
 Players are skipped, with a reason, when:

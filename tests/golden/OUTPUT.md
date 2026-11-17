@@ -15,13 +15,6 @@ Assumptions:
 | Zay Flowers | WR | LAC @ BAL | 1.2 | 5.5 | 9.1 | 13.4 | 20.7 | incomplete: missing receptions |
 | Ladd McConkey | WR | LAC @ BAL | 3.0 | 8.9 | 13.1 | 18.5 | 27.9 |  |
 
-## Chance of N+ points
-
-| Player | 5+ | 10+ | 15+ | 20+ | 25+ | 30+ |
-|---|---:|---:|---:|---:|---:|---:|
-| Zay Flowers | 78.0% | 45.6% | 20.1% | 6.1% | 1.3% | 0.2% |
-| Ladd McConkey | 93.1% | 65.9% | 39.0% | 18.7% | 7.9% | 2.8% |
-
 ## Skipped
 
 - Harrison Butker: not supported yet: K

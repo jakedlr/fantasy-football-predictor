@@ -9,12 +9,12 @@ FIXTURES = Path(__file__).parent.parent / "research" / "fixtures"
 BEFORE_MNF = "2026-11-16T12:00:00Z"  # the fixtures' Game, LAC @ BAL, kicks off 2026-11-17T01:15Z
 
 
-def run_predict(tmp_path: Path, names: list[str]) -> tuple[str, dict]:
+def run_predict(tmp_path: Path, names: list[str], *options: str) -> tuple[str, dict]:
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("\n".join(names) + "\n")
     exit_code = main(
         ["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
-         "--output-dir", str(tmp_path)]
+         "--output-dir", str(tmp_path), *options]
     )
     assert exit_code == 0
     return (tmp_path / "OUTPUT.md").read_text(), json.loads((tmp_path / "output.json").read_text())
@@ -205,3 +205,14 @@ def test_a_live_run_whose_odds_fail_fetches_no_td_history(tmp_path, monkeypatch)
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("Zay Flowers\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
+
+
+def test_the_chance_option_reports_the_thresholds_supplied(tmp_path):
+    # S5.8: the user supplies the numbers; without the option there is no chance table.
+    markdown, data = run_predict(tmp_path, ["Zay Flowers"])
+    assert "Chance of" not in markdown and "chance_of_at_least" not in data["players"][0]
+    markdown, data = run_predict(tmp_path, ["Zay Flowers"], "--chance", "14.5", "--chance", "20")
+    [zay] = data["players"]
+    assert list(zay["chance_of_at_least"]) == ["14.5", "20"]
+    assert 0 < zay["chance_of_at_least"]["20"] < zay["chance_of_at_least"]["14.5"] < 1
+    assert "| Player | 14.5+ | 20+ |" in markdown

@@ -8,12 +8,11 @@ from typing import Sequence
 
 from ffp.simulate import DEFAULT_PERCENTILES, ScoreDistribution
 
-CHANCE_THRESHOLDS = (5, 10, 15, 20, 25, 30)
 PERCENTILE_KS = DEFAULT_PERCENTILES
 
 
-def chances(dist: ScoreDistribution, thresholds: Sequence[int] = CHANCE_THRESHOLDS) -> dict[int, float]:
-    """Chance of N+ points for each threshold N."""
+def chances(dist: ScoreDistribution, thresholds: Sequence[float]) -> dict[float, float]:
+    """Chance of N or more points for each threshold N the user asked for (`ffp predict --chance N`)."""
     return {t: dist.chance_of_at_least(t) for t in thresholds}
 
 
@@ -37,9 +36,9 @@ class PlayerResult:
     kickoff: str  # ISO 8601 UTC
     position: str
     percentiles: dict[int, float]  # k -> Pₖ
-    chances: dict[int, float]  # N -> chance of N+ points
     flags: list[str] = field(default_factory=list)  # e.g. "incomplete: missing receptions"
     stats: dict[str, StatDetail] = field(default_factory=dict)  # Scoring Stat -> detail
+    chances: dict[float, float] = field(default_factory=dict)  # N -> chance of N or more points, when asked for
 
 
 @dataclass(frozen=True)
@@ -66,13 +65,19 @@ def _percentile_table(results: Sequence[PlayerResult]) -> list[str]:
 
 
 def _chance_table(results: Sequence[PlayerResult]) -> list[str]:
+    """The chance of N or more points for the thresholds asked for, or nothing when none were."""
+    thresholds = list(dict.fromkeys(t for r in results for t in r.chances))
+    if not thresholds:
+        return []
     lines = [
-        _row(["Player", *(f"{t}+" for t in CHANCE_THRESHOLDS)]),
-        "|---|" + "---:|" * len(CHANCE_THRESHOLDS),
+        "## Chance of at least",
+        "",
+        _row(["Player", *(f"{t:g}+" for t in thresholds)]),
+        "|---|" + "---:|" * len(thresholds),
     ]
     for r in results:
-        lines.append(_row([r.player, *(f"{100 * r.chances[t]:.1f}%" for t in CHANCE_THRESHOLDS)]))
-    return lines
+        lines.append(_row([r.player, *(f"{100 * r.chances[t]:.1f}%" if t in r.chances else "" for t in thresholds)]))
+    return [*lines, ""]
 
 
 def write_markdown(
@@ -83,7 +88,7 @@ def write_markdown(
     path: Path,
     assumptions: Sequence[str] = (),
 ) -> None:
-    """Write OUTPUT.md: Score Percentiles table, chance of N+ points table, skipped players.
+    """Write OUTPUT.md: Score Percentiles table, the chance table when thresholds were asked for, skipped players.
 
     Numbers are shown to 1 decimal. `assumptions` (e.g. ScoringRules.assumptions)
     are listed under the header.
@@ -101,7 +106,7 @@ def write_markdown(
     if assumptions:
         lines += ["Assumptions:", "", *(f"- {a}" for a in assumptions), ""]
     lines += ["## Score Percentiles", "", *_percentile_table(results), ""]
-    lines += ["## Chance of N+ points", "", *_chance_table(results), ""]
+    lines += _chance_table(results)
     lines += ["## Skipped", ""]
     lines += [f"- {s.name}: {s.reason}" for s in skipped] or ["None."]
     Path(path).write_text("\n".join(lines) + "\n")
@@ -115,9 +120,9 @@ def _player_json(r: PlayerResult) -> dict:
         "kickoff": r.kickoff,
         "position": r.position,
         "percentiles": {f"P{k}": v for k, v in r.percentiles.items()},
-        "chance_of_at_least": {str(t): p for t, p in r.chances.items()},
         "flags": list(r.flags),
         "stats": {stat: asdict(detail) for stat, detail in r.stats.items()},
+        **({"chance_of_at_least": {f"{t:g}": p for t, p in r.chances.items()}} if r.chances else {}),
     }
 
 

@@ -373,6 +373,7 @@ def predict(
     on_fair_points: Callable[[Target, str, list[FairPoint]], None] | None = None,
     correlation: str | None = None,
     td_history: Mapping[str, TdHistory] | None = None,
+    chance_thresholds: Sequence[float] = (),
 ) -> tuple[list[PlayerResult], list[SkippedPlayer]]:
     """A Score Distribution for each target with Prop Markets in its Game.
 
@@ -383,7 +384,8 @@ def predict(
     position's latent correlation matrix, `correlation` "within" (default),
     "pooled" (S3.6) or "none" (independent). The rushing/receiving split of TDs and 2-pt is the
     player's own, from `td_history` (td_share.load_td_history, keyed by gsis_id);
-    without it, the position share. A position's core stat without a market,
+    without it, the position share. `chance_thresholds` adds each player's chance of
+    that many points or more. A position's core stat without a market,
     or whose fit fails, is left out and flagged "incomplete" (S3.5). With no book pricing the Game at all,
     the player is skipped as "props not posted"; with the Game priced but not
     the player, as "no Prop Markets"; with no fit succeeding, as unfittable.
@@ -402,7 +404,7 @@ def predict(
             reason = f"could not fit any of its markets ({'; '.join(fitted.errors)})"
             skipped.append(SkippedPlayer(target.name, reason))
             continue
-        results.append(_player_result(target, fitted, rules, correlation))
+        results.append(_player_result(target, fitted, rules, correlation, chance_thresholds))
     return results, skipped
 
 
@@ -552,7 +554,9 @@ def score_player(
     return simulate_scores(stat_distributions(position, fitted), rules, n=n, seed=seed, corr=corr)
 
 
-def _player_result(target: Target, fitted: Fitted, rules: ScoringRules, correlation: str | None) -> PlayerResult:
+def _player_result(
+    target: Target, fitted: Fitted, rules: ScoringRules, correlation: str | None, chance_thresholds: Sequence[float] = ()
+) -> PlayerResult:
     position = target.player.position
     scores = score_player(position, fitted, rules, correlation)
     game = target.game
@@ -563,9 +567,9 @@ def _player_result(target: Target, fitted: Fitted, rules: ScoringRules, correlat
         kickoff=game.kickoff,
         position=position,
         percentiles=scores.percentiles(),
-        chances=chances(scores),
         flags=fitted.flags,
         stats=fitted.details,
+        chances=chances(scores, chance_thresholds),
     )
 
 

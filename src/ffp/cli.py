@@ -42,6 +42,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--scoring", default=DEFAULT_RULES, help=f"Scoring Rules preset or file (default {DEFAULT_RULES})"
     )
     predict.add_argument(
+        "--chance",
+        type=float,
+        action="append",
+        default=[],
+        metavar="N",
+        help="also report each player's chance of N or more points; repeat for several numbers",
+    )
+    predict.add_argument(
         "--output-dir", type=Path, default=Path("."), help="where OUTPUT.md and output.json go"
     )
     predict.add_argument(
@@ -92,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results, unfitted = pipeline.predict(
         targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,
-        td_history=td_history,
+        td_history=td_history, chance_thresholds=args.chance,
     )
     order = {name: i for i, name in reversed(list(enumerate(names)))}
     skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))

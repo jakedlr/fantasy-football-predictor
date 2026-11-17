@@ -19,7 +19,6 @@ RESULTS = [
         kickoff="2026-11-17T01:15:00Z",
         position="WR",
         percentiles={5: 1.23, 25: 5.51, 50: 9.14, 75: 13.37, 95: 20.71},
-        chances={5: 0.7804, 10: 0.4562, 15: 0.2013, 20: 0.0612, 25: 0.0133, 30: 0.002},
         flags=["incomplete: missing receptions"],
         stats={"receiving_yards": StatDetail(mean=58.3, p50=55.0, books=["draftkings"], rungs=7)},
     ),
@@ -30,7 +29,6 @@ RESULTS = [
         kickoff="2026-11-17T01:15:00Z",
         position="WR",
         percentiles={5: 3.04, 25: 8.86, 50: 13.12, 75: 18.49, 95: 27.93},
-        chances={5: 0.9311, 10: 0.6588, 15: 0.3902, 20: 0.1871, 25: 0.0794, 30: 0.0281},
         flags=[],
         stats={
             "receptions": StatDetail(mean=5.2, p50=5.0, books=["draftkings", "fanduel"], rungs=9),
@@ -61,6 +59,31 @@ def test_no_skipped_players_says_none(tmp_path):
     assert "Assumptions" not in out.read_text()
 
 
-def test_chances_from_a_score_distribution():
+def test_chances_are_for_the_thresholds_asked_for():
     dist = ScoreDistribution(np.array([0.0, 4.9, 5.0, 12.0, 31.0]))
-    assert chances(dist) == {5: 0.6, 10: 0.4, 15: 0.2, 20: 0.2, 25: 0.2, 30: 0.2}
+    assert chances(dist, [5, 12.5]) == {5: 0.6, 12.5: 0.2}
+    assert chances(dist, []) == {}
+
+
+def test_without_thresholds_the_report_has_no_chance_table(tmp_path):
+    # S5.8: the fixed 5/10/.../30 table is gone.
+    md, js = tmp_path / "OUTPUT.md", tmp_path / "output.json"
+    write_markdown(RESULTS, [], "espn-league", GENERATED_AT, md)
+    write_json(RESULTS, [], "espn-league", GENERATED_AT, js)
+    assert "Chance of" not in md.read_text()
+    assert "chance_of_at_least" not in js.read_text()
+
+
+def test_asked_for_thresholds_get_a_chance_table(tmp_path):
+    from dataclasses import replace
+    import json
+
+    results = [replace(r, chances={14.5: 0.2168, 20: 0.0612}) for r in RESULTS[:1]]
+    md, js = tmp_path / "OUTPUT.md", tmp_path / "output.json"
+    write_markdown(results, [], "espn-league", GENERATED_AT, md)
+    write_json(results, [], "espn-league", GENERATED_AT, js)
+    text = md.read_text()
+    assert "## Chance of at least" in text
+    assert "| Player | 14.5+ | 20+ |" in text and "| Zay Flowers | 21.7% | 6.1% |" in text
+    [player] = json.loads(js.read_text())["players"]
+    assert player["chance_of_at_least"] == {"14.5": 0.2168, "20": 0.0612}
