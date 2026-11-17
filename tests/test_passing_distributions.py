@@ -295,3 +295,16 @@ def test_a_low_main_line_is_not_split_into_two_humps(line):
     assert fit.pi0 == pytest.approx(passing_yards_pi0_relation(PASSING_PI0_MU_FLOOR), rel=1e-9)
     assert fit.pi0 < 0.03
     assert fit.m == pytest.approx(line, abs=5)
+
+
+def test_interceptions_are_pinned_on_the_one_plus_price():
+    # S5.7 (Kalshi Backtest): on a Ladder with no Main Line the 2+ and 3+ Rungs, fatter than a
+    # Poisson, pulled the rate up: the fit read P(1+) = 0.264 where the prices said 0.250.
+    from ffp.distributions import fit_interceptions
+
+    ladder = [FairPoint(1, 0.25, 1.0), FairPoint(2, 0.045, 1.0), FairPoint(3, 0.008, 1.0)]
+    fit = fit_interceptions(ladder)
+    assert fit.sf(np.array([1]))[0] == pytest.approx(0.25, abs=1e-9)  # was 0.307
+    assert fit.mean == pytest.approx(-math.log(0.75), rel=1e-9)
+    # Without a 1+ point the other points are fitted as before.
+    assert 0 < fit_interceptions([FairPoint(2, 0.045, 1.0), FairPoint(3, 0.008, 1.0)]).mean < 1

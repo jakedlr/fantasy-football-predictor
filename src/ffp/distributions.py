@@ -962,9 +962,25 @@ def fit_passing_tds(points: Sequence[FairPoint]) -> Binomial:
     return _fit_count_mean(points, lambda mu: Binomial(PASS_TD_ATTEMPTS, mu), _PASS_TD_MU_RANGE, "passing TDs")
 
 
-def fit_interceptions(points: Sequence[FairPoint]) -> Poisson:
-    """Interceptions as Poisson(λ), λ fitted to the Fair Probabilities (see _fit_count_mean).
+# The most a 2+/3+ Rung may miss the pinned Poisson by, in logit. Real Rungs are fatter than a
+# Poisson by about 1; more than 3 means bad prices.
+INT_RUNG_TOL = 3.0
 
-    With only the 0.5 Main Line, λ = −ln P(0 INT) exactly.
+
+def fit_interceptions(points: Sequence[FairPoint]) -> Poisson:
+    """Interceptions as Poisson(λ), pinned on the 1+ price: λ = −ln(1 − P(1+ INT)).
+
+    One parameter, so one price pins it (research Q3), and the 1+ price (the 0.5 Main Line's
+    Over) is the one to use: the 2+ and 3+ Rungs are fatter than a Poisson, and fitting them
+    too pulled λ up (S5.7, Kalshi Backtest: P(1+) read 0.264 against prices of 0.250). Without
+    a 1+ point, λ is fitted to whatever points there are (see _fit_count_mean). FitError when
+    another Rung misses the pinned fit by more than INT_RUNG_TOL in logit.
     """
-    return _fit_count_mean(points, Poisson, _INT_LAMBDA_RANGE, "interceptions")
+    one_plus = [p for p in points if p.threshold == 1]
+    fit = _fit_count_mean(one_plus or points, Poisson, _INT_LAMBDA_RANGE, "interceptions")
+    if one_plus and len(points) > 1:
+        x = np.array([p.threshold for p in points], dtype=float)
+        miss = np.abs(_residuals(fit, x, logit(np.array([p.prob for p in points]))))
+        if miss.max() > INT_RUNG_TOL:
+            raise FitError(f"interceptions: the Rungs contradict the 1+ price (worst miss {miss.max():.1f} in logit)")
+    return fit
