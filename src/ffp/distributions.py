@@ -74,7 +74,7 @@ class HurdleShiftedGamma:
             raise ValueError(f"invalid parameters m={m}, sd={sd}, pi0={pi0}")
         self.m, self.sd, self.pi0, self.shift = m, sd, pi0, shift
         g_mean = m + shift
-        self._gamma = stats.gamma(a=(g_mean / sd) ** 2, scale=sd**2 / g_mean)
+        self._gamma = self._continuous(g_mean, sd)
         self._zero_bin = self._gamma.cdf(shift + 0.5) - self._gamma.cdf(shift - 0.5)
         # Integer support: [lo, hi]; beyond hi the tail is below 1e-16.
         self._lo = -math.floor(shift)
@@ -84,6 +84,11 @@ class HurdleShiftedGamma:
             np.sum(self.sf(np.arange(1, self._hi + 1))) - np.sum(1 - self.sf(np.arange(self._lo, 1)))
         )
         self._cdf = None  # P(Y <= y) on the support grid, built on first ppf call
+
+    @staticmethod
+    def _continuous(mean: float, sd: float):
+        """The continuous family G before the shift, with this mean and sd: a gamma."""
+        return stats.gamma(a=(mean / sd) ** 2, scale=sd**2 / mean)
 
     def sf(self, x: np.ndarray) -> np.ndarray:
         """P(Y >= x); a fractional x is rounded up (Y >= 69.5 means Y >= 70)."""
@@ -106,6 +111,19 @@ class HurdleShiftedGamma:
     def mean(self) -> float:
         return self._mean
 
+
+class HurdleShiftedLognormal(HurdleShiftedGamma):
+    """HurdleShiftedGamma with a lognormal G of the same mean and sd: research Q1a's runner-up,
+    with a thinner top tail. Not used in production; the Backtest compares the two (S5.2)."""
+
+    @staticmethod
+    def _continuous(mean: float, sd: float):
+        s2 = math.log1p((sd / mean) ** 2)
+        return stats.lognorm(s=math.sqrt(s2), scale=mean * math.exp(-s2 / 2))
+
+
+# The nonzero part's family, by name: gamma in production.
+YARDS_FAMILIES = {"gamma": HurdleShiftedGamma, "lognormal": HurdleShiftedLognormal}
 
 # The yards Scoring Stats modelled as a HurdleShiftedGamma, each with its own relations
 # per position under its key in params/dispersion.json.
@@ -154,8 +172,17 @@ def rushing_yards_pi0_relation(mu: float, position: str) -> float:
     return _yards_pi0_relation(RUSHING_YARDS, mu, position)
 
 
-def _yards(stat: str, mu: float, sd: float, position: str, pi0: float | None) -> HurdleShiftedGamma:
-    """The stat's HurdleShiftedGamma with overall mean mu; see `receiving_yards`."""
+def yards(
+    stat: str, mu: float, sd: float, position: str, pi0: float | None = None, family: str = "gamma"
+) -> HurdleShiftedGamma:
+    """`receiving_yards` or `rushing_yards` by stat name, with the nonzero part's `family`
+    ("gamma", or "lognormal" for the Backtest's comparison)."""
+    return _yards(stat, mu, sd, position, pi0, YARDS_FAMILIES[family])
+
+
+def _yards(stat: str, mu: float, sd: float, position: str, pi0: float | None,
+           family: type[HurdleShiftedGamma] = HurdleShiftedGamma) -> HurdleShiftedGamma:
+    """The stat's HurdleShiftedGamma (or `family`) with overall mean mu; see `receiving_yards`."""
     p = _yards_params(stat, position)
     if mu <= 0 or sd <= 0:
         raise ValueError(f"invalid parameters mu={mu}, sd={sd}")
@@ -166,7 +193,7 @@ def _yards(stat: str, mu: float, sd: float, position: str, pi0: float | None) ->
     target = mu / (1 - pi0)
 
     def nonzero_mean_error(m: float) -> float:
-        return HurdleShiftedGamma(m, sd, 0.0, p.shift).mean - target
+        return family(m, sd, 0.0, p.shift).mean - target
 
     # Discretisation and zero-truncation move the mean by well under 1 yd, and
     # d(nonzero mean)/dm ≈ 1, so a Newton-like iteration m ← m − error converges fast.
@@ -174,7 +201,7 @@ def _yards(stat: str, mu: float, sd: float, position: str, pi0: float | None) ->
     for _ in range(100):
         err = nonzero_mean_error(m)
         if abs(err) < 1e-11 * target:
-            return HurdleShiftedGamma(m, sd, pi0, p.shift)
+            return family(m, sd, pi0, p.shift)
         m = max(m - err, m / 2)
     raise FitError(f"nonzero mean did not converge for mu={mu}, sd={sd}")
 
@@ -255,7 +282,8 @@ def _residuals(dist: StatDistribution, x: np.ndarray, target: np.ndarray) -> np.
     return target - _logit_sf(dist, x)
 
 
-def _fit_main_line_only(stat: str, point: FairPoint, position: str, pi0: float | None) -> HurdleShiftedGamma:
+def _fit_main_line_only(stat: str, point: FairPoint, position: str, pi0: float | None,
+                        family: type[HurdleShiftedGamma] = HurdleShiftedGamma) -> HurdleShiftedGamma:
     """Root-find mu so S(x) matches the one Fair Probability, sd = κ·relation(mu).
 
     pi0 is the given one, or its relation at mu when None.
@@ -265,7 +293,7 @@ def _fit_main_line_only(stat: str, point: FairPoint, position: str, pi0: float |
     def dist(ln_mu: float) -> HurdleShiftedGamma:
         mu = math.exp(ln_mu)
         sd = MAIN_LINE_ONLY_KAPPA * _yards_sd_relation(stat, mu, position, pi0)
-        return _yards(stat, mu, sd, position, pi0)
+        return _yards(stat, mu, sd, position, pi0, family)
 
     def error(ln_mu: float) -> float:
         return _logit_sf(dist(ln_mu), x)[0] - target
@@ -323,8 +351,34 @@ def fit_rushing_yards(points: Sequence[FairPoint], position: str) -> HurdleShift
     return _fit_yards(RUSHING_YARDS, points, position, None)
 
 
+def fit_yards(
+    stat: str,
+    points: Sequence[FairPoint],
+    position: str,
+    pi0: float | None = None,
+    *,
+    sd_prior: float = FIT_LAMBDA,
+    family: str = "gamma",
+) -> StatDistribution:
+    """A yards fit by stat name, with the Backtest's diagnostic switches (S5.2).
+
+    With the defaults it is the production fit (`fit_receiving_yards`, `fit_rushing_yards`,
+    `fit_passing_yards`; pi0 is used for receiving yards only). `sd_prior` is the weight λ of
+    the (ln sd − ln sd_rel)² prior: 0 gives the free-fit sd, to check the dispersion
+    relations against the Ladders. `family` "lognormal" swaps the nonzero part of
+    receiving or rushing yards (passing yards are always normal).
+    """
+    if stat == "passing_yards":
+        if family != "gamma":
+            raise ValueError(f"passing yards have no {family!r} family: their nonzero part is normal")
+        return _fit_passing_yards(points, position, sd_prior)
+    return _fit_yards(stat, points, position, pi0 if stat == RECEIVING_YARDS else None,
+                      sd_prior, YARDS_FAMILIES[family])
+
+
 def _fit_yards(
-    stat: str, points: Sequence[FairPoint], position: str, pi0: float | None
+    stat: str, points: Sequence[FairPoint], position: str, pi0: float | None,
+    sd_prior: float = FIT_LAMBDA, family: type[HurdleShiftedGamma] = HurdleShiftedGamma,
 ) -> HurdleShiftedGamma:
     """The fit described in `fit_receiving_yards`, for either yards stat."""
     _yards_params(stat, position)  # validate before doing any work
@@ -334,7 +388,7 @@ def _fit_yards(
         raise FitError("no Fair Probabilities to fit")
     anchor = _anchor(points)
     try:
-        start = _fit_main_line_only(stat, anchor, position, pi0)
+        start = _fit_main_line_only(stat, anchor, position, pi0, family)
     except FitError:
         if pi0 is None:
             raise
@@ -344,7 +398,7 @@ def _fit_yards(
             "P(Y >= %s) = %s is out of reach with the receptions P(0) = %.3f; fitting P(0) freely",
             anchor.threshold, anchor.prob, pi0,
         )
-        return _fit_yards(stat, points, position, None)
+        return _fit_yards(stat, points, position, None, sd_prior, family)
     if len(points) == 1:
         return start
 
@@ -373,12 +427,12 @@ def _fit_yards(
         if pi0 > _PI0_MAX:
             return math.inf
         try:
-            dist = _yards(stat, mu, sd, position, pi0)
+            dist = _yards(stat, mu, sd, position, pi0, family)
         except ValueError:  # FitError included: the nonzero mean did not converge
             return math.inf
         resid = _residuals(dist, x, target)
-        sd_prior = theta[1] - math.log(_yards_sd_relation(stat, mu, position, pi0))
-        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + pi0_prior(theta))
+        sd_dev = theta[1] - math.log(_yards_sd_relation(stat, mu, position, pi0))
+        return float(np.sum(w * resid**2) + sd_prior * sd_dev**2 + pi0_prior(theta))
 
     # theta = (ln mu, ln sd, δ), or (ln mu, ln sd) when pi0 is given.
     steps = [0.1, 0.1] if fixed_pi0 is not None else [0.1, 0.1, 0.5]
@@ -394,7 +448,7 @@ def _fit_yards(
     if not math.isfinite(result.fun):
         raise FitError("no fit within the model's range")
     mu, sd, pi0 = params(result.x)
-    return _yards(stat, mu, sd, position, pi0)
+    return _yards(stat, mu, sd, position, pi0, family)
 
 
 class _Count:
@@ -829,6 +883,11 @@ def fit_passing_yards(points: Sequence[FairPoint], position: str = "QB") -> Hurd
     only), pi0 stays on its relation, sd = 0.93·sd_rel(mu), and mu is root-found to
     reproduce the point exactly.
     """
+    return _fit_passing_yards(points, position, FIT_LAMBDA)
+
+
+def _fit_passing_yards(points: Sequence[FairPoint], position: str, sd_prior: float) -> HurdleNormal:
+    """`fit_passing_yards` with the sd prior's weight `sd_prior` (see `fit_yards`)."""
     _passing_params(position)  # validate before doing any work
     if not points:
         raise FitError("no Fair Probabilities to fit")
@@ -857,8 +916,8 @@ def fit_passing_yards(points: Sequence[FairPoint], position: str = "QB") -> Hurd
         except ValueError:  # FitError included: the location did not converge
             return math.inf
         resid = _residuals(dist, x, target)
-        sd_prior = theta[1] - math.log(passing_yards_sd_relation(mu, position, pi0))
-        return float(np.sum(w * resid**2) + FIT_LAMBDA * sd_prior**2 + FIT_LAMBDA_PI0 * theta[2] ** 2)
+        sd_dev = theta[1] - math.log(passing_yards_sd_relation(mu, position, pi0))
+        return float(np.sum(w * resid**2) + sd_prior * sd_dev**2 + FIT_LAMBDA_PI0 * theta[2] ** 2)
 
     theta0 = np.array([math.log(start.mean), math.log(start.sd), 0.0])
     simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.1, 0.5])])
