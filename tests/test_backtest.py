@@ -3,6 +3,7 @@
 
 import json
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -211,6 +212,21 @@ def test_run_caches_each_record_and_resumes(games, tmp_path, monkeypatch):
     assert calls == [BROWN]  # Chase came from the cache
     assert both[0] == first[0] and [r["gsis_id"] for r in both] == [CHASE, BROWN]
     assert len(cache.read_text().splitlines()) == 2
+
+
+def test_run_recomputes_a_cached_record_whose_inputs_changed(games, tmp_path):
+    # A pull that adds Rungs (a weekly top-up, or a pull still running) or a new sample count
+    # must not leave a stale record in the cache.
+    c, _ = ctx({(GAME, CHASE): CHASE_GAME})
+    [task], _ = tasks([games[CHASE]], c)
+    cache = tmp_path / "records.jsonl"
+    quiet = {"diagnostics": False, "progress": lambda m: None}
+    [full] = run([task], cache, samples=300, **quiet)
+    fewer = Task(**{**task.__dict__, "game": replace(task.game, rungs=task.game.rungs[:-3])})
+    [stale] = run([fewer], cache, samples=300, **quiet)
+    assert "rush_rec_tds" not in stale["stats"] and stale["fingerprint"] != full["fingerprint"]
+    [again] = run([task], cache, samples=400, **quiet)
+    assert again["points"]["samples"] == 400
 
 
 def test_run_in_parallel_gives_the_same_records(games, tmp_path):

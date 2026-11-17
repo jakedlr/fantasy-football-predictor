@@ -218,7 +218,19 @@ def _record(pg: PlayerGame, position: str | None, status: str, **extra) -> dict:
 # --- one player-game --------------------------------------------------------------------
 
 
+def fingerprint(task: Task, samples: int, seed: int, diagnostics: bool) -> str:
+    """A hash of everything a record is computed from: a cached record with another is stale."""
+    inputs = [[asdict(r) for r in task.game.rungs], task.position, task.share, task.outcome, task.carry_share,
+              task.line, task.market_mean, samples, seed, diagnostics]
+    return f"{zlib.crc32(json.dumps(inputs, sort_keys=True).encode()):08x}"
+
+
 def evaluate(task: Task, samples: int = DEFAULT_SAMPLES, seed: int = DEFAULT_SEED, diagnostics: bool = True) -> dict:
+    """One player-game's JSON record (see `_evaluate`), with its inputs' `fingerprint`."""
+    return {**_evaluate(task, samples, seed, diagnostics), "fingerprint": fingerprint(task, samples, seed, diagnostics)}
+
+
+def _evaluate(task: Task, samples: int, seed: int, diagnostics: bool) -> dict:
     """One player-game's JSON record: each Stat Distribution and both Score Distributions against
     the outcome, plus the Kalshi prices and (with `diagnostics`) the recalibration measurements.
 
@@ -404,12 +416,14 @@ def run(
     jobs: int = 1,
     progress: Callable[[str], None] | None = None,
 ) -> list[dict]:
-    """Evaluate every Task not already in the JSONL `cache`, appending each record as it is done;
-    returns the records of all of `todo` (cached and new), in `todo` order."""
+    """Evaluate every Task not already in the JSONL `cache` with the same inputs (`fingerprint`),
+    appending each record as it is done; returns the records of all of `todo`, in `todo` order.
+    A later line for the same player-game supersedes an earlier one."""
     cache = Path(cache)
     cache.parent.mkdir(parents=True, exist_ok=True)
     held = read_cache(cache)
-    pending = [t for t in todo if t.game.key not in held]
+    pending = [t for t in todo
+               if held.get(t.game.key, {}).get("fingerprint") != fingerprint(t, samples, seed, diagnostics)]
     say = progress or (lambda msg: log.info(msg))
     say(f"{len(todo)} player-games, {len(todo) - len(pending)} cached, {len(pending)} to evaluate")
     start, done = time.monotonic(), 0
