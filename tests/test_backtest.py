@@ -288,3 +288,21 @@ def test_summarize_and_render_tables_on_real_records(games, root):
                     "### Gamma vs lognormal", "### Joint calibration", "### TD Rungs"):
         assert heading in text
     json.dumps(summary)
+
+
+# --- the CLI ------------------------------------------------------------------------------
+
+
+def test_main_runs_the_backtest_and_writes_the_tables_and_summary(root, tmp_path, capsys):
+    stats = {2026: [{"player_id": CHASE, "game_id": GAME, "season": 2026, "week": 10, "team": "CIN",
+                     "receptions": 8, "receiving_yards": 97, "receiving_tds": 1}]}
+    weekly = {2026: [{"season": 2026, "week": 10, "gsis_id": CHASE, "position": "WR"}]}
+    out = tmp_path / "bt"
+    code = backtest.main(["--root", str(root), "--out", str(out), "--samples", "300", "--seasons", "2026"],
+                         stats_fetch=lambda s: stats.get(s, []), rosters_fetch=lambda s: weekly.get(s, []))
+    assert code == 0
+    assert (out / "records.jsonl").exists()
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["counts"]["status"]["ok"] == 1
+    assert "### Fantasy points" in (out / "tables.md").read_text()
+    assert "ok 1" in capsys.readouterr().out

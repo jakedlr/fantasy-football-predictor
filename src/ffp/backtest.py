@@ -904,3 +904,45 @@ def _nflreadpy_rosters_weekly(season: int) -> list[dict]:  # pragma: no cover - 
 
 def to_json(summary: dict) -> str:
     return json.dumps(summary, indent=1, default=lambda o: asdict(o) if hasattr(o, "__dataclass_fields__") else str(o))
+
+
+# --- the CLI (scripts/backtest_kalshi.py) ------------------------------------------------
+
+DEFAULT_OUT = Path("data") / "backtest"  # git-ignored
+
+
+def main(argv: Sequence[str] | None = None, stats_fetch=None, rosters_fetch=None) -> int:
+    """Run the Kalshi Backtest; write records.jsonl (the resumable cache), summary.json and tables.md."""
+    import argparse
+
+    from ffp.sources.kalshi import DEFAULT_ROOT, drop_counts, load_rungs
+
+    ap = argparse.ArgumentParser(prog="backtest_kalshi.py", description="Backtest the model on Kalshi's Ladders (S5.2).")
+    ap.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="the Kalshi cache (default data/kalshi)")
+    ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output folder (default data/backtest)")
+    ap.add_argument("--seasons", type=int, nargs="+", default=[2025, 2026])
+    ap.add_argument("--samples", type=int, default=DEFAULT_SAMPLES,
+                    help=f"Monte Carlo samples per player (default {DEFAULT_SAMPLES})")
+    ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    ap.add_argument("--jobs", type=int, default=1, help="worker processes (default 1)")
+    ap.add_argument("--limit", type=int, help="only the first N player-games (a quick check)")
+    ap.add_argument("--no-diagnostics", action="store_true",
+                    help="skip the free-fit, lognormal and copula-draw diagnostics")
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    logging.getLogger("ffp.distributions").setLevel(logging.ERROR)  # per-fit P(0) fallbacks: thousands of lines
+
+    games = [pg for pg in player_games(load_rungs(args.root)) if pg.season in args.seasons][: args.limit]
+    log.info("loading nflverse for %s", args.seasons)
+    ctx = load_context(args.root, args.seasons, stats_fetch, rosters_fetch)
+    todo, skipped = tasks(games, ctx)
+    records = run(todo, args.out / "records.jsonl", args.samples, args.seed, not args.no_diagnostics, args.jobs)
+    summary = summarize(records + skipped)
+    summary["kalshi_drops"] = {f"{series} {reason}": n for (series, reason), n in sorted(drop_counts(args.root).items())}
+    summary["run"] = {"samples": args.samples, "seed": args.seed, "seasons": args.seasons, "root": str(args.root)}
+    (args.out / "summary.json").write_text(to_json(summary))
+    (args.out / "tables.md").write_text(render_tables(summary))
+    status = summary["counts"]["status"]
+    print("player-games: " + ", ".join(f"{k} {v}" for k, v in sorted(status.items())))
+    print(f"wrote {args.out / 'summary.json'} and {args.out / 'tables.md'}")
+    return 0
