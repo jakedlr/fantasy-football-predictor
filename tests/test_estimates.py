@@ -35,12 +35,10 @@ def test_touchdowns_sum_a_rushing_and_a_receiving_part():
     assert estimate_mean("rush_rec_tds", "WR", {"receiving_yards": 50.0}, None, PARAMS) == pytest.approx(0.30)
 
 
-def test_recent_games_are_shrunk_toward_the_other_stat_estimate_then_blended():
-    recent = RecentGames(games=6, totals={"receptions": 36.0})  # 6.0 a game
-    a = 4.8
-    b = (36.0 + estimates.SHRINK_GAMES * a) / (6 + estimates.SHRINK_GAMES)
-    got = estimate_mean("receptions", "WR", {"receiving_yards": 60.0}, recent, PARAMS)
-    assert got == pytest.approx((a + b) / 2)
+def test_recent_games_are_shrunk_toward_the_other_stat_estimate():
+    recent = RecentGames(games=8, totals={"receptions": 48.0})  # 6.0 a game
+    got = estimate_mean("receptions", "WR", {"receiving_yards": 60.0}, recent, PARAMS)  # (a) = 4.8
+    assert got == pytest.approx(0.4 * 6.0 + 0.6 * 4.8)  # 8 games against 12 pseudo-games
 
 
 def test_recent_games_alone_when_no_other_stat_helps():

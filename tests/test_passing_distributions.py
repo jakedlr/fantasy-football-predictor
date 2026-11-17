@@ -309,3 +309,15 @@ def test_interceptions_are_pinned_on_the_one_plus_price():
     assert fit.mean == pytest.approx(-math.log(0.75), rel=1e-9)
     # Without a 1+ point the other points are fitted as before.
     assert 0 < fit_interceptions([FairPoint(2, 0.045, 1.0), FairPoint(3, 0.008, 1.0)]).mean < 1
+
+
+def test_an_interceptions_main_line_beats_a_one_plus_rung():
+    # Review: a 1.5 Main Line (threshold 2, weight 3) was ignored for an alt 1+ Rung (weight 1).
+    from ffp.distributions import fit_interceptions
+
+    main_over = 0.15  # P(2+) from the Main Line
+    fit = fit_interceptions([FairPoint(1, 0.45, 1.0), FairPoint(2, main_over, 3.0)])
+    assert fit.sf(np.array([2]))[0] == pytest.approx(main_over, abs=1e-9)
+    # A 0.5 Main Line is the 1+ point itself: pinned on it, as before.
+    fit = fit_interceptions([FairPoint(1, 0.4, 3.0), FairPoint(2, 0.09, 1.0)])
+    assert fit.sf(np.array([1]))[0] == pytest.approx(0.4, abs=1e-9)

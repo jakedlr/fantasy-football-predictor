@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from ffp.cli import main
 
 FIXTURES = Path(__file__).parent.parent / "research" / "fixtures"
@@ -222,3 +224,10 @@ def test_the_chance_option_reports_the_thresholds_supplied(tmp_path):
     assert list(zay["chance_of_at_least"]) == ["14.5", "20"]
     assert 0 < zay["chance_of_at_least"]["20"] < zay["chance_of_at_least"]["14.5"] < 1
     assert "| Player | 14.5+ | 20+ |" in markdown
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-3", "abc"])
+def test_a_chance_threshold_must_be_a_finite_non_negative_number(tmp_path, bad, capsys):
+    with pytest.raises(SystemExit):
+        run_predict(tmp_path, ["Zay Flowers"], "--chance", bad)
+    assert "--chance" in capsys.readouterr().err

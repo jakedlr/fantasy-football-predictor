@@ -7,9 +7,11 @@ by hiding stats the market did price):
   (`stat_ratios` in params/base_rates.json, built by scripts/build_params.py), e.g. receptions
   = receiving yards × receptions per receiving yard; TDs sum a rushing and a receiving part;
 - (b) from the player's own recent games (the last RECENT_GAMES he played, this season and
-  last), shrunk toward (a) by SHRINK_GAMES pseudo-games.
+  last).
 
-Both: their average. One: that one. Neither: no estimate, and the stat stays "incomplete".
+Both: (b)'s total plus SHRINK_GAMES pseudo-games at (a), over his games plus SHRINK_GAMES,
+so 8 recent games get 40% of the weight. One: that one. Neither: no estimate, and the stat
+stays "incomplete".
 The Stat Distribution around the mean is the stat's family on its dispersion relation.
 """
 
@@ -25,7 +27,9 @@ from ffp.distributions import FitError, StatDistribution, prob_zero
 log = logging.getLogger(__name__)
 
 RECENT_GAMES = 8  # the player's last games that (b) averages
-SHRINK_GAMES = 2.0  # pseudo-games of (a) that (b) is shrunk toward
+# Pseudo-games of (a) the recent games are shrunk toward: 12 gives 8 recent games 40% of the
+# weight, the blend that hiding priced stats in the Backtest validated (research/backtest-kalshi.md).
+SHRINK_GAMES = 12.0
 TD_STAT = "rush_rec_tds"
 
 # Each estimable stat -> the nflverse weekly columns it sums.
@@ -83,8 +87,7 @@ def estimate_mean(
         return a
     if a is None:
         return recent.mean(stat)
-    b = (recent.totals.get(stat, 0.0) + SHRINK_GAMES * a) / (recent.games + SHRINK_GAMES)
-    return (a + b) / 2
+    return (recent.totals.get(stat, 0.0) + SHRINK_GAMES * a) / (recent.games + SHRINK_GAMES)
 
 
 def estimated_distribution(

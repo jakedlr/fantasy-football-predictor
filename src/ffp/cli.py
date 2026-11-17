@@ -1,4 +1,5 @@
 import argparse
+import math
 import logging
 import sys
 from datetime import datetime, timezone
@@ -15,6 +16,17 @@ from ffp.report import write_json, write_markdown
 from ffp.scoring import DEFAULT_RULES, load_rules
 
 log = logging.getLogger("ffp")
+
+
+def _points(text: str) -> float:
+    """A --chance threshold: a finite, non-negative number of points."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number of points: {text!r}") from None
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError(f"must be a finite number of points, 0 or more: {text!r}")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     predict.add_argument(
         "--chance",
-        type=float,
+        type=_points,
         action="append",
         default=[],
         metavar="N",
