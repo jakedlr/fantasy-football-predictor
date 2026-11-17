@@ -55,7 +55,7 @@ Run it:
 
 ```bash
 ffp predict INPUT.md                        # live odds, default league rules
-ffp predict INPUT.md --scoring half-ppr     # a preset: standard, half-ppr, ppr
+ffp predict INPUT.md --scoring half-ppr     # a preset: standard, half-ppr, ppr, sleeper
 ffp predict INPUT.md --scoring my-league    # scoring/my-league.json (see scoring/README.md)
 ffp predict INPUT.md --correlation pooled   # pooled instead of within-player correlations
 ffp predict INPUT.md --output-dir out/ --no-snapshot
@@ -98,7 +98,7 @@ A live run makes a few network calls:
 
 ## Scoring Rules
 
-The bundled default is `src/ffp/rules/espn-league.json`. Presets `standard`, `half-ppr` and `ppr` are built in. Custom leagues go in `scoring/<name>.json` and override a bundled file of the same name ([scoring/README.md](scoring/README.md)).
+The bundled default is `src/ffp/rules/espn-league.json`. Presets `standard`, `half-ppr`, `ppr` and `sleeper` are built in (`sleeper` is Sleeper's default full PPR, which Kalshi's fantasy-points markets settle on: `ppr` with −1 per interception instead of −2). Custom leagues go in `scoring/<name>.json` and override a bundled file of the same name ([scoring/README.md](scoring/README.md)).
 
 ## Development
 
