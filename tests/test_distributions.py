@@ -314,7 +314,7 @@ def test_kappa_is_per_stat_and_position_with_a_default():
     # S5.5 (Kalshi Backtest): the market prices RB rushing and QB passing yards narrower than the
     # relations, WR receiving yards as before; a stat or position it didn't measure gets the default.
     table = params.load("market_calibration")["main_line_only_kappa"]
-    assert kappa("rushing_yards", "RB") == table["rushing_yards"]["RB"] < 0.9
+    assert kappa("rushing_yards", "RB") == table["rushing_yards"]["RB"] < 0.9  # 0.84
     assert kappa("passing_yards", "QB") == table["passing_yards"]["QB"] < 0.9
     assert kappa("receiving_yards", "WR") == pytest.approx(0.94, abs=0.03)
     assert kappa("rushing_yards", "WR") == table["default"] == 0.93

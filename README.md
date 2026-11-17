@@ -8,7 +8,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–4 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution. Kickers and D/ST are not supported yet. Sprint 5 backtested the model on 7,165 settled Kalshi player-games: with every core stat priced, P5–P95 covers 91–92% of actual scores (target 90%) and the model matches Kalshi's own fantasy-points markets; players flagged "incomplete" are under-predicted. See [research/backtest-kalshi.md](research/backtest-kalshi.md); its proposed recalibrations are awaiting approval.
+Sprints 0–5 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution; kickers and D/ST are not supported yet. Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. See [research/backtest-kalshi.md](research/backtest-kalshi.md).
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|

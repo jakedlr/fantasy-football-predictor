@@ -163,7 +163,7 @@ Done when `research/backtest-kalshi.md` reports calibration per stat, position a
 - **S5.3 `sleeper` Scoring Rules preset** (Sleeper default full PPR, −1 per INT; research/kalshi-fantasy-points.md), nflverse outcomes per player-game, and the shared metric functions.
 - **Findings change nothing automatically.** Each proposed recalibration (dispersion relations, κ, rushing shift, gamma vs lognormal, TD vig prior, conditional receptions→yards, workhorse override) is brought to the user for approval.
 
-### Sprint 5 follow-up (approved 2026-11-16, same branch, done inline)
+### Sprint 5 follow-up (approved 2026-11-16, done; results in research/backtest-kalshi.md)
 
 From `research/backtest-kalshi.md`'s proposals:
 
@@ -173,12 +173,13 @@ From `research/backtest-kalshi.md`'s proposals:
 - **S5.7 Interceptions** anchored on the 1+ price.
 - **S5.8 Chance of a chosen threshold.** The fixed "chance of N+ points" table (5, 10, ... 30) is removed; `--chance N` reports the chance of N or more points for numbers the user supplies.
 
-## Backlog (Sprint 5 chosen after Sprint 4; kickers and D/ST likely next)
+## Backlog (kickers and D/ST likely next)
 
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
 - **Kicker and D/ST** from team totals and opponent totals (likely Sprint 6).
 - **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).
-- **Conditional receptions→yards model** or a supervised alternative, adopted only if the backtest shows the copula is miscalibrated.
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
 - **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
-- **Workhorse-RB correlation override** (≥55% carry share: RuYd–Rec −0.12 vs +0.02 pooled), adopted only if the backtest shows it matters.
+- **Workhorse-RB correlation override** (≥55% carry share): the Kalshi Backtest saw −0.16 against the matrix's −0.05, 1.8 se on 244 player-games; re-test after the 2026 season.
+- **Low-volume RB rushing yards** (mean < 20 yd) still get 7.8% below zero against 1.6% observed (127 player-games).
+- **TD vig prior** for DraftKings/FanDuel: test against Kalshi's prices for the same players once our snapshots cover enough weeks.
