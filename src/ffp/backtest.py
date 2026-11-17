@@ -45,6 +45,7 @@ from ffp.distributions import (
     receiving_yards_sd_relation,
     rushing_yards_sd_relation,
 )
+from ffp.estimates import RecentGames, load_recent_games
 from ffp.fair import KALSHI_PRIOR_C, PROB_FLOOR
 from ffp.outcomes import OUTCOME_STATS, fantasy_points
 from ffp.predict import (
@@ -67,7 +68,7 @@ log = logging.getLogger(__name__)
 RULES: ScoringRules = PRESETS["sleeper"]  # what KXNFLFFPTS and KXNFLFFPTSLADDER settle on
 PRIOR_C = {"kalshi": KALSHI_PRIOR_C}  # an exchange's mid is its Fair Probability
 DEFAULT_SAMPLES = 4000
-RECORD_VERSION = 2  # bump when a record's content changes for the same inputs: the cache recomputes
+RECORD_VERSION = 3  # bump when a record's content changes for the same inputs: the cache recomputes
 DEFAULT_SEED = 20261116
 PERCENTILES = (5, 10, 25, 50, 75, 90, 95)
 YARDS_STATS = ("receiving_yards", "rushing_yards", "passing_yards")
@@ -181,6 +182,7 @@ class Task:
     line: tuple[float, float] | None = None  # KXNFLFFPTS (line, mid)
     market_mean: float | None = None  # KXNFLFFPTSLADDER expected points
     no_stat_row: bool = False  # played (offensive snaps) but has no stat row: an all-zero outcome
+    recent: RecentGames | None = None  # his last games strictly before the Game, for Estimated Stats
 
 
 @dataclass
@@ -194,6 +196,8 @@ class Context:
     lines: Mapping[tuple[str, str], KalshiFantasyLine] = field(default_factory=dict)
     means: Mapping[tuple[str, str], KalshiFantasyMean] = field(default_factory=dict)
     played: Set[tuple[str, str]] = field(default_factory=set)  # (game_id, gsis_id) with offensive snaps
+    # (season, week) -> every player's recent games before it; None: no Estimated Stats from recent games
+    recent_games: Callable[[int, int], Mapping[str, RecentGames]] | None = None
 
 
 def played_games(snaps: Iterable[Mapping], roster: Iterable[Mapping]) -> set[tuple[str, str]]:
@@ -219,9 +223,10 @@ def tasks(games: Iterable[PlayerGame], ctx: Context) -> tuple[list[Task], list[d
         outcome, no_row = ctx.outcomes.get(key), False
         if outcome is None and key in ctx.played:
             outcome, no_row = {stat: 0.0 for stat in OUTCOME_STATS}, True
+        recent = None if ctx.recent_games is None else ctx.recent_games(pg.season, pg.week).get(pg.gsis_id)
         out.append(Task(pg, position, share, outcome, ctx.carry_shares.get(key),
                         None if line is None else (line.line, line.mid),
-                        None if mean is None else mean.expected_points, no_row))
+                        None if mean is None else mean.expected_points, no_row, recent))
     return out, skipped
 
 
@@ -236,7 +241,8 @@ def _record(pg: PlayerGame, position: str | None, status: str, **extra) -> dict:
 def fingerprint(task: Task, samples: int, seed: int, diagnostics: bool) -> str:
     """A hash of everything a record is computed from: a cached record with another is stale."""
     inputs = [[asdict(r) for r in task.game.rungs], task.position, task.share, task.outcome, task.carry_share,
-              task.line, task.market_mean, samples, seed, diagnostics, RECORD_VERSION]
+              task.line, task.market_mean, None if task.recent is None else asdict(task.recent),
+              samples, seed, diagnostics, RECORD_VERSION]
     return f"{zlib.crc32(json.dumps(inputs, sort_keys=True).encode()):08x}"
 
 
@@ -263,15 +269,22 @@ def _evaluate(task: Task, samples: int, seed: int, diagnostics: bool) -> dict:
         return _record(pg, position, DNP, **base)
     fair: dict[str, list] = {}
     fitted = fit_player(position, by_stat, task.share, prior_c=PRIOR_C,
-                        on_fair_points=lambda stat, pts: fair.update({stat: pts}))
+                        on_fair_points=lambda stat, pts: fair.update({stat: pts}), recent=task.recent)
     if not fitted.dists:
         return _record(pg, position, UNFITTABLE, errors=fitted.errors, **base)
     rng = np.random.default_rng([seed, zlib.crc32(pg.key.encode())])
-    complete = not any(f.startswith("incomplete") for f in fitted.flags)
-    record = _record(pg, position, OK, flags=fitted.flags, complete=complete, no_stat_row=task.no_stat_row, **base)
+    # complete: every core stat fitted from a market; estimated: the gaps all filled by Estimated
+    # Stats; incomplete: a core stat is missing and counts as 0.
+    coverage = ("incomplete" if any(f.startswith("incomplete") for f in fitted.flags)
+                else "estimated" if fitted.estimated else "complete")
+    record = _record(pg, position, OK, flags=fitted.flags, complete=coverage == "complete", coverage=coverage,
+                     no_stat_row=task.no_stat_row, **base)
     record["stats"] = {
         stat: _stat_record(stat, dist, pg, fair[stat], task.outcome, position, fitted, rng, diagnostics)
         for stat, dist in _evaluated(fitted).items()
+    }
+    record["estimated"] = {
+        stat: _estimated_record(stat, dist, task.outcome, rng) for stat, dist in _estimated(fitted).items()
     }
     record["points"] = _points_record(task, fitted, samples, seed, rng)
     if diagnostics:
@@ -279,13 +292,29 @@ def _evaluate(task: Task, samples: int, seed: int, diagnostics: bool) -> dict:
     return record
 
 
-def _evaluated(fitted: Fitted) -> dict[str, StatDistribution]:
-    """The Stat Distributions with Kalshi Rungs: the fitted market stats, carries, the TD total."""
+def _all_stats(fitted: Fitted) -> dict[str, StatDistribution]:
     out = {s: d for s, d in fitted.dists.items() if s not in ("rushing_tds", "receiving_tds")}
     out.update(fitted.usage)
     if fitted.tds is not None:
         out[TD_STAT] = fitted.tds
     return out
+
+
+def _evaluated(fitted: Fitted) -> dict[str, StatDistribution]:
+    """The Stat Distributions with Kalshi Rungs: the fitted market stats, carries, the TD total."""
+    return {s: d for s, d in _all_stats(fitted).items() if s not in fitted.estimated}
+
+
+def _estimated(fitted: Fitted) -> dict[str, StatDistribution]:
+    """The Estimated Stats' distributions (S5.4): no Rungs, scored against the outcome alone."""
+    return {s: d for s, d in _all_stats(fitted).items() if s in fitted.estimated}
+
+
+def _estimated_record(stat: str, dist: StatDistribution, outcome: Mapping[str, float], rng) -> dict:
+    y = _outcome(stat, outcome)
+    lower, upper = _bounds(stat, dist)
+    return {"y": y, "mean": float(dist.mean), "pit": metrics.randomized_pit(dist, y, rng),
+            "crps": metrics.crps_integer(dist, y, upper=upper, lower=lower)}
 
 
 def _sf(dist: StatDistribution, k) -> float:
@@ -607,8 +636,8 @@ def summarize(records: Sequence[dict]) -> dict:
     groups = {"all": ok, **{f"{s}": g for (s,), g in _by(ok, "season").items()}}
     for (pos, season), g in _by(ok, "position", "season").items():
         groups[f"{pos} {season}"] = g
-    for (season, complete), g in _by(ok, "season", "complete").items():
-        groups[f"{season} {'complete' if complete else 'incomplete'}"] = g
+    for (season, coverage), g in _by(ok, "season", "coverage").items():
+        groups[f"{season} {coverage}"] = g
     for name, g in groups.items():
         fp[name] = {m: points_summary(g, m) for m in ("copula", "independent")}
     summary["points"] = fp
@@ -623,7 +652,24 @@ def summarize(records: Sequence[dict]) -> dict:
                            if (v := _variant_summary(g, "free"))}
     summary["joint"] = _joint(ok)
     summary["td"] = _td(ok)
+    summary["estimated"] = _estimated_summary(ok)
     return summary
+
+
+def _estimated_summary(ok: Sequence[dict]) -> dict:
+    """Estimated Stats (S5.4) against outcomes, by stat and by stat and position."""
+    rows = defaultdict(list)
+    for r in ok:
+        for stat, e in r.get("estimated", {}).items():
+            rows[stat].append(e)
+            rows[f"{stat} {r['position']}"].append(e)
+    return {
+        name: {"n": len(g), "pit": _pit_summary([e["pit"] for e in g]),
+               "crps": float(np.mean([e["crps"] for e in g])),
+               "mean_error": float(np.mean([e["y"] - e["mean"] for e in g])),
+               "mean": float(np.mean([e["mean"] for e in g]))}
+        for name, g in sorted(rows.items())
+    }
 
 
 def _counts(records) -> dict:
@@ -833,6 +879,13 @@ def render_tables(summary: dict) -> str:
                 cells = [f"{_f(a, 2)}→{_f(b, 2)} ({n})" for a, b, n in s[who]["bins"] if n]
                 out.append(f"- {STAT_LABELS.get(stat, stat)} {'ours' if who == 'model' else 'Kalshi mid'}: " + ", ".join(cells))
 
+    if summary.get("estimated"):
+        out += ["", "### Estimated Stats against outcomes", "",
+                "A core stat Kalshi did not price, estimated from the player's other stats and recent games.", "",
+                "| Stat | n | PIT χ² p | PIT % per decile | mean estimate | bias (y − mean) | CRPS |", "|---|---|---|---|---|---|---|"]
+        for name, e in summary["estimated"].items():
+            out.append(f"| {name} | {e['n']} | {_f(e['pit']['chi2_p'])} | {_hist(e['pit']['counts'])} | "
+                       f"{_f(e['mean'], 2)} | {_f(e['mean_error'], 2)} | {_f(e['crps'], 2)} |")
     out += ["", "### Dispersion: sd / relation sd", "",
             "Free fit: no sd prior, players with ≥ 4 Rungs. Fitted: the production fit (prior λ = 0.44).", "",
             "| Stat, position, mu | n | free: geo mean | median | p25–p75 | fitted: geo mean |", "|---|---|---|---|---|---|"]
@@ -907,6 +960,13 @@ def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_f
             history_cache[season, week] = load_td_history(season, fetch=fetch, before=(season, week))
         return history_cache[season, week]
 
+    recent_cache: dict[tuple[int, int], Mapping] = {}
+
+    def recent_games(season: int, week: int):
+        if (season, week) not in recent_cache:
+            recent_cache[season, week] = load_recent_games(season, fetch=fetch, before=(season, week))
+        return recent_cache[season, week]
+
     for s in range(min(seasons) - prior, max(seasons) + 1):
         fetch(s)
     roster = [row for s in seasons for row in rosters_fetch(s)]
@@ -914,7 +974,7 @@ def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_f
     key = lambda r: (r.game_id, r.gsis_id)  # noqa: E731
     return Context(Positions(roster), outcomes, td_history, shares,
                    {key(r): r for r in load_fantasy_lines(root)}, {key(r): r for r in load_fantasy_means(root)},
-                   played)
+                   played, recent_games)
 
 
 def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network

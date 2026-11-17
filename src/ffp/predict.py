@@ -9,7 +9,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -31,6 +31,7 @@ from ffp.distributions import (
     prob_zero,
     split_touchdowns,
 )
+from ffp.estimates import RecentGames, estimate_mean, estimated_distribution
 from ffp.fair import DEFAULT_PRIOR_C, TD_PRIOR_C, FairPoint, fair_points
 from ffp.markets import Game, PropMarket, parse_utc
 from ffp.players import (
@@ -72,7 +73,8 @@ MARKET_STATS = {
 }
 # Usage Stats: fitted for their mean (carries -> expected touches -> fumbles), never simulated or flagged.
 USAGE_STATS = ("carries",)
-# The market stats a position is expected to have: one missing is flagged "incomplete". Any other
+# The market stats a position is expected to have: one missing is an Estimated Stat (flagged
+# "estimated"), or flagged "incomplete" and left out when nothing can estimate it. Any other
 # stat is fitted when a book prices it (a WR's rushing yards) and otherwise counts as 0.
 CORE_STATS = {
     "QB": ("passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", TD_STAT),
@@ -105,6 +107,8 @@ MODEL_ASSUMPTIONS = (
     "Rushing yards count as 0 for a player no book prices them for (most WRs and TEs).",
     "QB receptions and receiving yards are not modelled; they count as 0.",
     "QB fumbles lost are a flat per-game rate, not tied to sacks.",
+    'A stat flagged "estimated" has no market for the player: it is estimated from his other stats and recent games. '
+    'A stat flagged "incomplete" could not be estimated and counts as 0, so that player\'s range is too low.',
 )
 
 NO_MARKETS = "no Prop Markets found for this player"
@@ -374,6 +378,7 @@ def predict(
     correlation: str | None = None,
     td_history: Mapping[str, TdHistory] | None = None,
     chance_thresholds: Sequence[float] = (),
+    recent_games: Mapping[str, RecentGames] | None = None,
 ) -> tuple[list[PlayerResult], list[SkippedPlayer]]:
     """A Score Distribution for each target with Prop Markets in its Game.
 
@@ -385,8 +390,10 @@ def predict(
     "pooled" (S3.6) or "none" (independent). The rushing/receiving split of TDs and 2-pt is the
     player's own, from `td_history` (td_share.load_td_history, keyed by gsis_id);
     without it, the position share. `chance_thresholds` adds each player's chance of
-    that many points or more. A position's core stat without a market,
-    or whose fit fails, is left out and flagged "incomplete" (S3.5). With no book pricing the Game at all,
+    that many points or more. A position's core stat without a market, or whose
+    fit fails, is an Estimated Stat (S5.4: from the player's other stats and his
+    `recent_games`, estimates.load_recent_games, keyed by gsis_id), flagged
+    "estimated"; where no estimate can be made it is left out and flagged "incomplete" (S3.5). With no book pricing the Game at all,
     the player is skipped as "props not posted"; with the Game priced but not
     the player, as "no Prop Markets"; with no fit succeeding, as unfittable.
     """
@@ -399,7 +406,8 @@ def predict(
             continue
         share = rushing_td_share(target.player.position, (td_history or {}).get(target.player.gsis_id))
         report = None if on_fair_points is None else (lambda stat, pts, t=target: on_fair_points(t, stat, pts))
-        fitted = fit_player(target.player.position, by_stat, share, on_fair_points=report)
+        recent = (recent_games or {}).get(target.player.gsis_id)
+        fitted = fit_player(target.player.position, by_stat, share, on_fair_points=report, recent=recent)
         if not fitted.dists:
             reason = f"could not fit any of its markets ({'; '.join(fitted.errors)})"
             skipped.append(SkippedPlayer(target.name, reason))
@@ -425,6 +433,7 @@ class Fitted:
     rushing_share: float  # the player's rushing share of TDs, which also splits his 2-pt
     usage: dict[str, StatDistribution]  # Usage Stats (carries): only their means are used
     tds: StatDistribution | None = None  # rush + rec TDs as fitted, before the split
+    estimated: list[str] = field(default_factory=list)  # the core stats that are Estimated Stats
 
 
 def fit_player(
@@ -433,6 +442,8 @@ def fit_player(
     share: float,
     prior_c: Mapping[str, float] | None = None,
     on_fair_points: Callable[[str, list[FairPoint]], None] | None = None,
+    recent: RecentGames | None = None,
+    estimate: bool = True,
 ) -> Fitted:
     """Fit one player's market stats from his Prop Markets by stat (any books), for `position`.
 
@@ -441,16 +452,22 @@ def fit_player(
     prior_c={"kalshi": KALSHI_PRIOR_C} for an exchange. Receptions set receiving yards'
     P(0); carries are a Usage Stat; the TD total is split by `share` (td_share).
     `on_fair_points(stat, points)` sees each stat's Fair Probabilities.
+
+    A core stat with no market, or whose fit fails, becomes an Estimated Stat when at least one
+    Scoring Stat was fitted from a market: its mean from the player's other stats and his
+    `recent` games (ffp.estimates), flagged "estimated: ...". Where no estimate can be made, or
+    with `estimate` False, it is left out and flagged "incomplete: ...".
     """
     core = CORE_STATS[position]
     fitted = Fitted({}, {}, [], [], share, {})
+    gaps: dict[str, str] = {}  # core stat -> why it has no market fit (the text of its flag)
 
     def fit(stat: str, fitter):
         markets = by_stat.get(stat)
         label = MARKET_STATS[stat]
         if not markets:
             if stat in core:
-                fitted.flags.append(f"incomplete: missing {label}")
+                gaps[stat] = f"missing {label}"
             return None
         points = fair_points(markets, prior_c=prior_c, default_c=PRIOR_C.get(stat, DEFAULT_PRIOR_C))
         if on_fair_points is not None:
@@ -459,7 +476,7 @@ def fit_player(
             dist = fitter(points)
         except FitError as error:  # a bug or bad configuration raises something else and stops the run
             if stat not in USAGE_STATS:
-                fitted.flags.append(f"incomplete: could not fit {label} ({error})")
+                gaps[stat] = f"could not fit {label} ({error})"
                 fitted.errors.append(f"{label}: {error}")
             return None
         if stat in USAGE_STATS:
@@ -482,15 +499,51 @@ def fit_player(
         fit("passing_tds", fit_passing_tds)
         fit("passing_interceptions", fit_interceptions)
     tds = fit(TD_STAT, fit_touchdowns)
+    tds_detail = fitted.details.pop(TD_STAT, None)
+    fitted.dists.pop(TD_STAT, None)
+    if estimate and (fitted.dists or tds is not None):  # only for a player the market otherwise prices
+        tds, tds_detail = _estimate_gaps(position, fitted, gaps, tds, tds_detail, recent)
+    fitted.flags += [f"incomplete: {why}" for why in gaps.values()]
     if tds is not None:
         fitted.tds = tds
-        details = fitted.details.pop(TD_STAT)
-        del fitted.dists[TD_STAT]
         rushing, receiving = split_touchdowns(tds, share)
         for stat, dist in (("receiving_tds", receiving), ("rushing_tds", rushing)):
             fitted.dists[stat] = dist
-            fitted.details[stat] = replace(details, mean=float(dist.mean), p50=_median(dist))
+            fitted.details[stat] = replace(tds_detail, mean=float(dist.mean), p50=_median(dist))
     return fitted
+
+
+def _estimate_gaps(
+    position: str,
+    fitted: Fitted,
+    gaps: dict[str, str],
+    tds: StatDistribution | None,
+    tds_detail: StatDetail | None,
+    recent: RecentGames | None,
+) -> tuple[StatDistribution | None, StatDetail | None]:
+    """Fill each core stat in `gaps` with an Estimated Stat where one can be made (S5.4), flag it
+    "estimated: ..." and take it out of `gaps`. Returns the TD total and its detail, estimated
+    when TDs were the gap. Stats are estimated in fitting order, each from the means known so
+    far, so receptions can set estimated receiving yards' P(0) and yards can set TDs."""
+    means = {stat: float(d.mean) for stat, d in {**fitted.dists, **fitted.usage}.items()}
+    if tds is not None:
+        means[TD_STAT] = float(tds.mean)
+    for stat in [s for s in MARKET_STATS if s in gaps]:
+        mean = estimate_mean(stat, position, means, recent)
+        dist = None if mean is None else estimated_distribution(stat, position, mean, fitted.dists.get("receptions"))
+        if dist is None:
+            continue
+        why = gaps.pop(stat)
+        reason = "no market" if why.startswith("missing") else "could not fit its market"
+        fitted.flags.append(f"estimated: {MARKET_STATS[stat]} ({reason})")
+        fitted.estimated.append(stat)
+        means[stat] = float(dist.mean)
+        detail = StatDetail(mean=float(dist.mean), p50=_median(dist), books=[], rungs=0)
+        if stat == TD_STAT:
+            tds, tds_detail = dist, detail
+        else:
+            fitted.dists[stat], fitted.details[stat] = dist, detail
+    return tds, tds_detail
 
 
 def _median(dist: StatDistribution) -> float:

@@ -7,6 +7,7 @@ from pathlib import Path
 from ffp import predict as pipeline
 from ffp.markets import parse_utc
 from ffp.params import CORRELATION_KINDS
+from ffp.estimates import load_recent_games
 from ffp.players import load_roster, load_schedule
 from ffp.td_share import load_td_history
 from ffp.report import write_json, write_markdown
@@ -94,13 +95,16 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     else:
         books = []  # nobody to price: don't touch the sportsbooks
-    # Each player's TD history splits his TDs and 2-pt. Fetched only once odds are in hand (a
-    # failed odds fetch costs no nflverse download); fixture runs stay offline (position shares).
-    td_history = load_td_history(season) if books and not args.fixtures else {}
+    # Each player's TD history splits his TDs and 2-pt, and his recent games feed his Estimated
+    # Stats. Fetched only once odds are in hand (a failed odds fetch costs no nflverse download);
+    # fixture runs stay offline (position shares, estimates from the other priced stats only).
+    live = bool(books) and not args.fixtures
+    td_history = load_td_history(season) if live else {}
+    recent_games = load_recent_games(season) if live else {}
 
     results, unfitted = pipeline.predict(
         targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,
-        td_history=td_history, chance_thresholds=args.chance,
+        td_history=td_history, chance_thresholds=args.chance, recent_games=recent_games,
     )
     order = {name: i for i, name in reversed(list(enumerate(names)))}
     skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))

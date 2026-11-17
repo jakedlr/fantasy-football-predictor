@@ -221,7 +221,12 @@ def test_an_rb_record_scores_carries_as_a_usage_stat(games):
     [task], _ = tasks([games[BROWN]], c)
     record = evaluate(task, samples=500, diagnostics=False)
     assert record["stats"]["carries"]["y"] == 14
-    assert "incomplete: missing rushing yards" in record["flags"] and not record["complete"]
+    # S5.4: his unpriced rushing yards are an Estimated Stat, scored against the outcome alone.
+    assert "estimated: rushing yards (no market)" in record["flags"]
+    assert record["coverage"] == "estimated" and not record["complete"]
+    assert "rushing_yards" not in record["stats"]
+    assert record["estimated"]["rushing_yards"]["y"] == 60
+    assert 0 <= record["estimated"]["rushing_yards"]["pit"] <= 1
     assert "joint" not in record
 
 
