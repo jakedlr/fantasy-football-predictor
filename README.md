@@ -122,7 +122,7 @@ The Kalshi backtest reads settled Kalshi NFL player-prop markets and their last 
 python -m ffp.sources.kalshi pull --root data/kalshi --since 2025-10-01   # prints counts and drop reasons
 ```
 
-The pull needs the network. It is paced to 4 requests/s and can be resumed: a rerun fetches only what is still missing. A full history pull is about 35k requests, roughly 2.5 h. A weekly top-up is under a hundred. `ffp.sources.kalshi.load_rungs(root)` and its siblings read the cache offline.
+The pull needs the network. It is paced to 4 requests/s and can be resumed: a rerun fetches only what is still missing. A full history pull is about 35k requests, roughly 2.5 h. A weekly top-up takes under a hundred requests. `ffp.sources.kalshi.load_rungs(root)` and its siblings read the cache offline.
 
 ### Layout
 
