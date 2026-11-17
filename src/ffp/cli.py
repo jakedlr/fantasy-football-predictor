@@ -91,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     targets, skipped = pipeline.resolve_targets(names, roster, schedule, now)
 
     snapshot = None
+    positions = {t.player.position for t in targets}
     if args.fixtures:
         books = pipeline.load_fixture_books(args.fixtures)
     elif targets:
@@ -98,13 +99,13 @@ def main(argv: list[str] | None = None) -> int:
 
         # Filed under the real fetch time, never --now: snapshots are price history (ADR 0001).
         snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, datetime.now(timezone.utc))
-        positions = {t.player.position for t in targets}
         books = pipeline.load_live_books(
             Http(), list({t.game.game_id: t.game for t in targets}.values()), now,
             on_response=_response_saver(snapshot),
             stats=pipeline.market_stats_for(positions),
             kickers="K" in positions,
-            dsts=pipeline.DST in positions,
+            dst_games=list({t.game.game_id: t.game for t in targets if t.player.position == pipeline.DST}.values()),
+            kicker_ladders="K" in positions and snapshot is not None,  # kept for a later Backtest, not used
         )
         if not books:
             print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)
@@ -114,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     # Each player's TD history splits his TDs and 2-pt, and his recent games feed his Estimated
     # Stats. Fetched only once odds are in hand (a failed odds fetch costs no nflverse download);
     # fixture runs stay offline (position shares, estimates from the other priced stats only).
-    live = bool(books) and not args.fixtures
+    # Kickers and D/ST use neither, so a run of only those skips the download.
+    live = bool(books) and not args.fixtures and bool(positions & set(pipeline.PLAYER_POSITIONS))
     td_history, recent_games = {}, {}
     if live:
         stats = weekly.memoized(weekly.nflreadpy_player_stats)  # one download, both loaders

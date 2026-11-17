@@ -198,16 +198,22 @@ _DST = re.compile(r"^(?:(?P<team>.*)\s)?(?:dst|d st|def|defense|defence)$")
 
 def _dst_team(text: str, name: str, hint: str | None) -> str:
     """The team a D/ST name means: its words before "D/ST" ("Baltimore Ravens Defense"), a bare
-    team name ("Ravens"), or else the (TEAM) hint ("D/ST (BAL)")."""
+    team name ("Ravens"), or else the (TEAM) hint ("D/ST (BAL)"). A hint that names another team
+    is an error, as it is for a player."""
     match = _DST.match(normalize_name(name))
     words = name.split()[: len(match["team"].split())] if match and match["team"] else [] if match else name.split()
+    hinted = _hint_team_code(hint) if hint is not None else None
     if words:
         try:
-            return team_code_from_book_name(" ".join(words))
+            team = team_code_from_book_name(" ".join(words))
         except UnknownTeamError:
-            pass
-    if hint is not None:
-        return _hint_team_code(hint)
+            team = None
+        if team is not None:
+            if hinted is not None and hinted != team:
+                raise UnknownPlayerError(f'"{text}" names {team} but its hint says {hinted}; drop one of them')
+            return team
+    if hinted is not None:
+        return hinted
     raise UnknownPlayerError(f'"{text}" looks like a D/ST but names no team; write it as "BAL D/ST"')
 
 

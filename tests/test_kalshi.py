@@ -385,3 +385,15 @@ def test_wide_fantasy_lines_load_only_when_asked(tmp_path):
     drops = drop_counts(tmp_path)
     assert drops[("KXNFLFFPTS", "wide_spread")] == 1
     assert drops[("KXNFLTD", "dst_rung")] == 1 and load_rungs(tmp_path) == []  # a D/ST's TD Rung is not a player's
+
+
+def test_a_dst_mean_market_is_not_counted_as_a_rung(tmp_path):
+    # Review of PRs 9-11: a D/ST's KXNFLFFPTSLADDER market was filed under "dst_rung".
+    from ffp.sources.kalshi import _market_drop_reason, dst_id
+
+    game = GAMES[0]
+    players = {"uuid-pit": {"gsis_id": dst_id("PIT Steelers D/ST")}}
+    market = {"player": "uuid-pit", "value": 7.5}
+    assert _market_drop_reason("KXNFLFFPTSLADDER", market, game, players) == "dst_mean"
+    assert _market_drop_reason("KXNFLTD", {"player": "uuid-pit"}, game, players) == "dst_rung"
+    assert _market_drop_reason("KXNFLFFPTS", {"player": "uuid-pit"}, game, players) is None

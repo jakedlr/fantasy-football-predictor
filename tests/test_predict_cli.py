@@ -147,7 +147,8 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
 
     seen_stats = []
 
-    def fake_live_books(http, games, now, on_response=None, stats=None, kickers=False, dsts=False):
+    def fake_live_books(http, games, now, on_response=None, stats=None, kickers=False, dst_games=(),
+                        kicker_ladders=False):
         seen_games.extend(games)
         seen_stats.extend(stats)
         on_response("fanduel", "fd_league", "https://example.test/page?_ak=SECRET&x=1", {"ok": True})
@@ -231,3 +232,28 @@ def test_a_chance_threshold_must_be_a_finite_non_negative_number(tmp_path, bad, 
     with pytest.raises(SystemExit):
         run_predict(tmp_path, ["Zay Flowers"], "--chance", bad)
     assert "--chance" in capsys.readouterr().err
+
+
+def test_a_kicker_and_dst_run_fetches_no_player_history(tmp_path, monkeypatch):
+    # Review of PRs 9-11: K and D/ST use no nflverse weekly stats, so a run of only those doesn't
+    # download them; the kicker Ladders come only when a snapshot will keep them.
+    import ffp.cli
+    import ffp.predict
+
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    calls = []
+
+    def fake_live_books(http, games, now, on_response=None, stats=None, kickers=False, dst_games=(),
+                        kicker_ladders=False):
+        calls.append((kickers, [g.game_id for g in dst_games], kicker_ladders))
+        return ffp.predict.load_fixture_books(FIXTURES)
+
+    monkeypatch.setattr(ffp.predict, "load_live_books", fake_live_books)
+    for loader in ("load_td_history", "load_recent_games", "_played"):
+        monkeypatch.setattr(ffp.cli, loader, lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Cameron Dicker\nRavens D/ST\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 0
+    assert calls == [(True, ["2026_10_LAC_BAL"], False)]

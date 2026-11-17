@@ -193,7 +193,7 @@ def test_sleeper_preset_scores_qb_game():
 
 import numpy as np  # noqa: E402
 
-from ffp.scoring import PRESETS, points_allowed, score_dst, score_kicker  # noqa: E402
+from ffp.scoring import PRESETS, ScoringRules, points_allowed, score_dst, score_kicker  # noqa: E402
 
 
 def test_kicker_scores_fgs_by_distance_and_pats():
@@ -248,7 +248,21 @@ def test_every_preset_scores_kickers_and_dst():
     ("dst", {"points_allowed_excludes": ["everything"]}, "points_allowed_excludes"),
     ("dst", {"points_allowed_tiers": [{"min": 7, "max": None, "points": 0}, {"min": 0, "max": 6, "points": 4}]},
      "only the last tier"),
+    # Review of PRs 9-11: a skipped tier used to score as the tier below it.
+    ("dst", {"yards_allowed_tiers": [{"min": 0, "max": 299, "points": 2}, {"min": 350, "max": None, "points": -1}]},
+     "no gap or overlap"),
+    ("dst", {"points_allowed_tiers": [{"min": 0, "max": 6, "points": 4}, {"min": 5, "max": None, "points": 0}]},
+     "no gap or overlap"),
+    ("kicker", {"fg_made_by_distance": [{"min": 40, "max": 39, "points": 3}]}, "below its min"),
 ])
 def test_bad_kicker_or_dst_rules_are_rejected(tmp_path, section, bad, match):
     with pytest.raises(ValueError, match=match):
         load_rules(write_rules(tmp_path, {"name": "bad", "offense": {}, section: bad}))
+
+
+def test_a_value_above_a_closed_last_tier_scores_nothing():
+    rules = PRESETS["standard"]
+    capped = ScoringRules("capped", rules.offense, dst={"points_allowed_tiers": [
+        {"min": 0, "max": 0, "points": 5}, {"min": 1, "max": 20, "points": 1}]})
+    assert score_dst({"points_allowed_all": 20}, capped) == 1
+    assert score_dst({"points_allowed_all": 21}, capped) == 0

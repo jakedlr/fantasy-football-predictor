@@ -307,3 +307,12 @@ def test_a_game_in_progress_is_found():
     assert game_in_progress("BAL", schedule, during).game_id == "2026_10_LAC_BAL"
     assert game_in_progress("BAL", schedule, datetime(2026, 11, 16, 12, tzinfo=UTC)) is None
     assert game_in_progress("BAL", schedule, datetime(2026, 11, 18, 12, tzinfo=UTC)) is None  # long over
+
+
+def test_a_dst_hint_that_names_another_team_is_an_error():
+    # Review of PRs 9-11: "Ravens D/ST (PIT)" silently gave the Ravens.
+    from ffp.players import UnknownPlayerError, resolve_player
+
+    with pytest.raises(UnknownPlayerError, match="hint says PIT"):
+        resolve_player("Ravens D/ST (PIT)", [])
+    assert resolve_player("Ravens D/ST (BAL)", []).team == "BAL"

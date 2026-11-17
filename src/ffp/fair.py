@@ -15,6 +15,7 @@ class FairPoint:
     threshold: float
     prob: float
     weight: float
+    main_lines: int = 0  # how many books' Main Lines were merged into this point
 
 
 MAIN_LINE_WEIGHT = 3.0
@@ -75,18 +76,18 @@ def _market_points(market: PropMarket, prior_c: float) -> list[FairPoint]:
     ]
     if ml is not None:
         points.append(
-            FairPoint(ml.over_threshold, apply_logit_shift(q_over, c), MAIN_LINE_WEIGHT)
+            FairPoint(ml.over_threshold, apply_logit_shift(q_over, c), MAIN_LINE_WEIGHT, main_lines=1)
         )
     return points
 
 
 def _merge_thresholds(points: list[FairPoint]) -> list[FairPoint]:
-    """One point per threshold, sorted: weighted-mean probability, summed weight."""
-    merged: dict[float, tuple[float, float]] = {}
+    """One point per threshold, sorted: weighted-mean probability, summed weight and Main Lines."""
+    merged: dict[float, tuple[float, float, int]] = {}
     for p in points:
-        wp, w = merged.get(p.threshold, (0.0, 0.0))
-        merged[p.threshold] = (wp + p.weight * p.prob, w + p.weight)
-    return [FairPoint(t, wp / w, w) for t, (wp, w) in sorted(merged.items())]
+        wp, w, m = merged.get(p.threshold, (0.0, 0.0, 0))
+        merged[p.threshold] = (wp + p.weight * p.prob, w + p.weight, m + p.main_lines)
+    return [FairPoint(t, wp / w, w, m) for t, (wp, w, m) in sorted(merged.items())]
 
 
 def _isotonic(points: list[FairPoint]) -> list[FairPoint]:
@@ -108,6 +109,6 @@ def _isotonic(points: list[FairPoint]) -> list[FairPoint]:
             blocks[-1][2] += n
     probs = [wp / w for wp, w, n in blocks for _ in range(n)]
     return [
-        FairPoint(p.threshold, min(max(prob, PROB_FLOOR), 1 - PROB_FLOOR), p.weight)
+        FairPoint(p.threshold, min(max(prob, PROB_FLOOR), 1 - PROB_FLOOR), p.weight, p.main_lines)
         for p, prob in zip(points, probs)
     ]
