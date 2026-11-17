@@ -134,8 +134,10 @@ Model parameters are committed JSON in `src/ffp/params/`:
 
 Regenerate them from nflverse. This needs the network, downloads play-by-play for the dispersion and D/ST seasons, and caches to disk. `market_calibration.json` is measured on the Kalshi backtest and kept by hand.
 
+The build also reads two hand-kept inputs: the P(0) overrides in `market_calibration.json`, which the rushing spread fits use, and the rushing shifts in the existing `dispersion.json`. It reads them from `--inputs`, which defaults to the committed `src/ffp/params`, so building to another `--out` gives the same results. A `--inputs` folder without `market_calibration.json` is an error.
+
 ```bash
-python scripts/build_params.py [--out src/ffp/params] [--seasons 2021-2025] \
+python scripts/build_params.py [--out src/ffp/params] [--inputs src/ffp/params] [--seasons 2021-2025] \
                                [--dispersion-seasons 2015-2021] [--dst-seasons 2015-2025] [--draws 40000]
 ```
 

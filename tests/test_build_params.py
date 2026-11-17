@@ -652,3 +652,19 @@ def test_dumps_keeps_one_row_per_line():
     text = bp.dumps({"source": "x", "columns": ["a", "b"], "rows": [[1, 2.5], [3, None]]})
     assert json.loads(text) == {"source": "x", "columns": ["a", "b"], "rows": [[1, 2.5], [3, None]]}
     assert '    [1,2.5],\n    [3,null]\n' in text
+
+
+def test_hand_kept_inputs_come_from_the_committed_params_whatever_out_is(tmp_path, monkeypatch):
+    # Built to an empty --out, the rushing sd relations were fitted without market_calibration.json's
+    # P(0) overrides (RB and QB rushing sd drifted). They are now read from --inputs, by default
+    # the committed params; a directory without the calibration file is an error.
+    shifts, pi0 = bp.hand_kept_inputs(bp.DEFAULT_OUT)
+    assert "RB" in pi0["rushing_yards"] and shifts["rushing_yards"]["QB"] == 7.0
+    with pytest.raises(FileNotFoundError, match="market_calibration.json"):
+        bp.hand_kept_inputs(tmp_path)
+
+    seen = {}
+    monkeypatch.setattr(bp, "hand_kept_inputs", lambda d: seen.setdefault("inputs", d) and (_ for _ in ()).throw(SystemExit))
+    with pytest.raises(SystemExit):
+        bp.main(["--out", str(tmp_path)])
+    assert seen["inputs"] == bp.DEFAULT_OUT
