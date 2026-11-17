@@ -540,6 +540,7 @@ BATCH = 100  # tickers per live candlesticks request (Kalshi's maximum)
 MINUTE_WINDOW = 3600  # 1-minute candles over the hour before kickoff
 HOUR_WINDOW = 24 * 3600  # the fallback: hourly candles over the day before
 RELIST_OVERLAP = 7 * 24 * 3600  # a live listing re-reads the last week before the previous listing
+PROGRESS_EVERY = 500  # kickoff quotes between progress log lines
 
 log = logging.getLogger(__name__)
 
@@ -747,11 +748,18 @@ def _fetch_quotes(http, cache: Cache, series: list[str], cutoff: datetime, since
             ko = _ts(game.kickoff)
             if m.get("settled") and parse_utc(m["settled"]) < cutoff:
                 historical.append((m["ticker"], ko))
-            else:
-                live.setdefault((parse_ticker(m["ticker"]).event, ko), []).append(m["ticker"])
+            else:  # any series of any Game kicking off together shares a batch: same window
+                live.setdefault(ko, []).append(m["ticker"])
     total = len(historical) + sum(map(len, live.values()))
     log.info("kickoff quotes to fetch: %d historical, %d live", len(historical), total - len(historical))
     done = 0
+
+    def progress(n):
+        nonlocal done
+        if (done + n) // PROGRESS_EVERY > done // PROGRESS_EVERY or done + n == total:
+            log.info("kickoff quotes: %d / %d", done + n, total)
+        done += n
+
     for ticker, ko in historical:
         def candles(interval, window, _chunk, ticker=ticker, ko=ko):  # one market per request
             page = http.get_json(api_url(f"/historical/markets/{ticker}/candlesticks", start_ts=ko - window,
@@ -761,18 +769,15 @@ def _fetch_quotes(http, cache: Cache, series: list[str], cutoff: datetime, since
             _quote_batch(cache, [ticker], ko, candles)
         except NotFound:
             log.warning("no historical candles for %s; tried again next pull", ticker)
-        done += 1
-        if done % 500 == 0:
-            log.info("kickoff quotes: %d / %d", done, total)
-    for (_, ko), tickers in live.items():
+        progress(1)
+    for ko, tickers in live.items():
+        def candles(interval, window, chunk, ko=ko):
+            page = http.get_json(api_url("/markets/candlesticks", market_tickers=",".join(chunk),
+                                         start_ts=ko - window, end_ts=ko, period_interval=interval))
+            return {x.get("market_ticker"): x.get("candlesticks") or [] for x in page.get("markets") or []}
         for i in range(0, len(tickers), BATCH):
-            def candles(interval, window, chunk, ko=ko):
-                page = http.get_json(api_url("/markets/candlesticks", market_tickers=",".join(chunk),
-                                             start_ts=ko - window, end_ts=ko, period_interval=interval))
-                return {x.get("market_ticker"): x.get("candlesticks") or [] for x in page.get("markets") or []}
             _quote_batch(cache, tickers[i:i + BATCH], ko, candles)
-            done += len(tickers[i:i + BATCH])
-            log.info("kickoff quotes: %d / %d", done, total)
+            progress(len(tickers[i:i + BATCH]))
     return total
 
 

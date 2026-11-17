@@ -121,6 +121,16 @@ def test_historical_markets_cost_one_request_each_and_live_ones_are_batched(pull
     assert paths["structured_targets"] == 1  # the directory, one page here
 
 
+def test_live_batches_share_a_kickoff_across_series_up_to_100_tickers(pulled):
+    _, http, _ = pulled
+    batches = [urllib.parse.parse_qs(urllib.parse.urlsplit(u).query) for u in http.calls
+               if "/markets/candlesticks" in u and "/historical/" not in u]
+    minute = [q["market_tickers"][0].split(",") for q in batches if q["period_interval"] == ["1"]]
+    assert all(len(b) <= kalshi.BATCH for b in minute)
+    assert len({t.split("-")[0] for t in minute[0]}) > 1  # several series in one request
+    assert {q["end_ts"][0] for q in batches} == {"1794792000"}  # the kickoff
+
+
 def test_a_second_pull_fetches_no_candles_and_skips_the_historical_listing(pulled):
     root, _, _ = pulled
     again = FixtureHttp()

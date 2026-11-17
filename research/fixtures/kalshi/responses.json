@@ -2969,82 +2969,43 @@
   "cursor": "",
   "markets": []
  },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLFFPTS-26NOV15PITCIN-CINCBROWN30-13P7%2CKXNFLFFPTS-26NOV15PITCIN-CINJCHASE1-19P9&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
+ "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-1%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-2%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-3%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-4%2CKXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-1%2CKXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-2%2CKXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-3%2CKXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-1%2CKXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-2%2CKXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-3%2CKXNFLTD-26NOV15PITCIN-CINCBROWN30-1%2CKXNFLTD-26NOV15PITCIN-CINCBROWN30-2%2CKXNFLTD-26NOV15PITCIN-CINCBROWN30-3%2CKXNFLTD-26NOV15PITCIN-CINJCHASE1-1%2CKXNFLTD-26NOV15PITCIN-CINJCHASE1-2%2CKXNFLTD-26NOV15PITCIN-CINJCHASE1-3%2CKXNFLFFPTS-26NOV15PITCIN-CINCBROWN30-13P7%2CKXNFLFFPTS-26NOV15PITCIN-CINJCHASE1-19P9%2CKXNFLFFPTSLADDER-26NOV15PITCIN-CINCBROWN30%2CKXNFLFFPTSLADDER-26NOV15PITCIN-CINJCHASE1&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
   "markets": [
    {
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "29.33",
+      "volume_fp": "26.26",
       "yes_ask": {
-       "close_dollars": "0.6000"
+       "close_dollars": "0.1800"
       },
       "yes_bid": {
-       "close_dollars": "0.5600"
+       "close_dollars": "0.1700"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "65.60",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.6000"
+       "close_dollars": "0.1800"
       },
       "yes_bid": {
-       "close_dollars": "0.5600"
+       "close_dollars": "0.1700"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "1489.93",
+      "volume_fp": "5.25",
       "yes_ask": {
-       "close_dollars": "0.6800"
+       "close_dollars": "0.1800"
       },
       "yes_bid": {
-       "close_dollars": "0.5700"
+       "close_dollars": "0.1700"
       }
      }
     ],
-    "market_ticker": "KXNFLFFPTS-26NOV15PITCIN-CINCBROWN30-13P7"
+    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-2"
    },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "36.03",
-      "yes_ask": {
-       "close_dollars": "0.5400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "71.75",
-      "yes_ask": {
-       "close_dollars": "0.5400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "116.60",
-      "yes_ask": {
-       "close_dollars": "0.5400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLFFPTS-26NOV15PITCIN-CINJCHASE1-19P9"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLFFPTSLADDER-26NOV15PITCIN-CINCBROWN30%2CKXNFLFFPTSLADDER-26NOV15PITCIN-CINJCHASE1&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
    {
     "candlesticks": [
      {
@@ -3083,76 +3044,37 @@
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791460,
-      "volume_fp": "4.12",
-      "yes_ask": {
-       "close_dollars": "0.2300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2000"
-      }
-     },
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "41.29",
-      "yes_ask": {
-       "close_dollars": "0.2300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLFFPTSLADDER-26NOV15PITCIN-CINJCHASE1"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-1%2CKXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-2%2CKXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-3%2CKXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-1%2CKXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-2%2CKXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-3&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791220,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     },
-     {
       "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
+      "volume_fp": "311.00",
       "yes_ask": {
-       "close_dollars": "0.0500"
+       "close_dollars": "0.0300"
       },
       "yes_bid": {
-       "close_dollars": "0.0400"
+       "close_dollars": "0.0200"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "0.01",
+      "volume_fp": "3236.79",
       "yes_ask": {
-       "close_dollars": "0.0500"
+       "close_dollars": "0.0300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "95.00",
+      "yes_ask": {
+       "close_dollars": "0.0300"
       },
       "yes_bid": {
        "close_dollars": "0.0200"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-3"
+    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINJCHASE1-3"
    },
    {
     "candlesticks": [
@@ -3192,111 +3114,6 @@
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.5000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4900"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "48.30",
-      "yes_ask": {
-       "close_dollars": "0.5000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "20.28",
-      "yes_ask": {
-       "close_dollars": "0.5000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-1"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791280,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794791400,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     },
-     {
-      "end_period_ts": 1794791460,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-3"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "26.26",
-      "yes_ask": {
-       "close_dollars": "0.1800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1700"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1700"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "5.25",
-      "yes_ask": {
-       "close_dollars": "0.1800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-2"
-   },
-   {
-    "candlesticks": [
-     {
       "end_period_ts": 1794791820,
       "volume_fp": "18.94",
       "yes_ask": {
@@ -3328,115 +3145,146 @@
      }
     ],
     "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-1"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-1%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-2%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-3%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-4%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-5%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-1%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-2%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-3%2CKXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-4&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "156.37",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-5"
    },
    {
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "2190.68",
+      "volume_fp": "362.53",
       "yes_ask": {
-       "close_dollars": "0.3800"
+       "close_dollars": "0.1300"
       },
       "yes_bid": {
-       "close_dollars": "0.3700"
+       "close_dollars": "0.1200"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "203.77",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.3800"
+       "close_dollars": "0.1300"
       },
       "yes_bid": {
-       "close_dollars": "0.3700"
+       "close_dollars": "0.1200"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "438.37",
+      "volume_fp": "1390.17",
       "yes_ask": {
-       "close_dollars": "0.3800"
+       "close_dollars": "0.1300"
       },
       "yes_bid": {
-       "close_dollars": "0.3700"
+       "close_dollars": "0.1200"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-3"
+    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINCBROWN30-2"
    },
    {
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
+      "volume_fp": "1261.16",
       "yes_ask": {
-       "close_dollars": "0.0700"
+       "close_dollars": "0.1400"
       },
       "yes_bid": {
-       "close_dollars": "0.0600"
+       "close_dollars": "0.1300"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
+      "volume_fp": "3778.56",
       "yes_ask": {
-       "close_dollars": "0.0700"
+       "close_dollars": "0.1400"
       },
       "yes_bid": {
-       "close_dollars": "0.0600"
+       "close_dollars": "0.1300"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
+      "volume_fp": "4993.96",
       "yes_ask": {
-       "close_dollars": "0.0700"
+       "close_dollars": "0.1400"
       },
       "yes_bid": {
-       "close_dollars": "0.0600"
+       "close_dollars": "0.1300"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-4"
+    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINJCHASE1-2"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791220,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.01",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-3"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "10560.82",
+      "yes_ask": {
+       "close_dollars": "0.4800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4700"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "1732.00",
+      "yes_ask": {
+       "close_dollars": "0.4800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4700"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "2401.93",
+      "yes_ask": {
+       "close_dollars": "0.4800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINCBROWN30-1"
    },
    {
     "candlesticks": [
@@ -3477,71 +3325,106 @@
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "6.99",
+      "volume_fp": "3909.82",
       "yes_ask": {
-       "close_dollars": "0.7000"
+       "close_dollars": "0.5100"
       },
       "yes_bid": {
-       "close_dollars": "0.6900"
+       "close_dollars": "0.5000"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "1.00",
+      "volume_fp": "16150.82",
       "yes_ask": {
-       "close_dollars": "0.7000"
+       "close_dollars": "0.5100"
       },
       "yes_bid": {
-       "close_dollars": "0.6900"
+       "close_dollars": "0.5000"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "279.83",
+      "volume_fp": "4692.12",
       "yes_ask": {
-       "close_dollars": "0.7000"
+       "close_dollars": "0.5100"
       },
       "yes_bid": {
-       "close_dollars": "0.6900"
+       "close_dollars": "0.5000"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-2"
+    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINJCHASE1-1"
    },
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791700,
-      "volume_fp": "5.40",
+      "end_period_ts": 1794791820,
+      "volume_fp": "472.57",
       "yes_ask": {
-       "close_dollars": "0.9200"
+       "close_dollars": "0.0300"
       },
       "yes_bid": {
-       "close_dollars": "0.9100"
+       "close_dollars": "0.0200"
       }
      },
      {
       "end_period_ts": 1794791940,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.9200"
+       "close_dollars": "0.0300"
       },
       "yes_bid": {
-       "close_dollars": "0.9100"
+       "close_dollars": "0.0200"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.9200"
+       "close_dollars": "0.0300"
       },
       "yes_bid": {
-       "close_dollars": "0.9100"
+       "close_dollars": "0.0200"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-1"
+    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINCBROWN30-3"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791460,
+      "volume_fp": "4.12",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2000"
+      }
+     },
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "41.29",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2000"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLFFPTSLADDER-26NOV15PITCIN-CINJCHASE1"
    },
    {
     "candlesticks": [
@@ -3582,36 +3465,36 @@
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "4587.09",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.1500"
+       "close_dollars": "0.0700"
       },
       "yes_bid": {
-       "close_dollars": "0.1400"
+       "close_dollars": "0.0600"
       }
      },
      {
       "end_period_ts": 1794791940,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.1500"
+       "close_dollars": "0.0700"
       },
       "yes_bid": {
-       "close_dollars": "0.1400"
+       "close_dollars": "0.0600"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.1500"
+       "close_dollars": "0.0700"
       },
       "yes_bid": {
-       "close_dollars": "0.1400"
+       "close_dollars": "0.0600"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-4"
+    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-4"
    },
    {
     "candlesticks": [
@@ -3647,45 +3530,395 @@
      }
     ],
     "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-PITARODGERS8-2"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791280,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0100"
+      }
+     },
+     {
+      "end_period_ts": 1794791400,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     },
+     {
+      "end_period_ts": 1794791460,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-PITARODGERS8-3"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.5000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "48.30",
+      "yes_ask": {
+       "close_dollars": "0.5000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "20.28",
+      "yes_ask": {
+       "close_dollars": "0.5000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSINT-26NOV15PITCIN-CINJBURROW9-1"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "36.03",
+      "yes_ask": {
+       "close_dollars": "0.5400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5000"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "71.75",
+      "yes_ask": {
+       "close_dollars": "0.5400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "116.60",
+      "yes_ask": {
+       "close_dollars": "0.5400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLFFPTS-26NOV15PITCIN-CINJCHASE1-19P9"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "29.33",
+      "yes_ask": {
+       "close_dollars": "0.6000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "65.60",
+      "yes_ask": {
+       "close_dollars": "0.6000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "1489.93",
+      "yes_ask": {
+       "close_dollars": "0.6800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLFFPTS-26NOV15PITCIN-CINCBROWN30-13P7"
    }
   ]
  },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-200%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-225%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-250%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-275%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-300%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-325%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-350%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-375%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-400%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-425%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-150%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-175%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-200%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-225%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-250%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-275%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-300%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-325%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-350%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-375&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
+ "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-100%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-110%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-120%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-130%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-140%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-150%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-160%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-170%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-180%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-50%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-60%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-70%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-80%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-90%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-100%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-110%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-120%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-130%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-20%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-25%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-30%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-40%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-50%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-60%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-70%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-80%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-90%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-10%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-11%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-2%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-3%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-4%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-5%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-6%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-7%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-8%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-9%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-10%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-11%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-12%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-13%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-14%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-15%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-5%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-6%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-7%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-8%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-9%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-100%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-110%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-120%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-130%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-30%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-40%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-50%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-60%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-70%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-80%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-90%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-15%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-20%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-25%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-30%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-40%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-50%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-60%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-70%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-80%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-90%2CKXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-12%2CKXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-15%2CKXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-9%2CKXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-3%2CKXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-6%2CKXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-9%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-200%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-225%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-250%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-275%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-300%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-325%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-350%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-375%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-400%2CKXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-425%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-150%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-175%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-200%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-225%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-250%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-275%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-300%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-325%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-350%2CKXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-375%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-1%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-2%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-3%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-4%2CKXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-5&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
   "markets": [
    {
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "0.67",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.7300"
+       "close_dollars": "0.8900"
       },
       "yes_bid": {
-       "close_dollars": "0.7200"
+       "close_dollars": "0.8800"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "2000.00",
+      "volume_fp": "12.15",
       "yes_ask": {
-       "close_dollars": "0.7300"
+       "close_dollars": "0.8900"
       },
       "yes_bid": {
-       "close_dollars": "0.7200"
+       "close_dollars": "0.8800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "25.21",
+      "yes_ask": {
+       "close_dollars": "0.8900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8800"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-30"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "5.35",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "100.16",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-350"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "301.99",
+      "yes_ask": {
+       "close_dollars": "0.4700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "273.98",
+      "yes_ask": {
+       "close_dollars": "0.4700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "1574.54",
+      "yes_ask": {
+       "close_dollars": "0.4700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-300"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "144.72",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.7300"
+       "close_dollars": "0.3300"
       },
       "yes_bid": {
-       "close_dollars": "0.7200"
+       "close_dollars": "0.3200"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-200"
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-40"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "107.92",
+      "yes_ask": {
+       "close_dollars": "0.5200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5100"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "3943.02",
+      "yes_ask": {
+       "close_dollars": "0.5100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "37.91",
+      "yes_ask": {
+       "close_dollars": "0.5100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-90"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-9"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "1.24",
+      "yes_ask": {
+       "close_dollars": "0.7900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7800"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-9"
    },
    {
     "candlesticks": [
@@ -3726,526 +3959,36 @@
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "301.99",
-      "yes_ask": {
-       "close_dollars": "0.4700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4600"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "273.98",
-      "yes_ask": {
-       "close_dollars": "0.4700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "1574.54",
-      "yes_ask": {
-       "close_dollars": "0.4700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-300"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "72.50",
-      "yes_ask": {
-       "close_dollars": "0.1300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1200"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.1300"
+       "close_dollars": "0.0400"
       },
       "yes_bid": {
-       "close_dollars": "0.1200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-325"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "321.88",
-      "yes_ask": {
-       "close_dollars": "0.8400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "1.17",
-      "yes_ask": {
-       "close_dollars": "0.8400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-175"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "1038.00",
-      "yes_ask": {
-       "close_dollars": "0.8200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8100"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "50.58",
-      "yes_ask": {
-       "close_dollars": "0.8200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8100"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "168.60",
-      "yes_ask": {
-       "close_dollars": "0.8200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8100"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-225"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0600"
+       "close_dollars": "0.0100"
       }
      },
      {
       "end_period_ts": 1794791940,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.0800"
+       "close_dollars": "0.0400"
       },
       "yes_bid": {
-       "close_dollars": "0.0600"
+       "close_dollars": "0.0100"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.0800"
+       "close_dollars": "0.0400"
       },
       "yes_bid": {
-       "close_dollars": "0.0600"
+       "close_dollars": "0.0100"
       }
      }
     ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-350"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "5.35",
-      "yes_ask": {
-       "close_dollars": "0.2300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "100.16",
-      "yes_ask": {
-       "close_dollars": "0.2300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-350"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-375"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "1.59",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "30.24",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "57.97",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-225"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "2.23",
-      "yes_ask": {
-       "close_dollars": "0.8900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "46.82",
-      "yes_ask": {
-       "close_dollars": "0.8900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-200"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-375"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "218.03",
-      "yes_ask": {
-       "close_dollars": "0.4600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4500"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "191.91",
-      "yes_ask": {
-       "close_dollars": "0.4600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4500"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "2621.93",
-      "yes_ask": {
-       "close_dollars": "0.4600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4500"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-250"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "93.19",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "39.27",
-      "yes_ask": {
-       "close_dollars": "0.6200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-275"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "54.99",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "28.76",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "505.64",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-275"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "1004.67",
-      "yes_ask": {
-       "close_dollars": "0.7400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "31.85",
-      "yes_ask": {
-       "close_dollars": "0.7400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "265.43",
-      "yes_ask": {
-       "close_dollars": "0.7400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-250"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791460,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "50.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-425"
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-11"
    },
    {
     "candlesticks": [
@@ -4281,6 +4024,391 @@
      }
     ],
     "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-300"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "23.67",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-130"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791640,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2000"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-9"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0100"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0100"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-14"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791580,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-80"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "71.02",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "43.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-50"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "287.12",
+      "yes_ask": {
+       "close_dollars": "0.4600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "16101.48",
+      "yes_ask": {
+       "close_dollars": "0.4700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "12980.37",
+      "yes_ask": {
+       "close_dollars": "0.5000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-70"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-140"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791640,
+      "volume_fp": "11.74",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-130"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-3"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "107.34",
+      "yes_ask": {
+       "close_dollars": "0.5100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5000"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "1295.34",
+      "yes_ask": {
+       "close_dollars": "0.5200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5100"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.5200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5100"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-8"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "294.62",
+      "yes_ask": {
+       "close_dollars": "0.4900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4800"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "37.43",
+      "yes_ask": {
+       "close_dollars": "0.4900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "94.57",
+      "yes_ask": {
+       "close_dollars": "0.4900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4800"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-30"
    },
    {
     "candlesticks": [
@@ -4321,6 +4449,146 @@
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
+      "volume_fp": "6.99",
+      "yes_ask": {
+       "close_dollars": "0.7000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "1.00",
+      "yes_ask": {
+       "close_dollars": "0.7000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "279.83",
+      "yes_ask": {
+       "close_dollars": "0.7000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-2"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "42.78",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1000"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-8"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-350"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "109.74",
+      "yes_ask": {
+       "close_dollars": "0.4400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.4300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "364.83",
+      "yes_ask": {
+       "close_dollars": "0.4400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-60"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
       "volume_fp": "368.01",
       "yes_ask": {
        "close_dollars": "0.9100"
@@ -4351,500 +4619,6 @@
      }
     ],
     "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-150"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLREC-26NOV15PITCIN-CINCBROWN30-10%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-11%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-2%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-3%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-4%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-5%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-6%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-7%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-8%2CKXNFLREC-26NOV15PITCIN-CINCBROWN30-9%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-10%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-11%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-12%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-13%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-14%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-15%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-5%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-6%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-7%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-8%2CKXNFLREC-26NOV15PITCIN-CINJCHASE1-9&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-11"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-7"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "5.46",
-      "yes_ask": {
-       "close_dollars": "0.9100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8900"
-      }
-     },
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.9100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.9100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-2"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-15"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791580,
-      "volume_fp": "79.34",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "27.14",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-4"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "16.42",
-      "yes_ask": {
-       "close_dollars": "0.2900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2800"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "16.42",
-      "yes_ask": {
-       "close_dollars": "0.2900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-6"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0100"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-14"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3600"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-9"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-10"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0500"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-13"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7700"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7700"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-3"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.4500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.4500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "38.12",
-      "yes_ask": {
-       "close_dollars": "0.4500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-5"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "107.34",
-      "yes_ask": {
-       "close_dollars": "0.5100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "1295.34",
-      "yes_ask": {
-       "close_dollars": "0.5200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5100"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.5200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5100"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-8"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0900"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "361.50",
-      "yes_ask": {
-       "close_dollars": "0.1200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-12"
    },
    {
     "candlesticks": [
@@ -4887,145 +4661,215 @@
       "end_period_ts": 1794791880,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.7600"
+       "close_dollars": "0.6800"
       },
       "yes_bid": {
-       "close_dollars": "0.7500"
+       "close_dollars": "0.6700"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "5598.05",
+      "volume_fp": "47.46",
       "yes_ask": {
-       "close_dollars": "0.7600"
+       "close_dollars": "0.6800"
       },
       "yes_bid": {
-       "close_dollars": "0.7500"
+       "close_dollars": "0.6700"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.7600"
+       "close_dollars": "0.6800"
       },
       "yes_bid": {
-       "close_dollars": "0.7500"
+       "close_dollars": "0.6700"
       }
      }
     ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-6"
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-20"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791340,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-90"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791460,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "50.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-425"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-9"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "16.47",
+      "yes_ask": {
+       "close_dollars": "0.5900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5800"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.5900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.5900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5800"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-25"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794790920,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2900"
+      }
+     },
+     {
+      "end_period_ts": 1794790980,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2900"
+      }
+     },
+     {
+      "end_period_ts": 1794791580,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-15"
    },
    {
     "candlesticks": [
      {
       "end_period_ts": 1794791760,
       "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8500"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8500"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8500"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-5"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2700"
-      }
-     },
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "17.00",
-      "yes_ask": {
-       "close_dollars": "0.2800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2700"
-      }
-     },
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-10"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-9"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "42.78",
       "yes_ask": {
        "close_dollars": "0.1100"
       },
@@ -5034,13 +4878,13 @@
       }
      },
      {
-      "end_period_ts": 1794791880,
+      "end_period_ts": 1794791940,
       "volume_fp": "0.00",
       "yes_ask": {
        "close_dollars": "0.1100"
       },
       "yes_bid": {
-       "close_dollars": "0.0800"
+       "close_dollars": "0.1000"
       }
      },
      {
@@ -5050,120 +4894,46 @@
        "close_dollars": "0.1100"
       },
       "yes_bid": {
-       "close_dollars": "0.0900"
+       "close_dollars": "0.1000"
       }
      }
     ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-8"
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-110"
    },
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791760,
-      "volume_fp": "27.79",
-      "yes_ask": {
-       "close_dollars": "0.1700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1600"
-      }
-     },
-     {
       "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
+      "volume_fp": "222.38",
       "yes_ask": {
-       "close_dollars": "0.1700"
+       "close_dollars": "0.6800"
       },
       "yes_bid": {
-       "close_dollars": "0.1600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-7"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-100%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-110%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-120%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-130%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-140%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-150%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-160%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-170%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-180%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-50%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-60%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-70%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-80%2CKXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-90%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-100%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-110%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-120%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-130%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-20%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-25%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-30%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-40%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-50%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-60%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-70%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-80%2CKXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-90&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     },
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "47.09",
-      "yes_ask": {
-       "close_dollars": "0.8400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "1.17",
-      "yes_ask": {
-       "close_dollars": "0.8400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-50"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "109.74",
-      "yes_ask": {
-       "close_dollars": "0.4400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4200"
+       "close_dollars": "0.6700"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
+      "volume_fp": "2.87",
       "yes_ask": {
-       "close_dollars": "0.4300"
+       "close_dollars": "0.6800"
       },
       "yes_bid": {
-       "close_dollars": "0.4200"
+       "close_dollars": "0.6700"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "364.83",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.4400"
+       "close_dollars": "0.6900"
       },
       "yes_bid": {
-       "close_dollars": "0.4200"
+       "close_dollars": "0.6700"
       }
      }
     ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-60"
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-70"
    },
    {
     "candlesticks": [
@@ -5204,6 +4974,286 @@
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
+      "volume_fp": "2.23",
+      "yes_ask": {
+       "close_dollars": "0.8900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8800"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "46.82",
+      "yes_ask": {
+       "close_dollars": "0.8900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8800"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-200"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.67",
+      "yes_ask": {
+       "close_dollars": "0.7300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "2000.00",
+      "yes_ask": {
+       "close_dollars": "0.7300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-200"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.4500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.4500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "38.12",
+      "yes_ask": {
+       "close_dollars": "0.4500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-5"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-60"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "16.42",
+      "yes_ask": {
+       "close_dollars": "0.2900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2800"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "16.42",
+      "yes_ask": {
+       "close_dollars": "0.2900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-6"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "1038.00",
+      "yes_ask": {
+       "close_dollars": "0.8200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8100"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "50.58",
+      "yes_ask": {
+       "close_dollars": "0.8200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8100"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "168.60",
+      "yes_ask": {
+       "close_dollars": "0.8200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8100"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-225"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791580,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-120"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-10"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
       "volume_fp": "0.00",
       "yes_ask": {
        "close_dollars": "0.0600"
@@ -5234,6 +5284,741 @@
      }
     ],
     "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-130"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791580,
+      "volume_fp": "79.34",
+      "yes_ask": {
+       "close_dollars": "0.6100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "27.14",
+      "yes_ask": {
+       "close_dollars": "0.6100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-4"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-13"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794790680,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8000"
+      }
+     },
+     {
+      "end_period_ts": 1794791100,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "1.20",
+      "yes_ask": {
+       "close_dollars": "0.8300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8100"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-25"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "156.37",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0500"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-5"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3300"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "28.11",
+      "yes_ask": {
+       "close_dollars": "0.3400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "202.41",
+      "yes_ask": {
+       "close_dollars": "0.3400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-70"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "5598.05",
+      "yes_ask": {
+       "close_dollars": "0.7600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7500"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-6"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "72.50",
+      "yes_ask": {
+       "close_dollars": "0.1300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1200"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-325"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "4587.09",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-4"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6300"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-7"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8500"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-5"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "1.15",
+      "yes_ask": {
+       "close_dollars": "0.8700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-20"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "361.50",
+      "yes_ask": {
+       "close_dollars": "0.1200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-12"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "20.59",
+      "yes_ask": {
+       "close_dollars": "0.4200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4100"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "23.43",
+      "yes_ask": {
+       "close_dollars": "0.4200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4100"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "64.06",
+      "yes_ask": {
+       "close_dollars": "0.4200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4100"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-100"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "2000.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-90"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "5.46",
+      "yes_ask": {
+       "close_dollars": "0.9100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8900"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.9100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.9100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8800"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-2"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7700"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "448.71",
+      "yes_ask": {
+       "close_dollars": "0.7800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7700"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-15"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "1004.67",
+      "yes_ask": {
+       "close_dollars": "0.7400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "31.85",
+      "yes_ask": {
+       "close_dollars": "0.7400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "265.43",
+      "yes_ask": {
+       "close_dollars": "0.7400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-250"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "643.93",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "23.71",
+      "yes_ask": {
+       "close_dollars": "0.2000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-100"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "2.55",
+      "yes_ask": {
+       "close_dollars": "0.7700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.7800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.7600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-30"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "54.99",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "28.76",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "505.64",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-275"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-375"
    },
    {
     "candlesticks": [
@@ -5269,6 +6054,741 @@
      }
     ],
     "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-100"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0800"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0800"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0800"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-160"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791640,
+      "volume_fp": "8.55",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1000"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "34.23",
+      "yes_ask": {
+       "close_dollars": "0.1100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-120"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "218.03",
+      "yes_ask": {
+       "close_dollars": "0.4600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "191.91",
+      "yes_ask": {
+       "close_dollars": "0.4600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "2621.93",
+      "yes_ask": {
+       "close_dollars": "0.4600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.4500"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-250"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8300"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "11.64",
+      "yes_ask": {
+       "close_dollars": "0.8500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-40"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791580,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0700"
+      }
+     },
+     {
+      "end_period_ts": 1794791640,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0700"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0900"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-70"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2600"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "176.18",
+      "yes_ask": {
+       "close_dollars": "0.2700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-80"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5900"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "397.19",
+      "yes_ask": {
+       "close_dollars": "0.6000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5900"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "478.26",
+      "yes_ask": {
+       "close_dollars": "0.6000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5900"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-80"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791640,
+      "volume_fp": "188.56",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     },
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "67.37",
+      "yes_ask": {
+       "close_dollars": "0.1400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "50.33",
+      "yes_ask": {
+       "close_dollars": "0.1500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-110"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "4.43",
+      "yes_ask": {
+       "close_dollars": "0.6600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-40"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.8400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8300"
+      }
+     },
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "47.09",
+      "yes_ask": {
+       "close_dollars": "0.8400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "1.17",
+      "yes_ask": {
+       "close_dollars": "0.8400"
+      },
+      "yes_bid": {
+       "close_dollars": "0.8300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-50"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "115.78",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "72.36",
+      "yes_ask": {
+       "close_dollars": "0.3300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-110"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "2210.45",
+      "yes_ask": {
+       "close_dollars": "0.6000"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5800"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "1606.63",
+      "yes_ask": {
+       "close_dollars": "0.6100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "1361.17",
+      "yes_ask": {
+       "close_dollars": "0.6100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-60"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791700,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2700"
+      }
+     },
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "17.00",
+      "yes_ask": {
+       "close_dollars": "0.2800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2700"
+      }
+     },
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-10"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-375"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0300"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-180"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "642.00",
+      "yes_ask": {
+       "close_dollars": "0.3500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "136.64",
+      "yes_ask": {
+       "close_dollars": "0.3500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3400"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "40.98",
+      "yes_ask": {
+       "close_dollars": "0.3500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3400"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-80"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0100"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0100"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.0500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.0100"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINJCHASE1-15"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.5300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5200"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "36.53",
+      "yes_ask": {
+       "close_dollars": "0.5300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5200"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.5300"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5200"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-12"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791760,
+      "volume_fp": "27.79",
+      "yes_ask": {
+       "close_dollars": "0.1700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1600"
+      }
+     },
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1600"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.1700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.1600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-7"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791820,
+      "volume_fp": "36.56",
+      "yes_ask": {
+       "close_dollars": "0.2600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2500"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "34.73",
+      "yes_ask": {
+       "close_dollars": "0.2600"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2500"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.2700"
+      },
+      "yes_bid": {
+       "close_dollars": "0.2600"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-120"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "2190.68",
+      "yes_ask": {
+       "close_dollars": "0.3800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3700"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "203.77",
+      "yes_ask": {
+       "close_dollars": "0.3800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3700"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "438.37",
+      "yes_ask": {
+       "close_dollars": "0.3800"
+      },
+      "yes_bid": {
+       "close_dollars": "0.3700"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-3"
    },
    {
     "candlesticks": [
@@ -5311,531 +6831,6 @@
       "end_period_ts": 1794791880,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "115.78",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "72.36",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-110"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "23.12",
-      "yes_ask": {
-       "close_dollars": "0.5500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "264.38",
-      "yes_ask": {
-       "close_dollars": "0.5500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "66.67",
-      "yes_ask": {
-       "close_dollars": "0.5600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-50"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "36.56",
-      "yes_ask": {
-       "close_dollars": "0.2600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2500"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "34.73",
-      "yes_ask": {
-       "close_dollars": "0.2600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2500"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-120"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794790680,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8000"
-      }
-     },
-     {
-      "end_period_ts": 1794791100,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "1.20",
-      "yes_ask": {
-       "close_dollars": "0.8300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8100"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-25"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "20.59",
-      "yes_ask": {
-       "close_dollars": "0.4200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4100"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "23.43",
-      "yes_ask": {
-       "close_dollars": "0.4200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4100"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "64.06",
-      "yes_ask": {
-       "close_dollars": "0.4200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4100"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-100"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "28.11",
-      "yes_ask": {
-       "close_dollars": "0.3400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "202.41",
-      "yes_ask": {
-       "close_dollars": "0.3400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-70"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8600"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "1.15",
-      "yes_ask": {
-       "close_dollars": "0.8700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-20"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "23.67",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-130"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0800"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0800"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-160"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5900"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "397.19",
-      "yes_ask": {
-       "close_dollars": "0.6000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "478.26",
-      "yes_ask": {
-       "close_dollars": "0.6000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-80"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-140"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "4.43",
-      "yes_ask": {
-       "close_dollars": "0.6600"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-40"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791580,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0600"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-120"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "107.92",
-      "yes_ask": {
-       "close_dollars": "0.5200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5100"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "3943.02",
-      "yes_ask": {
-       "close_dollars": "0.5100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "37.91",
-      "yes_ask": {
-       "close_dollars": "0.5100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-90"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "2.55",
-      "yes_ask": {
-       "close_dollars": "0.7700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7600"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-30"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
        "close_dollars": "0.0700"
       },
       "yes_bid": {
@@ -5869,275 +6864,6 @@
     "candlesticks": [
      {
       "end_period_ts": 1794791820,
-      "volume_fp": "222.38",
-      "yes_ask": {
-       "close_dollars": "0.6800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6700"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "2.87",
-      "yes_ask": {
-       "close_dollars": "0.6800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6700"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.6900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.6700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-70"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "2000.00",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-90"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2600"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "176.18",
-      "yes_ask": {
-       "close_dollars": "0.2700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-80"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-110"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-CINJCHASE1-180"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-12%2CKXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-15%2CKXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-9%2CKXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-3%2CKXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-6%2CKXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-9&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794790920,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2900"
-      }
-     },
-     {
-      "end_period_ts": 1794790980,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2900"
-      }
-     },
-     {
-      "end_period_ts": 1794791580,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-15"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.5300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "36.53",
-      "yes_ask": {
-       "close_dollars": "0.5300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.5300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-12"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "1.24",
-      "yes_ask": {
-       "close_dollars": "0.7900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7800"
-      }
-     },
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
        "close_dollars": "0.7900"
@@ -6145,44 +6871,29 @@
       "yes_bid": {
        "close_dollars": "0.7700"
       }
-     }
-    ],
-    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINCBROWN30-9"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791640,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2200"
-      },
-      "yes_bid": {
-       "close_dollars": "0.2000"
-      }
      },
      {
-      "end_period_ts": 1794791760,
+      "end_period_ts": 1794791940,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.2200"
+       "close_dollars": "0.7900"
       },
       "yes_bid": {
-       "close_dollars": "0.1900"
+       "close_dollars": "0.7700"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.2300"
+       "close_dollars": "0.7900"
       },
       "yes_bid": {
-       "close_dollars": "0.1900"
+       "close_dollars": "0.7600"
       }
      }
     ],
-    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-9"
+    "market_ticker": "KXNFLREC-26NOV15PITCIN-CINCBROWN30-3"
    },
    {
     "candlesticks": [
@@ -6222,251 +6933,72 @@
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8600"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8700"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8600"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHATT-26NOV15PITCIN-CINSPERINE34-3"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-100%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-110%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-120%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-130%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-30%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-40%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-50%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-60%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-70%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-80%2CKXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-90%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-15%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-20%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-25%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-30%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-40%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-50%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-60%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-70%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-80%2CKXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-90&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791640,
-      "volume_fp": "11.74",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0600"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0600"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-130"
-   },
-   {
-    "candlesticks": [
-     {
       "end_period_ts": 1794791880,
-      "volume_fp": "287.12",
+      "volume_fp": "321.88",
       "yes_ask": {
-       "close_dollars": "0.4600"
+       "close_dollars": "0.8400"
       },
       "yes_bid": {
-       "close_dollars": "0.4500"
+       "close_dollars": "0.8300"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "16101.48",
+      "volume_fp": "1.17",
       "yes_ask": {
-       "close_dollars": "0.4700"
+       "close_dollars": "0.8400"
       },
       "yes_bid": {
-       "close_dollars": "0.4600"
+       "close_dollars": "0.8300"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "12980.37",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.5000"
+       "close_dollars": "0.8400"
       },
       "yes_bid": {
-       "close_dollars": "0.4700"
+       "close_dollars": "0.8300"
       }
      }
     ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-70"
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-175"
    },
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
+      "end_period_ts": 1794791700,
+      "volume_fp": "5.40",
       "yes_ask": {
-       "close_dollars": "0.6800"
+       "close_dollars": "0.9200"
       },
       "yes_bid": {
-       "close_dollars": "0.6700"
+       "close_dollars": "0.9100"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "47.46",
+      "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.6800"
+       "close_dollars": "0.9200"
       },
       "yes_bid": {
-       "close_dollars": "0.6700"
+       "close_dollars": "0.9100"
       }
      },
      {
       "end_period_ts": 1794792000,
       "volume_fp": "0.00",
       "yes_ask": {
-       "close_dollars": "0.6800"
+       "close_dollars": "0.9200"
       },
       "yes_bid": {
-       "close_dollars": "0.6700"
+       "close_dollars": "0.9100"
       }
      }
     ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-20"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791640,
-      "volume_fp": "188.56",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "67.37",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "50.33",
-      "yes_ask": {
-       "close_dollars": "0.1500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-110"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791640,
-      "volume_fp": "8.55",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1000"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "34.23",
-      "yes_ask": {
-       "close_dollars": "0.1100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-120"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791340,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794791760,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-90"
+    "market_ticker": "KXNFLPASSTDS-26NOV15PITCIN-CINJBURROW9-1"
    },
    {
     "candlesticks": [
@@ -6506,263 +7038,88 @@
    {
     "candlesticks": [
      {
-      "end_period_ts": 1794791760,
-      "volume_fp": "16.47",
-      "yes_ask": {
-       "close_dollars": "0.5900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5800"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.5900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.5900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5800"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-25"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791580,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0700"
-      }
-     },
-     {
-      "end_period_ts": 1794791640,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0700"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-70"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791700,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7700"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "448.71",
-      "yes_ask": {
-       "close_dollars": "0.7800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7700"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.7800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.7700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-15"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "643.93",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
       "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
+      "volume_fp": "23.12",
       "yes_ask": {
-       "close_dollars": "0.2000"
+       "close_dollars": "0.5500"
       },
       "yes_bid": {
-       "close_dollars": "0.1900"
+       "close_dollars": "0.5400"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "264.38",
+      "yes_ask": {
+       "close_dollars": "0.5500"
+      },
+      "yes_bid": {
+       "close_dollars": "0.5400"
       }
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "23.71",
+      "volume_fp": "66.67",
       "yes_ask": {
-       "close_dollars": "0.2000"
+       "close_dollars": "0.5600"
       },
       "yes_bid": {
-       "close_dollars": "0.1900"
+       "close_dollars": "0.5400"
       }
      }
     ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-100"
+    "market_ticker": "KXNFLRECYDS-26NOV15PITCIN-PITDMETCALF4-50"
    },
    {
     "candlesticks": [
      {
       "end_period_ts": 1794791880,
-      "volume_fp": "294.62",
+      "volume_fp": "93.19",
       "yes_ask": {
-       "close_dollars": "0.4900"
+       "close_dollars": "0.6100"
       },
       "yes_bid": {
-       "close_dollars": "0.4800"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "37.43",
-      "yes_ask": {
-       "close_dollars": "0.4900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "94.57",
-      "yes_ask": {
-       "close_dollars": "0.4900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4800"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-30"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "642.00",
-      "yes_ask": {
-       "close_dollars": "0.3500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "136.64",
-      "yes_ask": {
-       "close_dollars": "0.3500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "40.98",
-      "yes_ask": {
-       "close_dollars": "0.3500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-80"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "71.02",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "43.00",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.2000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1900"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-50"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "2210.45",
-      "yes_ask": {
        "close_dollars": "0.6000"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5800"
       }
      },
      {
       "end_period_ts": 1794791940,
-      "volume_fp": "1606.63",
+      "volume_fp": "39.27",
+      "yes_ask": {
+       "close_dollars": "0.6200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     },
+     {
+      "end_period_ts": 1794792000,
+      "volume_fp": "0.00",
+      "yes_ask": {
+       "close_dollars": "0.6200"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     }
+    ],
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-CINJBURROW9-275"
+   },
+   {
+    "candlesticks": [
+     {
+      "end_period_ts": 1794791880,
+      "volume_fp": "1.59",
+      "yes_ask": {
+       "close_dollars": "0.6100"
+      },
+      "yes_bid": {
+       "close_dollars": "0.6000"
+      }
+     },
+     {
+      "end_period_ts": 1794791940,
+      "volume_fp": "30.24",
       "yes_ask": {
        "close_dollars": "0.6100"
       },
@@ -6772,7 +7129,7 @@
      },
      {
       "end_period_ts": 1794792000,
-      "volume_fp": "1361.17",
+      "volume_fp": "57.97",
       "yes_ask": {
        "close_dollars": "0.6100"
       },
@@ -6781,7 +7138,7 @@
       }
      }
     ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-60"
+    "market_ticker": "KXNFLPASSYDS-26NOV15PITCIN-PITARODGERS8-225"
    },
    {
     "candlesticks": [
@@ -6817,395 +7174,6 @@
      }
     ],
     "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-50"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "11.64",
-      "yes_ask": {
-       "close_dollars": "0.8500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-40"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "144.72",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.3300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.3200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-40"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.8900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "12.15",
-      "yes_ask": {
-       "close_dollars": "0.8900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "25.21",
-      "yes_ask": {
-       "close_dollars": "0.8900"
-      },
-      "yes_bid": {
-       "close_dollars": "0.8800"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITJWARREN30-30"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-60"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791580,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0500"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0400"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLRSHYDS-26NOV15PITCIN-PITRDOWDLE13-80"
-   }
-  ]
- },
- "https://api.elections.kalshi.com/trade-api/v2/markets/candlesticks?market_tickers=KXNFLTD-26NOV15PITCIN-CINCBROWN30-1%2CKXNFLTD-26NOV15PITCIN-CINCBROWN30-2%2CKXNFLTD-26NOV15PITCIN-CINCBROWN30-3%2CKXNFLTD-26NOV15PITCIN-CINJCHASE1-1%2CKXNFLTD-26NOV15PITCIN-CINJCHASE1-2%2CKXNFLTD-26NOV15PITCIN-CINJCHASE1-3&start_ts=1794788400&end_ts=1794792000&period_interval=1": {
-  "markets": [
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "362.53",
-      "yes_ask": {
-       "close_dollars": "0.1300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.1300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "1390.17",
-      "yes_ask": {
-       "close_dollars": "0.1300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINCBROWN30-2"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "10560.82",
-      "yes_ask": {
-       "close_dollars": "0.4800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4700"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "1732.00",
-      "yes_ask": {
-       "close_dollars": "0.4800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4700"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "2401.93",
-      "yes_ask": {
-       "close_dollars": "0.4800"
-      },
-      "yes_bid": {
-       "close_dollars": "0.4700"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINCBROWN30-1"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "311.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "3236.79",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "95.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINJCHASE1-3"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791820,
-      "volume_fp": "472.57",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "0.00",
-      "yes_ask": {
-       "close_dollars": "0.0300"
-      },
-      "yes_bid": {
-       "close_dollars": "0.0200"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINCBROWN30-3"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "1261.16",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "3778.56",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "4993.96",
-      "yes_ask": {
-       "close_dollars": "0.1400"
-      },
-      "yes_bid": {
-       "close_dollars": "0.1300"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINJCHASE1-2"
-   },
-   {
-    "candlesticks": [
-     {
-      "end_period_ts": 1794791880,
-      "volume_fp": "3909.82",
-      "yes_ask": {
-       "close_dollars": "0.5100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     },
-     {
-      "end_period_ts": 1794791940,
-      "volume_fp": "16150.82",
-      "yes_ask": {
-       "close_dollars": "0.5100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     },
-     {
-      "end_period_ts": 1794792000,
-      "volume_fp": "4692.12",
-      "yes_ask": {
-       "close_dollars": "0.5100"
-      },
-      "yes_bid": {
-       "close_dollars": "0.5000"
-      }
-     }
-    ],
-    "market_ticker": "KXNFLTD-26NOV15PITCIN-CINJCHASE1-1"
    }
   ]
  },
