@@ -45,7 +45,8 @@ from ffp.distributions import (
     receiving_yards_sd_relation,
     rushing_yards_sd_relation,
 )
-from ffp.estimates import RecentGames, load_recent_games
+from ffp import weekly
+from ffp.estimates import RecentGames, recent_games
 from ffp.fair import KALSHI_PRIOR_C, PROB_FLOOR
 from ffp.outcomes import OUTCOME_STATS, fantasy_points
 from ffp.predict import (
@@ -164,10 +165,7 @@ def trailing_carry_shares(rows: Iterable[Mapping]) -> dict[tuple[str, str], floa
     return out
 
 
-def _num(value) -> float:
-    if value is None or value == "" or (isinstance(value, float) and math.isnan(value)):
-        return 0.0
-    return float(value)
+_num = weekly.number
 
 
 @dataclass(frozen=True)
@@ -200,12 +198,7 @@ class Context:
     recent_games: Callable[[int, int], Mapping[str, RecentGames]] | None = None
 
 
-def played_games(snaps: Iterable[Mapping], roster: Iterable[Mapping]) -> set[tuple[str, str]]:
-    """(game_id, gsis_id) of every player with an offensive snap, from nflverse snap counts
-    (keyed by PFR id) and roster rows mapping `pfr_id` to `gsis_id`."""
-    gsis = {str(r["pfr_id"]): str(r["gsis_id"]) for r in roster if r.get("pfr_id") and r.get("gsis_id")}
-    return {(str(s["game_id"]), gsis[str(s["pfr_player_id"])]) for s in snaps
-            if _num(s.get("offense_snaps")) > 0 and str(s.get("pfr_player_id")) in gsis}
+played_games = weekly.played_games  # re-exported: the Backtest's tests and callers use it here
 
 
 def tasks(games: Iterable[PlayerGame], ctx: Context) -> tuple[list[Task], list[dict]]:
@@ -936,11 +929,11 @@ def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_f
     counts for `seasons` (plus the TD-history seasons before them), Kalshi's fantasy-points records."""
     from ffp.outcomes import load_outcomes
     from ffp.sources.kalshi import load_fantasy_lines, load_fantasy_means
-    from ffp.td_share import load_td_history
+    from ffp.td_share import td_histories
 
-    stats_fetch = stats_fetch or _nflreadpy_player_stats
-    rosters_fetch = rosters_fetch or _nflreadpy_rosters_weekly
-    snaps_fetch = snaps_fetch or _nflreadpy_snap_counts
+    stats_fetch = stats_fetch or weekly.nflreadpy_player_stats
+    rosters_fetch = rosters_fetch or weekly.nflreadpy_rosters_weekly
+    snaps_fetch = snaps_fetch or weekly._nflreadpy_snap_counts
     prior = int(params.load("base_rates")["td_share"]["prior_seasons"])
     rows: dict[int, list] = {}
 
@@ -955,45 +948,28 @@ def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_f
         shares.update(trailing_carry_shares(fetch(s)))
     history_cache: dict[tuple[int, int], Mapping] = {}
 
-    def td_history(season: int, week: int):
-        if (season, week) not in history_cache:
-            history_cache[season, week] = load_td_history(season, fetch=fetch, before=(season, week))
-        return history_cache[season, week]
-
+    # One index over every season for every week's question (no rescans), with the games
+    # each player played but recorded no stat in (snap counts).
+    roster = [row for s in seasons for row in rosters_fetch(s)]
+    played = played_games([row for s in range(min(seasons) - 1, max(seasons) + 1) for row in snaps_fetch(s)],
+                          roster + [row for row in rosters_fetch(min(seasons) - 1)])
+    stats = weekly.WeeklyStats((r for s in range(min(seasons) - prior, max(seasons) + 1) for r in fetch(s)), played)
     recent_cache: dict[tuple[int, int], Mapping] = {}
 
-    def recent_games(season: int, week: int):
+    def td_history(season: int, week: int):
+        if (season, week) not in history_cache:
+            history_cache[season, week] = td_histories(stats, season, before=(season, week))
+        return history_cache[season, week]
+
+    def recent(season: int, week: int):
         if (season, week) not in recent_cache:
-            recent_cache[season, week] = load_recent_games(season, fetch=fetch, before=(season, week))
+            recent_cache[season, week] = recent_games(stats, season, before=(season, week))
         return recent_cache[season, week]
 
-    for s in range(min(seasons) - prior, max(seasons) + 1):
-        fetch(s)
-    roster = [row for s in seasons for row in rosters_fetch(s)]
-    played = played_games([row for s in seasons for row in snaps_fetch(s)], roster)
     key = lambda r: (r.game_id, r.gsis_id)  # noqa: E731
     return Context(Positions(roster), outcomes, td_history, shares,
                    {key(r): r for r in load_fantasy_lines(root)}, {key(r): r for r in load_fantasy_means(root)},
-                   played, recent_games)
-
-
-def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network
-    import nflreadpy
-
-    return nflreadpy.load_player_stats(season, summary_level="week").to_dicts()
-
-
-def _nflreadpy_rosters_weekly(season: int) -> list[dict]:  # pragma: no cover - network
-    import nflreadpy
-
-    cols = ["season", "week", "gsis_id", "position", "pfr_id"]
-    return nflreadpy.load_rosters_weekly(season).select(cols).to_dicts()
-
-
-def _nflreadpy_snap_counts(season: int) -> list[dict]:  # pragma: no cover - network
-    import nflreadpy
-
-    return nflreadpy.load_snap_counts(season).select(["game_id", "pfr_player_id", "offense_snaps"]).to_dicts()
+                   played, recent)
 
 
 def to_json(summary: dict) -> str:

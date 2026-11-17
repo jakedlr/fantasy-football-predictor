@@ -7,6 +7,7 @@ gsis_id as `player_id`.
 
 from collections.abc import Callable, Iterable, Mapping
 
+from ffp import weekly
 from ffp.scoring import SCORING_STATS, ScoringRules, score
 
 Row = Mapping[str, object]
@@ -48,12 +49,12 @@ def load_outcomes(seasons: int | Iterable[int], fetch: Fetch | None = None) -> O
         seasons = [seasons]
     outcomes: Outcomes = {}
     for season in seasons:
-        for row in (fetch or _nflreadpy_player_stats)(season):
+        for row in (fetch or weekly.nflreadpy_player_stats)(season):
             game_id, gsis_id = row.get("game_id"), row.get("player_id")
             if not game_id or not gsis_id:
                 continue
             outcomes[str(game_id), str(gsis_id)] = {
-                stat: sum(_number(row.get(column)) for column in columns) for stat, columns in COLUMNS.items()
+                stat: sum(weekly.number(row.get(column)) for column in columns) for stat, columns in COLUMNS.items()
             }
     return outcomes
 
@@ -65,16 +66,3 @@ def fantasy_points(stats: Mapping[str, float], rules: ScoringRules) -> float:
     matters against a strictly-greater line such as Kalshi's "above 5.48".
     """
     return round(float(score(stats, rules)), 2)
-
-
-def _number(value: object) -> float:
-    """A stat value from a polars row (int, float or None) or a CSV row ("3" or "")."""
-    if value is None or value == "":
-        return 0
-    return float(value) if isinstance(value, str) else value
-
-
-def _nflreadpy_player_stats(season: int) -> list[dict]:
-    import nflreadpy  # imported here so tests and offline runs never need it
-
-    return nflreadpy.load_player_stats(season, summary_level="week").to_dicts()

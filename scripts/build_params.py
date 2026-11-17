@@ -107,9 +107,10 @@ TRAILING_QUALIFY = {"QB": ("attempts", 20.0)}
 # 10 for RB receiving). A committed dispersion.json overrides these.
 DEFAULT_SHIFT = {
     "receiving_yards": {"WR": 5.0, "TE": 5.0, "RB": 10.0},
-    # Rushing: 3 for RB/WR/TE and 7 for QB (kneel-downs) since the Kalshi Backtest (S5.6): with 10,
-    # low-volume backs got 7.7% below zero against 1.4% observed, and no RB reached -5.
-    "rushing_yards": {"QB": 7.0, "RB": 3.0, "WR": 3.0, "TE": 3.0},
+    # Rushing: 5 for RB/WR/TE and 7 for QB (kneel-downs) since the Kalshi Backtest (S5.6): with 10,
+    # low-volume backs got 7.7% below zero against 1.4% observed, and no RB reached -5. Not lower:
+    # the support starts at -shift, and a -4 game must stay possible (review of PR #8).
+    "rushing_yards": {"QB": 7.0, "RB": 5.0, "WR": 5.0, "TE": 5.0},
 }
 PROXY_FEATURES = ["trail8", "trail4", "trail8_usage", "trail4_usage", "season_to_date", "trail_snap", "implied_total"]
 PMF_FLOOR = 1e-6
@@ -535,10 +536,16 @@ def proxy_sample(games: pl.DataFrame, totals: pl.DataFrame, position: str, stat:
     return df.filter(pl.col("qualify_trail") >= qualify[1]) if qualify else df
 
 
-def hurdle_entry(mu: np.ndarray, y: np.ndarray, family: str, shift: float) -> dict:
-    """pi0 and sd relations of a hurdle yards stat; a normal has no shift, so no "shift" key."""
+def hurdle_entry(mu: np.ndarray, y: np.ndarray, family: str, shift: float,
+                 runtime_pi0: tuple[float, float] | None = None) -> dict:
+    """pi0 and sd relations of a hurdle yards stat; a normal has no shift, so no "shift" key.
+
+    The sd relation is of the nonzero part, whose mean is mu / (1 − pi0), so it must be fitted
+    with the pi0 the runtime uses: `runtime_pi0` = (c0, c1) when params/market_calibration.json
+    overrides this relation's P(0) (S5.6), else the one fitted here. The entry keeps the
+    nflverse pi0 fit either way (the override lives in market_calibration.json)."""
     c0, c1 = fit_pi0(mu, y)
-    a, b = fit_sd_relation(mu, y, c0, c1, shift, family)
+    a, b = fit_sd_relation(mu, y, *(runtime_pi0 or (c0, c1)), shift, family)
     head = {"family": family, "shift": shift} if family == HURDLE_GAMMA else {"family": family}
     return {**head, "pi0_c0": round(c0, 3), "pi0_c1": round(c1, 3), "sd_a": round(a, 3), "sd_b": round(b, 3)}
 
@@ -549,7 +556,7 @@ def nb_entry(mu: np.ndarray, y: np.ndarray) -> dict:
 
 
 def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[str, dict[str, float]],
-                      relations: tuple[Relation, ...] = RELATIONS) -> dict:
+                      relations: tuple[Relation, ...] = RELATIONS, runtime_pi0: dict | None = None) -> dict:
     """Fitted relations per stat and position; sample sizes go under a separate "n_games" key
     so each relation entry holds only its family and parameters. A borrowing position gets a
     copy of its lender's entry, listed under "borrowed" instead of "n_games"."""
@@ -563,7 +570,9 @@ def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[st
             if rel.family == NEG_BIN:
                 out[rel.stat][pos] = nb_entry(mu, y)
             else:
-                out[rel.stat][pos] = hurdle_entry(mu, y, rel.family, shifts.get(rel.stat, {}).get(pos, 0.0))
+                override = (runtime_pi0 or {}).get(rel.stat, {}).get(pos)
+                out[rel.stat][pos] = hurdle_entry(mu, y, rel.family, shifts.get(rel.stat, {}).get(pos, 0.0),
+                                                  None if override is None else (override["c0"], override["c1"]))
             out["n_games"][rel.stat][pos] = df.height
         for pos, lender in rel.borrow.items():
             out[rel.stat][pos] = dict(out[rel.stat][lender])
@@ -571,6 +580,13 @@ def dispersion_params(games: pl.DataFrame, totals: pl.DataFrame, shifts: dict[st
 
 
 # ---------------------------------------------------------------- build
+
+
+def calibrated_pi0(out_dir: Path) -> dict:
+    """The P(0) relations params/market_calibration.json overrides at runtime (S5.6), by stat and
+    position: the sd relations must be fitted with them. That file is kept by hand, not written here."""
+    path = out_dir / "market_calibration.json"
+    return json.loads(path.read_text()).get("pi0", {}) if path.exists() else {}
 
 
 def existing_shifts(out_dir: Path) -> dict[str, dict[str, float]]:
@@ -593,7 +609,7 @@ def season_label(seasons: list[int]) -> str:
 
 
 def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: dict[str, dict[str, float]], *, draws: int,
-          today: str) -> dict[str, dict]:
+          today: str, runtime_pi0: dict | None = None) -> dict[str, dict]:
     stamp = f"scripts/build_params.py on {today} from nflverse (CC-BY 4.0) via nflreadpy"
     ps, snaps = raw.player_stats, raw.snap_counts
 
@@ -631,7 +647,7 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
                              "from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); "
                              "shifted-gamma shifts are inputs, not fitted; QB relations on starters (trailing "
                              "4-game pass attempts >= 20); see RELATIONS in the script for the per-position mu floors"),
-                  **dispersion_params(dgames, implied_team_totals(raw.schedules), shifts)}
+                  **dispersion_params(dgames, implied_team_totals(raw.schedules), shifts, runtime_pi0=runtime_pi0)}
     return {"correlation": correlation, "base_rates": base, "dispersion": dispersion}
 
 
@@ -645,7 +661,8 @@ def main(argv: list[str] | None = None) -> int:
 
     seasons, dseasons = parse_seasons(args.seasons), parse_seasons(args.dispersion_seasons)
     raw = load_nflverse(sorted(set(seasons) | set(dseasons)))
-    docs = build(raw, seasons, dseasons, existing_shifts(args.out), draws=args.draws, today=dt.date.today().isoformat())
+    docs = build(raw, seasons, dseasons, existing_shifts(args.out), draws=args.draws, today=dt.date.today().isoformat(),
+                 runtime_pi0=calibrated_pi0(args.out))
     args.out.mkdir(parents=True, exist_ok=True)
     for name, doc in docs.items():
         (args.out / f"{name}.json").write_text(json.dumps(doc, indent=2) + "\n")

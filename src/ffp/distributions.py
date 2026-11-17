@@ -255,8 +255,8 @@ def main_line_only_kappa(stat: str, position: str) -> float:
     """κ: the book-implied sd over the dispersion relation's sd, for a fit with a Main Line only.
 
     Per stat and position from params/market_calibration.json (measured on Kalshi's Ladders,
-    research/backtest-kalshi.md: 0.86 for RB rushing and QB passing yards, 0.94 for WR receiving
-    yards); its "default" (0.93, the pre-Backtest working value) elsewhere.
+    research/backtest-kalshi.md); its "default" (0.93, the pre-Backtest working value) for a stat
+    or position the Backtest didn't measure.
     """
     table = params.load("market_calibration")["main_line_only_kappa"]
     return float(table.get(stat, {}).get(position, table["default"]))
@@ -977,23 +977,33 @@ def fit_passing_tds(points: Sequence[FairPoint]) -> Binomial:
     return _fit_count_mean(points, lambda mu: Binomial(PASS_TD_ATTEMPTS, mu), _PASS_TD_MU_RANGE, "passing TDs")
 
 
+def _int_pin(points: Sequence[FairPoint]) -> FairPoint | None:
+    """The point an interceptions fit is pinned on: the Main Line's when there is one (its Over is
+    two-sided, the best-devigged price, whatever its line), else the 1+ Rung, else none."""
+    main = [p for p in points if p.weight >= MAIN_LINE_WEIGHT]
+    if main:
+        return max(main, key=lambda p: p.weight)
+    return next((p for p in points if p.threshold == 1), None)
+
+
 # The most a 2+/3+ Rung may miss the pinned Poisson by, in logit. Real Rungs are fatter than a
 # Poisson by about 1; more than 3 means bad prices.
 INT_RUNG_TOL = 3.0
 
 
 def fit_interceptions(points: Sequence[FairPoint]) -> Poisson:
-    """Interceptions as Poisson(λ), pinned on the 1+ price: λ = −ln(1 − P(1+ INT)).
+    """Interceptions as Poisson(λ), pinned on one price.
 
-    One parameter, so one price pins it (research Q3), and the 1+ price (the 0.5 Main Line's
-    Over) is the one to use: the 2+ and 3+ Rungs are fatter than a Poisson, and fitting them
-    too pulled λ up (S5.7, Kalshi Backtest: P(1+) read 0.264 against prices of 0.250). Without
-    a 1+ point, λ is fitted to whatever points there are (see _fit_count_mean). FitError when
+    One parameter, so one price pins it (research Q3): the Main Line's Over when there is one
+    (usually 0.5, i.e. the 1+ price; a 1.5 line pins P(2+)), else the 1+ Rung. Fitting the
+    2+ and 3+ Rungs too pulled λ up, since they are fatter than a Poisson (S5.7, Kalshi
+    Backtest: P(1+) read 0.264 against prices of 0.250). With neither, λ is fitted to whatever
+    points there are (see _fit_count_mean). FitError when
     another Rung misses the pinned fit by more than INT_RUNG_TOL in logit.
     """
-    one_plus = [p for p in points if p.threshold == 1]
-    fit = _fit_count_mean(one_plus or points, Poisson, _INT_LAMBDA_RANGE, "interceptions")
-    if one_plus and len(points) > 1:
+    pinned = _int_pin(points)
+    fit = _fit_count_mean([pinned] if pinned else points, Poisson, _INT_LAMBDA_RANGE, "interceptions")
+    if pinned and len(points) > 1:
         x = np.array([p.threshold for p in points], dtype=float)
         miss = np.abs(_residuals(fit, x, logit(np.array([p.prob for p in points]))))
         if miss.max() > INT_RUNG_TOL:

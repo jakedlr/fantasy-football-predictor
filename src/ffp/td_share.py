@@ -18,17 +18,16 @@ once per run with `load_td_history` and look players up by gsis_id.
 """
 
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from ffp import params as _params
+from ffp import weekly
 from ffp.base_rates import POSITIONS, td_rushing_share
-from ffp.players import _present
 
 log = logging.getLogger(__name__)
 
-Row = Mapping[str, object]
-Fetch = Callable[[int], Iterable[Row]]
+Fetch = weekly.Fetch
 
 _COUNTS = ("carries", "targets", "rushing_tds", "receiving_tds")
 
@@ -75,47 +74,24 @@ def load_td_history(
     `season` and `week`), so a Backtest of a past Game sees no stats from it or later.
 
     `fetch(season)` returns nflverse `load_player_stats` weekly rows; it defaults to
-    nflreadpy (network, cached by nflreadpy). Every row counts (REG and POST); nulls
-    count as 0. The rows' `position` is not used: nflverse puts the player's current
-    position on every row. Before week 1 the current season's file doesn't exist
-    yet (a 404 ConnectionError): that season simply has no rows. Any other failure
-    is logged and gives no history at all, so every player gets the position share.
+    nflreadpy (network, cached by nflreadpy; share one `weekly.memoized` fetch between
+    loaders). Every row counts (REG and POST); nulls count as 0. The rows' `position` is
+    not used: nflverse puts the player's current position on every row. Before week 1 the
+    current season's file doesn't exist yet: that season simply has no rows. Any other
+    failure is logged and gives no history at all, so every player gets the position share.
     """
-    fetch = fetch or _nflreadpy_player_stats
     prior = int(_load(params)["td_share"]["prior_seasons"])
-    totals: dict[str, list[float]] = {}
     try:
-        for s in range(season - prior, season + 1):
-            try:
-                rows = fetch(s)
-            except ConnectionError as e:
-                if s == season and "404" in str(e):
-                    continue  # the season hasn't started: no file yet
-                raise
-            for row in rows:
-                pid = row.get("player_id")
-                if not _present(pid):
-                    continue
-                if before is not None and (int(row["season"]), int(row["week"])) >= before:
-                    continue
-                acc = totals.setdefault(str(pid), [0.0] * len(_COUNTS))
-                for i, col in enumerate(_COUNTS):
-                    acc[i] += _count(row.get(col))
+        rows = weekly.fetch_seasons(fetch or weekly.nflreadpy_player_stats, range(season - prior, season + 1), season)
+        stats = weekly.WeeklyStats(r for season_rows in rows.values() for r in season_rows)
     except Exception as e:  # noqa: BLE001 - any data failure degrades to the position share
         log.warning("TD history unavailable (%s); every player's rushing TD share is the position share", e)
         return {}
-    return {pid: TdHistory(*acc) for pid, acc in totals.items()}
+    return td_histories(stats, season, before, params)
 
 
-def _count(value: object) -> float:
-    """A stat from a polars row (number or None) or a CSV row (text, "" or "NA")."""
-    if not _present(value) or str(value).strip().upper() == "NA":
-        return 0.0
-    return float(value)
-
-
-def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network
-    import nflreadpy  # imported here so tests and offline runs never need it
-
-    cols = ["player_id", "season", "week", *_COUNTS]
-    return nflreadpy.load_player_stats(season).select(cols).to_dicts()
+def td_histories(stats: "weekly.WeeklyStats", season: int, before: tuple[int, int] | None = None,
+                 params: Mapping | None = None) -> dict[str, TdHistory]:
+    """`load_td_history` from an already built index (the Backtest asks once per week)."""
+    prior = int(_load(params)["td_share"]["prior_seasons"])
+    return {pid: TdHistory(*t) for pid, t in stats.totals(_COUNTS, season - prior, before).items()}
