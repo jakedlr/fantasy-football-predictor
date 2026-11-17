@@ -154,13 +154,13 @@ Done when a QB, RB, WR and TE each get a full Score Distribution and the suite p
 
 **Research wave:** Kalshi coverage per stat, Oct 2025 → now (settled games, players, Ladders; `/historical` before the 2026-09-17 cutoff and the live endpoints after), bid/ask spreads and which pre-kickoff price to use; Kalshi's API terms for personal research use; the Sleeper scoring that Kalshi's fantasy-points contracts settle on.
 
-**Build wave:** 3 subagents (Kalshi fetcher + cache; backtest runner; `sleeper` preset + scoring metrics).
+**Build wave:** 3 subagents in two steps: the Kalshi source (S5.1) and the `sleeper` preset + outcomes + metrics (S5.3) in parallel, then the backtest runner (S5.2) on their interfaces. The full history pull (~35k requests, resumable) runs after S5.1 merges.
 
 Done when `research/backtest-kalshi.md` reports calibration per stat, position and fantasy points, with proposed recalibrations listed for approval.
 
 - **S5.1 Kalshi fetcher.** Settled markets and the last pre-kickoff candle into git-ignored `data/kalshi/`; each Kalshi Ladder becomes a Prop Market whose Fair Probability is the bid/ask mid (an exchange charges no vig).
-- **S5.2 Backtest runner** (`scripts/backtest_kalshi.py`): the full pipeline on Kalshi's Ladders per Game, scored against nflverse outcomes. Per stat: PIT histograms, P(≥k) reliability, CRPS. Headline: fantasy points under Sleeper scoring, P5–P95 calibration, and our percentiles against Kalshi's own fantasy-points Ladder. Every metric also for an independent-stats baseline (no copula).
-- **S5.3 `sleeper` Scoring Rules preset** matching Kalshi's contract terms, and the shared metric functions.
+- **S5.2 Backtest runner** (`scripts/backtest_kalshi.py`): the full pipeline on Kalshi's Ladders per Game, scored against nflverse outcomes. Per stat: PIT histograms, P(≥k) reliability, CRPS. Headline: fantasy points under Sleeper scoring (2026 only: Kalshi's fantasy-points markets start in Week 1), P5–P95 calibration, and model vs market: our P(points > X) against each KXNFLFFPTS line, and our mean against the KXNFLFFPTSLADDER price (a scalar contract, $0.01 per point). Every metric also for an independent-stats baseline (no copula).
+- **S5.3 `sleeper` Scoring Rules preset** (Sleeper default full PPR, −1 per INT; research/kalshi-fantasy-points.md), nflverse outcomes per player-game, and the shared metric functions.
 - **Findings change nothing automatically.** Each proposed recalibration (dispersion relations, κ, rushing shift, gamma vs lognormal, TD vig prior, conditional receptions→yards, workhorse override) is brought to the user for approval.
 
 ## Backlog (Sprint 5 chosen after Sprint 4; kickers and D/ST likely next)
