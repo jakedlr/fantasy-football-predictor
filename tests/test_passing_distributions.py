@@ -7,6 +7,7 @@ import pytest
 from scipy import stats
 from scipy.special import expit
 
+from ffp.distributions import main_line_only_kappa as kappa
 from ffp import params
 from ffp.distributions import (
     PASS_TD_ATTEMPTS,
@@ -166,7 +167,7 @@ def test_main_line_only_fit_reproduces_the_main_line(line, over, under):
     p = fair_over(over, under)
     fit = fit_passing_yards([FairPoint(math.floor(line) + 1, p, 3.0)])
     assert fit.sf(np.array([line]))[0] == pytest.approx(p, abs=1e-9)
-    assert fit.sd == pytest.approx(0.93 * passing_yards_sd_relation(fit.mean), rel=1e-9)
+    assert fit.sd == pytest.approx(kappa("passing_yards", "QB") * passing_yards_sd_relation(fit.mean), rel=1e-9)
     assert fit.pi0 == pytest.approx(passing_yards_pi0_relation(fit.mean))
     assert line - 15 < fit.mean < line + 15
 

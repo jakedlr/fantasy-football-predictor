@@ -142,7 +142,9 @@ class _YardsParams:
 
 @cache
 def _yards_params(stat: str, position: str) -> _YardsParams:
-    """The stat's relations for the position, from params/dispersion.json (scripts/build_params.py)."""
+    """The stat's relations for the position, from params/dispersion.json (scripts/build_params.py).
+    A P(0) relation in params/market_calibration.json (refitted on players the market priced)
+    replaces the nflverse-proxy one."""
     table = params.load("dispersion")[stat]
     try:
         p = table[position]
@@ -150,7 +152,8 @@ def _yards_params(stat: str, position: str) -> _YardsParams:
         raise ValueError(
             f"no {stat.replace('_', '-')} model for position {position!r} ({', '.join(table)})"
         ) from None
-    return _YardsParams(p["pi0_c0"], p["pi0_c1"], p["sd_a"], p["sd_b"], p["shift"])
+    pi0 = params.load("market_calibration")["pi0"].get(stat, {}).get(position, {})
+    return _YardsParams(pi0.get("c0", p["pi0_c0"]), pi0.get("c1", p["pi0_c1"]), p["sd_a"], p["sd_b"], p["shift"])
 
 
 def _receiving_params(position: str) -> _YardsParams:
@@ -246,7 +249,19 @@ FIT_LAMBDA = FIT_TAU**2 / FIT_SIGMA_P**2  # ≈ 0.44, weight of the prior agains
 # the relation with P(0 receptions) from the receptions market.
 FIT_SIGMA_PI0 = 0.5
 FIT_LAMBDA_PI0 = FIT_TAU**2 / FIT_SIGMA_PI0**2  # = 0.04
-MAIN_LINE_ONLY_KAPPA = 0.93  # book-implied sd ≈ 0.93 × the nflverse-proxy relation
+
+
+def main_line_only_kappa(stat: str, position: str) -> float:
+    """κ: the book-implied sd over the dispersion relation's sd, for a fit with a Main Line only.
+
+    Per stat and position from params/market_calibration.json (measured on Kalshi's Ladders,
+    research/backtest-kalshi.md: 0.86 for RB rushing and QB passing yards, 0.94 for WR receiving
+    yards); its "default" (0.93, the pre-Backtest working value) elsewhere.
+    """
+    table = params.load("market_calibration")["main_line_only_kappa"]
+    return float(table.get(stat, {}).get(position, table["default"]))
+
+
 _SF_CLIP = 1e-12
 _MU_RANGE = (1.0, 500.0)  # mu the model allows, yards: the root-find bracket and the fit's bounds
 _PI0_MAX = 1 - 1e-6  # keeps 1 − pi0 away from 0 in the fit
@@ -292,7 +307,7 @@ def _fit_main_line_only(stat: str, point: FairPoint, position: str, pi0: float |
 
     def dist(ln_mu: float) -> HurdleShiftedGamma:
         mu = math.exp(ln_mu)
-        sd = MAIN_LINE_ONLY_KAPPA * _yards_sd_relation(stat, mu, position, pi0)
+        sd = main_line_only_kappa(stat, position) * _yards_sd_relation(stat, mu, position, pi0)
         return _yards(stat, mu, sd, position, pi0, family)
 
     def error(ln_mu: float) -> float:
@@ -336,7 +351,7 @@ def fit_receiving_yards(
     evaluates the continuous part at x − ½ (the 0.5 continuity correction).
 
     With a single point (a Main Line only), pi0 stays on its relation (or the given
-    pi0), sd is fixed at 0.93·sd_rel(mu), and mu is root-found to reproduce the point.
+    pi0), sd is fixed at κ·sd_rel(mu) (`main_line_only_kappa`), and mu is root-found to reproduce the point.
     """
     return _fit_yards(RECEIVING_YARDS, points, position, pi0)
 
@@ -858,7 +873,7 @@ def _fit_passing_main_line_only(point: FairPoint, position: str) -> HurdleNormal
 
     def dist(ln_mu: float) -> HurdleNormal:
         mu = math.exp(ln_mu)
-        return passing_yards(mu, MAIN_LINE_ONLY_KAPPA * passing_yards_sd_relation(mu, position), position)
+        return passing_yards(mu, main_line_only_kappa("passing_yards", position) * passing_yards_sd_relation(mu, position), position)
 
     def error(ln_mu: float) -> float:
         return _logit_sf(dist(ln_mu), x)[0] - target
@@ -880,7 +895,7 @@ def fit_passing_yards(points: Sequence[FairPoint], position: str = "QB") -> Hurd
         Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ (ln sd − ln sd_rel(mu, pi0))² + λ₀ δ²
 
     by Nelder-Mead from the Main-Line-only fit. With a single point (a Main Line
-    only), pi0 stays on its relation, sd = 0.93·sd_rel(mu), and mu is root-found to
+    only), pi0 stays on its relation, sd = κ·sd_rel(mu) (`main_line_only_kappa`), and mu is root-found to
     reproduce the point exactly.
     """
     return _fit_passing_yards(points, position, FIT_LAMBDA)

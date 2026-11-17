@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from scipy.special import expit
 
+from ffp.distributions import main_line_only_kappa as kappa
 from ffp import params
 from ffp.distributions import (
     FitError,
@@ -111,7 +112,7 @@ def test_fit_recovers_a_distribution_on_the_relation(position, mu, rungs, main):
 def test_main_line_only_reproduces_the_main_line_exactly():
     fit = fit_rushing_yards([FairPoint(82, 0.48, 3.0)], "RB")  # Henry, Over 81.5
     assert fit.sf(np.array([82]))[0] == pytest.approx(0.48, abs=1e-9)
-    assert fit.sd == pytest.approx(0.93 * sd_relation(fit.mean, "RB"), rel=1e-9)
+    assert fit.sd == pytest.approx(kappa("rushing_yards", "RB") * sd_relation(fit.mean, "RB"), rel=1e-9)
     assert fit.pi0 == pytest.approx(pi0_relation(fit.mean, "RB"), rel=1e-9)
 
 

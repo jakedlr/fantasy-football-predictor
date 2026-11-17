@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy.special import expit
 
+from ffp.distributions import main_line_only_kappa as kappa
 from ffp import params
 from ffp.distributions import fit_receiving_yards, receiving_yards
 from ffp.fair import FairPoint
@@ -151,7 +152,7 @@ def test_main_line_only_reproduces_the_main_line_probability_exactly():
     fit = fit_receiving_yards(pts, "WR")
 
     assert fit.sf(np.array([53]))[0] == pytest.approx(0.47, abs=1e-9)
-    assert fit.sd == pytest.approx(0.93 * sd_relation(fit.mean, "WR"), rel=1e-9)
+    assert fit.sd == pytest.approx(kappa("receiving_yards", "WR") * sd_relation(fit.mean, "WR"), rel=1e-9)
 
 
 def test_fit_rejects_other_positions():
@@ -307,3 +308,29 @@ def test_coefficient_lookups_are_built_once():
 
     assert _receiving_params("WR") is _receiving_params("WR")
     assert _receptions_params("WR") is _receptions_params("WR")
+
+
+def test_kappa_is_per_stat_and_position_with_a_default():
+    # S5.5 (Kalshi Backtest): the market prices RB rushing and QB passing yards narrower than the
+    # relations, WR receiving yards as before; a stat or position it didn't measure gets the default.
+    table = params.load("market_calibration")["main_line_only_kappa"]
+    assert kappa("rushing_yards", "RB") == table["rushing_yards"]["RB"] < 0.9
+    assert kappa("passing_yards", "QB") == table["passing_yards"]["QB"] < 0.9
+    assert kappa("receiving_yards", "WR") == pytest.approx(0.94, abs=0.03)
+    assert kappa("rushing_yards", "WR") == table["default"] == 0.93
+
+
+def test_a_market_calibrated_p0_relation_replaces_the_nflverse_one(monkeypatch):
+    from ffp import distributions as D
+
+    cal = {**params.load("market_calibration"), "pi0": {"rushing_yards": {"RB": {"c0": 4.0, "c1": -2.5}}}}
+    real = params.load
+    monkeypatch.setattr(params, "load", lambda name: cal if name == "market_calibration" else real(name))
+    D._yards_params.cache_clear()
+    try:
+        assert D.rushing_yards_pi0_relation(20.0, "RB") == pytest.approx(expit(4.0 - 2.5 * math.log(20.0)))
+        # A position with no entry keeps the dispersion.json relation.
+        p = real("dispersion")["rushing_yards"]["QB"]
+        assert D.rushing_yards_pi0_relation(20.0, "QB") == pytest.approx(expit(p["pi0_c0"] + p["pi0_c1"] * math.log(20.0)))
+    finally:
+        D._yards_params.cache_clear()
