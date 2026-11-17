@@ -131,7 +131,7 @@ python scripts/backtest_kalshi.py --root data/kalshi --jobs 8   # [--out data/ba
                                                                # [--samples 4000] [--seed N] [--limit N] [--no-diagnostics]
 ```
 
-For each player-game with Kalshi Rungs it runs the production fit and simulation (`predict.fit_player` and `score_player`, with Kalshi's bid/ask mids as the Fair Probabilities and the `sleeper` preset). It uses no look-ahead: the position comes from that week's nflverse roster, and the TD share from history before the Game. Each Score Distribution is simulated twice with the same seed, once through the copula and once with independent stats as the baseline. Both are scored against nflverse outcomes. Outcomes and rosters come from `nflreadpy`, which needs the network once and then reads its cache.
+For each player-game with Kalshi Rungs it runs the production fit and simulation (`predict.fit_player` and `score_player`, with Kalshi's bid/ask mids as the Fair Probabilities and the `sleeper` preset). It uses no look-ahead: the position comes from that week's nflverse roster, and the TD share from history before the Game. Each Score Distribution is simulated twice with the same seed, once through the copula and once with independent stats as the baseline. Both are scored against nflverse outcomes. A player with offensive snaps but no stat row is scored as all zeros. Outcomes, rosters and snap counts come from `nflreadpy`, which needs the network once and then reads its cache.
 
 The run writes three files to `--out` (git-ignored):
 

@@ -19,7 +19,9 @@ For each (Game, player) with usable Kalshi Rungs (`ffp.sources.kalshi.load_rungs
    - The TD share comes from `load_td_history(before=(season, week))`.
    - The trailing carry share is the mean over the player's previous 2–4 games of that season.
    - The model parameters are not free of look-ahead. Dispersion relations were fitted on 2015–2021 nflverse data, and the correlation matrices and Base Rates on 2021–2025. **2025 games overlap the correlation and Base Rate seasons.** Results are therefore also shown for 2026 alone, which is fully out of sample.
-4. **Outcomes** come from `outcomes.load_outcomes`, keyed by (game_id, gsis_id). A player with no row didn't play: he is counted as `dnp` and excluded.
+4. **Outcomes** come from `outcomes.load_outcomes`, keyed by (game_id, gsis_id).
+   - nflverse player stats have no row for a player who played without recording a stat, such as a blocking TE or a WR who was never targeted. On a 300-player-game trial, 9 of the "missing" rows were players like this; Keon Coleman had 39 offensive snaps. Such a player-game is scored as an all-zero outcome when nflverse snap counts show offensive snaps.
+   - A player with neither a stat row nor snaps didn't play: he is counted as `dnp` and excluded.
 5. **Metrics** come from `ffp.metrics`:
    - **Per stat:** randomized PIT; CRPS; Brier and reliability of our P(Y ≥ k) at Kalshi's thresholds, next to the raw mid's; the fit residual (RMSE in logit of our S(k) against the mids).
    - **Per player, fantasy points:** P5–P95 and P25–P75 coverage, PIT, CRPS and pinball loss. Our P(points > line) is compared against KXNFLFFPTS, and our mean against KXNFLFFPTSLADDER.

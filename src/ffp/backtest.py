@@ -9,7 +9,8 @@ Per (Game, player) with Kalshi Rungs:
    with Kalshi's mids as the Fair Probabilities -> `predict.score_player` under the `sleeper`
    preset, with the position's copula and with independent stats (the baseline), same seed.
 3. One JSON record per player-game (`evaluate`), cached as JSONL so a run resumes (`run`).
-   A player with no nflverse row didn't play: his record says "dnp" and nothing is scored.
+   A player with no nflverse stat row but offensive snaps played without a stat: an all-zero
+   outcome. One with neither didn't play: his record says "dnp" and nothing is scored.
 4. `summarize` pools the records into the report's tables; `render_tables` writes them as
    Markdown.
 
@@ -26,7 +27,7 @@ import math
 import time
 import zlib
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence, Set
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -45,7 +46,7 @@ from ffp.distributions import (
     rushing_yards_sd_relation,
 )
 from ffp.fair import KALSHI_PRIOR_C, PROB_FLOOR
-from ffp.outcomes import fantasy_points
+from ffp.outcomes import OUTCOME_STATS, fantasy_points
 from ffp.predict import (
     MODELED_POSITIONS,
     NO_CORRELATION,
@@ -178,6 +179,7 @@ class Task:
     carry_share: float | None = None
     line: tuple[float, float] | None = None  # KXNFLFFPTS (line, mid)
     market_mean: float | None = None  # KXNFLFFPTSLADDER expected points
+    no_stat_row: bool = False  # played (offensive snaps) but has no stat row: an all-zero outcome
 
 
 @dataclass
@@ -190,6 +192,15 @@ class Context:
     carry_shares: Mapping[tuple[str, str], float] = field(default_factory=dict)
     lines: Mapping[tuple[str, str], KalshiFantasyLine] = field(default_factory=dict)
     means: Mapping[tuple[str, str], KalshiFantasyMean] = field(default_factory=dict)
+    played: Set[tuple[str, str]] = field(default_factory=set)  # (game_id, gsis_id) with offensive snaps
+
+
+def played_games(snaps: Iterable[Mapping], roster: Iterable[Mapping]) -> set[tuple[str, str]]:
+    """(game_id, gsis_id) of every player with an offensive snap, from nflverse snap counts
+    (keyed by PFR id) and roster rows mapping `pfr_id` to `gsis_id`."""
+    gsis = {str(r["pfr_id"]): str(r["gsis_id"]) for r in roster if r.get("pfr_id") and r.get("gsis_id")}
+    return {(str(s["game_id"]), gsis[str(s["pfr_player_id"])]) for s in snaps
+            if _num(s.get("offense_snaps")) > 0 and str(s.get("pfr_player_id")) in gsis}
 
 
 def tasks(games: Iterable[PlayerGame], ctx: Context) -> tuple[list[Task], list[dict]]:
@@ -204,9 +215,12 @@ def tasks(games: Iterable[PlayerGame], ctx: Context) -> tuple[list[Task], list[d
         key = (pg.game_id, pg.gsis_id)
         share = rushing_td_share(position, ctx.td_history(pg.season, pg.week).get(pg.gsis_id))
         line, mean = ctx.lines.get(key), ctx.means.get(key)
-        out.append(Task(pg, position, share, ctx.outcomes.get(key), ctx.carry_shares.get(key),
+        outcome, no_row = ctx.outcomes.get(key), False
+        if outcome is None and key in ctx.played:
+            outcome, no_row = {stat: 0.0 for stat in OUTCOME_STATS}, True
+        out.append(Task(pg, position, share, outcome, ctx.carry_shares.get(key),
                         None if line is None else (line.line, line.mid),
-                        None if mean is None else mean.expected_points))
+                        None if mean is None else mean.expected_points, no_row))
     return out, skipped
 
 
@@ -253,7 +267,7 @@ def _evaluate(task: Task, samples: int, seed: int, diagnostics: bool) -> dict:
         return _record(pg, position, UNFITTABLE, errors=fitted.errors, **base)
     rng = np.random.default_rng([seed, zlib.crc32(pg.key.encode())])
     complete = not any(f.startswith("incomplete") for f in fitted.flags)
-    record = _record(pg, position, OK, flags=fitted.flags, complete=complete, **base)
+    record = _record(pg, position, OK, flags=fitted.flags, complete=complete, no_stat_row=task.no_stat_row, **base)
     record["stats"] = {
         stat: _stat_record(stat, dist, pg, fair[stat], task.outcome, position, fitted, rng, diagnostics)
         for stat, dist in _evaluated(fitted).items()
@@ -617,6 +631,7 @@ def _counts(records) -> dict:
             "by_season": {str(k): dict(v) for k, v in sorted(by_season.items())},
             "ok_by_position": {f"{p} {s}": len(g) for (p, s), g in _by(ok, "position", "season").items()},
             "games": len({r["game_id"] for r in records}), "players": len({r["gsis_id"] for r in records}),
+            "no_stat_row": sum(bool(r.get("no_stat_row")) for r in ok),
             "flags": dict(_flag_counts(ok))}
 
 
@@ -750,7 +765,8 @@ def render_tables(summary: dict) -> str:
     statuses = sorted({k for v in c["by_season"].values() for k in v})
     for season, v in c["by_season"].items():
         out.append(f"| {season} | " + " | ".join(str(v.get(s, 0)) for s in statuses) + " |")
-    out += ["", "Scored player-games by position: " + ", ".join(f"{k} {v}" for k, v in c["ok_by_position"].items()) + ".",
+    out += ["", f"Scored with an all-zero outcome (offensive snaps, no nflverse stat row): {c['no_stat_row']}.",
+            "", "Scored player-games by position: " + ", ".join(f"{k} {v}" for k, v in c["ok_by_position"].items()) + ".",
             "", "Flags on scored player-games: " + "; ".join(f"{k} ×{v}" for k, v in c["flags"].items()) + ".", ""]
 
     out += ["### Fantasy points (Sleeper)", "",
@@ -854,15 +870,17 @@ def render_tables(summary: dict) -> str:
 # --- loading the real inputs (network through nflreadpy, cached by it) -------------------
 
 
-def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_fetch=None) -> Context:
-    """The Context for Kalshi's cache at `root`: nflverse weekly player stats and rosters for
-    `seasons` (plus the TD-history seasons before them), Kalshi's fantasy-points records."""
+def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_fetch=None,
+                 snaps_fetch=None) -> Context:
+    """The Context for Kalshi's cache at `root`: nflverse weekly player stats, rosters and snap
+    counts for `seasons` (plus the TD-history seasons before them), Kalshi's fantasy-points records."""
     from ffp.outcomes import load_outcomes
     from ffp.sources.kalshi import load_fantasy_lines, load_fantasy_means
     from ffp.td_share import load_td_history
 
     stats_fetch = stats_fetch or _nflreadpy_player_stats
     rosters_fetch = rosters_fetch or _nflreadpy_rosters_weekly
+    snaps_fetch = snaps_fetch or _nflreadpy_snap_counts
     prior = int(params.load("base_rates")["td_share"]["prior_seasons"])
     rows: dict[int, list] = {}
 
@@ -884,10 +902,12 @@ def load_context(root: Path, seasons: Sequence[int], stats_fetch=None, rosters_f
 
     for s in range(min(seasons) - prior, max(seasons) + 1):
         fetch(s)
-    positions = Positions(row for s in seasons for row in rosters_fetch(s))
+    roster = [row for s in seasons for row in rosters_fetch(s)]
+    played = played_games([row for s in seasons for row in snaps_fetch(s)], roster)
     key = lambda r: (r.game_id, r.gsis_id)  # noqa: E731
-    return Context(positions, outcomes, td_history, shares,
-                   {key(r): r for r in load_fantasy_lines(root)}, {key(r): r for r in load_fantasy_means(root)})
+    return Context(Positions(roster), outcomes, td_history, shares,
+                   {key(r): r for r in load_fantasy_lines(root)}, {key(r): r for r in load_fantasy_means(root)},
+                   played)
 
 
 def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - network
@@ -899,7 +919,14 @@ def _nflreadpy_player_stats(season: int) -> list[dict]:  # pragma: no cover - ne
 def _nflreadpy_rosters_weekly(season: int) -> list[dict]:  # pragma: no cover - network
     import nflreadpy
 
-    return nflreadpy.load_rosters_weekly(season).select(["season", "week", "gsis_id", "position"]).to_dicts()
+    cols = ["season", "week", "gsis_id", "position", "pfr_id"]
+    return nflreadpy.load_rosters_weekly(season).select(cols).to_dicts()
+
+
+def _nflreadpy_snap_counts(season: int) -> list[dict]:  # pragma: no cover - network
+    import nflreadpy
+
+    return nflreadpy.load_snap_counts(season).select(["game_id", "pfr_player_id", "offense_snaps"]).to_dicts()
 
 
 def to_json(summary: dict) -> str:
@@ -911,7 +938,7 @@ def to_json(summary: dict) -> str:
 DEFAULT_OUT = Path("data") / "backtest"  # git-ignored
 
 
-def main(argv: Sequence[str] | None = None, stats_fetch=None, rosters_fetch=None) -> int:
+def main(argv: Sequence[str] | None = None, stats_fetch=None, rosters_fetch=None, snaps_fetch=None) -> int:
     """Run the Kalshi Backtest; write records.jsonl (the resumable cache), summary.json and tables.md."""
     import argparse
 
@@ -934,7 +961,7 @@ def main(argv: Sequence[str] | None = None, stats_fetch=None, rosters_fetch=None
 
     games = [pg for pg in player_games(load_rungs(args.root)) if pg.season in args.seasons][: args.limit]
     log.info("loading nflverse for %s", args.seasons)
-    ctx = load_context(args.root, args.seasons, stats_fetch, rosters_fetch)
+    ctx = load_context(args.root, args.seasons, stats_fetch, rosters_fetch, snaps_fetch)
     todo, skipped = tasks(games, ctx)
     records = run(todo, args.out / "records.jsonl", args.samples, args.seed, not args.no_diagnostics, args.jobs)
     summary = summarize(records + skipped)

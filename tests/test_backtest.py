@@ -128,6 +128,25 @@ def test_tasks_take_the_td_share_from_history_before_the_game_and_the_fantasy_ma
     assert task.market_mean == pytest.approx(21.5)
 
 
+def test_a_player_with_snaps_but_no_stat_row_scored_zero(games):
+    # nflverse player stats have no row for a player who played without touching the ball
+    # (a blocking TE, a WR never targeted): that is an all-zero outcome, not a DNP.
+    c, _ = ctx({})
+    c.played = {(GAME, CHASE)}
+    [task], _ = tasks([games[CHASE]], c)
+    assert task.outcome == outcome() and task.no_stat_row
+    record = evaluate(task, samples=300, diagnostics=False)
+    assert record["status"] == OK and record["no_stat_row"] and record["stats"]["receptions"]["y"] == 0
+
+
+def test_snap_counts_map_to_gsis_ids_through_the_roster_pfr_id():
+    snaps = [{"game_id": "G1", "pfr_player_id": "ChasJa00", "offense_snaps": 40.0},
+             {"game_id": "G1", "pfr_player_id": "BlocTE00", "offense_snaps": 0.0},  # special teams only
+             {"game_id": "G1", "pfr_player_id": "Unknown00", "offense_snaps": 10.0}]
+    roster = [{"gsis_id": CHASE, "pfr_id": "ChasJa00"}, {"gsis_id": "P2", "pfr_id": "BlocTE00"}]
+    assert backtest.played_games(snaps, roster) == {("G1", CHASE)}
+
+
 # --- one player-game ------------------------------------------------------------------------
 
 
@@ -299,7 +318,8 @@ def test_main_runs_the_backtest_and_writes_the_tables_and_summary(root, tmp_path
     weekly = {2026: [{"season": 2026, "week": 10, "gsis_id": CHASE, "position": "WR"}]}
     out = tmp_path / "bt"
     code = backtest.main(["--root", str(root), "--out", str(out), "--samples", "300", "--seasons", "2026"],
-                         stats_fetch=lambda s: stats.get(s, []), rosters_fetch=lambda s: weekly.get(s, []))
+                         stats_fetch=lambda s: stats.get(s, []), rosters_fetch=lambda s: weekly.get(s, []),
+                         snaps_fetch=lambda s: [])
     assert code == 0
     assert (out / "records.jsonl").exists()
     summary = json.loads((out / "summary.json").read_text())
