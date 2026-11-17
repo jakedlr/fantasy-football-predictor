@@ -67,6 +67,7 @@ log = logging.getLogger(__name__)
 RULES: ScoringRules = PRESETS["sleeper"]  # what KXNFLFFPTS and KXNFLFFPTSLADDER settle on
 PRIOR_C = {"kalshi": KALSHI_PRIOR_C}  # an exchange's mid is its Fair Probability
 DEFAULT_SAMPLES = 4000
+RECORD_VERSION = 2  # bump when a record's content changes for the same inputs: the cache recomputes
 DEFAULT_SEED = 20261116
 PERCENTILES = (5, 10, 25, 50, 75, 90, 95)
 YARDS_STATS = ("receiving_yards", "rushing_yards", "passing_yards")
@@ -235,7 +236,7 @@ def _record(pg: PlayerGame, position: str | None, status: str, **extra) -> dict:
 def fingerprint(task: Task, samples: int, seed: int, diagnostics: bool) -> str:
     """A hash of everything a record is computed from: a cached record with another is stale."""
     inputs = [[asdict(r) for r in task.game.rungs], task.position, task.share, task.outcome, task.carry_share,
-              task.line, task.market_mean, samples, seed, diagnostics]
+              task.line, task.market_mean, samples, seed, diagnostics, RECORD_VERSION]
     return f"{zlib.crc32(json.dumps(inputs, sort_keys=True).encode()):08x}"
 
 
@@ -387,16 +388,21 @@ def _points_record(task: Task, fitted: Fitted, samples: int, seed: int, rng) -> 
 JOINT_PAIRS = (("receptions", "receiving_yards"), ("rushing_yards", "receptions"), ("rushing_yards", "receiving_yards"))
 
 
+# Joint draws kept per player-game, out of a simulation of JOINT_POOL: the Rec = 0 coupling re-ranks
+# receiving yards within one simulation, so a simulation of 1 would put them at their median.
+JOINT_DRAWS, JOINT_POOL = 20, 2000
+
+
 def _joint_draw(position: str, fitted: Fitted, rng) -> dict:
-    """One joint draw of the player's stats from the copula, as randomized PITs under their own
-    margins: across player-games, the correlation of these is what the model expects of the
+    """JOINT_DRAWS joint draws of the player's stats from the copula, as randomized PITs under their
+    own margins: pooled over player-games, their correlation is what the model expects of the
     outcomes' PITs (the randomization and Rec = 0 rule weaken it below the latent rho)."""
     dists = stat_distributions(position, fitted)
     wanted = {s for pair in JOINT_PAIRS for s in pair if s in dists}
     if len(wanted) < 2:
         return {}
-    draw = sample_joint(dists, 1, rng, params.correlation(position))
-    return {s: metrics.randomized_pit(dists[s], int(draw[s][0]), rng) for s in sorted(wanted)}
+    draw = sample_joint(dists, JOINT_POOL, rng, params.correlation(position))
+    return {s: [metrics.randomized_pit(dists[s], int(y), rng) for y in draw[s][:JOINT_DRAWS]] for s in sorted(wanted)}
 
 
 # --- the run ----------------------------------------------------------------------------
@@ -712,7 +718,8 @@ def _joint(ok) -> dict:
                     continue
                 out[f"{pos} {name} {STAT_LABELS[a]}–{STAT_LABELS[b]}"] = {
                     "n": len(both), "observed": observed, "latent_rho": rho,
-                    "model": _normal_score_corr([r["joint"][a] for r in sim], [r["joint"][b] for r in sim]),
+                    "model": _normal_score_corr([u for r in sim for u in r["joint"][a]],
+                                                [u for r in sim for u in r["joint"][b]]),
                     "se": 1 / math.sqrt(max(len(both) - 3, 1))}
     return out
 

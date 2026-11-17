@@ -187,6 +187,17 @@ def test_a_record_holds_both_score_distributions_and_the_fantasy_markets(chase_r
     assert pts["copula"]["pct"]["95"] - pts["copula"]["pct"]["5"] > pts["independent"]["pct"]["95"] - pts["independent"]["pct"]["5"]
 
 
+def test_the_copula_draws_are_spread_over_each_margin(chase_record):
+    # Regression: one joint draw of n = 1 put receiving yards at their median every time (the Rec = 0
+    # coupling re-ranks the catch games within the draw), which faked a weak Rec-RecYd dependence.
+    _, record = chase_record
+    joint = record["joint"]
+    assert len(joint["receptions"]) == len(joint["receiving_yards"]) == backtest.JOINT_DRAWS
+    assert np.std(joint["receiving_yards"]) > 0.15  # U(0, 1) has sd 0.29
+    za, zb = (np.array(joint[s]) for s in ("receptions", "receiving_yards"))
+    assert np.corrcoef(za, zb)[0, 1] > 0.3
+
+
 def test_a_record_is_reproducible(chase_record):
     task, record = chase_record
     assert evaluate(task, samples=2000, seed=11) == record
