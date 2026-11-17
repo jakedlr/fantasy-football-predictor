@@ -167,6 +167,19 @@ def test_crps_integer_with_negative_support():
     assert crps_integer(dist, -1, upper=5, lower=-10) == pytest.approx(0.375)
 
 
+def test_metrics_take_the_models_own_rushing_yards_distribution():
+    # A real Stat Distribution with negative support (shift 10): CRPS and PIT agree with
+    # the same quantities computed from its samples.
+    from ffp.distributions import rushing_yards
+
+    dist = rushing_yards(65.0, 30.0, "RB")
+    rng = np.random.default_rng(10)
+    x = dist.ppf(rng.uniform(size=100_000))
+    assert crps_integer(dist, 40, upper=400, lower=-20) == pytest.approx(crps_from_samples(x, 40), rel=0.01)
+    pit = randomized_pit(dist, 40, rng)
+    assert np.mean(x < 40) <= pit <= np.mean(x <= 40) + 0.01
+
+
 # --- reliability and Brier --------------------------------------------------
 
 
