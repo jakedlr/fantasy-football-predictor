@@ -187,3 +187,68 @@ def test_sleeper_preset_scores_qb_game():
         "fumbles_lost": 1,
     }
     assert score(line, load_rules("sleeper")) == pytest.approx(26.58)
+
+
+# --- S6.1: kickers and D/ST ---------------------------------------------------------
+
+import numpy as np  # noqa: E402
+
+from ffp.scoring import PRESETS, points_allowed, score_dst, score_kicker  # noqa: E402
+
+
+def test_kicker_scores_fgs_by_distance_and_pats():
+    # 3 PATs, FGs of 33, 47 and 52 yards, one miss: 3 + (3 + 4 + 5) - 1 = 14.
+    line = {"pat_made": 3, "fg_missed": 1, "fg_made_yards": [33, 47, 52, np.nan]}
+    assert score_kicker(line, load_rules(ESPN_FILE)) == 14.0
+
+
+def test_kicker_samples_score_row_by_row():
+    line = {"pat_made": np.array([1, 2]), "pat_missed": np.array([1, 0]),
+            "fg_made_yards": np.array([[61.0, np.nan], [20.0, 30.0]])}
+    # Sleeper: 1 - 1 + 6 = 6; 2 + 3 + 3 = 8. ESPN's league: no missed-PAT penalty, 60+ is 6.
+    assert list(score_kicker(line, load_rules("sleeper"))) == [6.0, 8.0]
+    assert list(score_kicker(line, load_rules(ESPN_FILE))) == [7.0, 8.0]
+    # ESPN's default kicker tops out at 5 for 50+.
+    assert list(score_kicker(line, load_rules("standard"))) == [6.0, 8.0]
+
+
+DST_LINE = {"sacks": 3, "interceptions": 1, "forced_fumbles": 1, "points_allowed_all": 20,
+            "opponent_defensive_tds_points": 7, "opponent_return_tds_points": 0, "yards_allowed": 310}
+
+
+def test_dst_scores_counts_and_tiers():
+    # ESPN league: 3 sacks + 2 INT; Points Allowed 13 (a pick-six left out) -> 3; 310 yards -> 0.
+    assert score_dst(DST_LINE, load_rules(ESPN_FILE)) == 8.0
+    # Sleeper: 3 + 2 + 1 forced fumble; 13 -> 4; no yards tiers.
+    assert score_dst(DST_LINE, load_rules("sleeper")) == 10.0
+
+
+def test_points_allowed_exclusions(tmp_path):
+    rules = load_rules("sleeper")
+    assert points_allowed(DST_LINE, rules) == 13
+    data = {"name": "all-points", "offense": {}, "dst": {"points_allowed_excludes": [],
+                                                         "points_allowed_tiers": [{"min": 0, "max": None, "points": 0}]}}
+    assert points_allowed(DST_LINE, load_rules(write_rules(tmp_path, data))) == 20
+
+
+def test_dst_tiers_cover_negative_yards_and_the_open_top():
+    rules = load_rules(ESPN_FILE)
+    yards = np.array([-12, 99, 100, 549, 900])
+    got = score_dst({"points_allowed_all": np.full(5, 50), "yards_allowed": yards}, rules)
+    assert list(got) == [5 - 5, 5 - 5, 3 - 5, -6 - 5, -7 - 5]
+
+
+def test_every_preset_scores_kickers_and_dst():
+    for rules in PRESETS.values():
+        assert rules.kicker["fg_made_by_distance"] and rules.dst["points_allowed_tiers"]
+
+
+@pytest.mark.parametrize("section, bad, match", [
+    ("kicker", {"pat_made": 1, "field_goals": 3}, "unknown kicker rule"),
+    ("dst", {"points_allowed_excludes": ["everything"]}, "points_allowed_excludes"),
+    ("dst", {"points_allowed_tiers": [{"min": 7, "max": None, "points": 0}, {"min": 0, "max": 6, "points": 4}]},
+     "only the last tier"),
+])
+def test_bad_kicker_or_dst_rules_are_rejected(tmp_path, section, bad, match):
+    with pytest.raises(ValueError, match=match):
+        load_rules(write_rules(tmp_path, {"name": "bad", "offense": {}, section: bad}))

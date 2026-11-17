@@ -74,10 +74,10 @@ def test_both_books_fit_one_stat_distribution(nflverse, books):
     assert by_threshold[72] >= 3 and by_threshold[70] >= 3
 
 
-def test_a_kicker_is_still_skipped_as_unsupported(nflverse, books):
+def test_kickers_and_dst_are_modelled(nflverse, books):
     from ffp.predict import MODELED_POSITIONS
 
-    assert set(MODELED_POSITIONS) == {"QB", "RB", "WR", "TE"}
+    assert set(MODELED_POSITIONS) == {"QB", "RB", "WR", "TE", "K", "DST"}
 
 
 def test_an_unknown_name_is_skipped_with_the_resolution_error(nflverse, books):

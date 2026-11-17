@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-"""Regenerate src/ffp/params/{dispersion,correlation,base_rates}.json from nflverse.
+"""Regenerate src/ffp/params/{dispersion,correlation,base_rates,kicker,dst_games}.json from nflverse.
 
     python scripts/build_params.py [--out src/ffp/params] [--seasons 2021-2025]
-                                   [--dispersion-seasons 2015-2021] [--draws 40000]
+                                   [--dispersion-seasons 2015-2021] [--dst-seasons 2015-2025]
+                                   [--draws 40000]
 
 Methods follow research/nflverse-data.md (section 3: correlations; section 4: Base
 Rates) and research/stat-distributions.md (Q2/Q4: dispersion relations). The pieces
@@ -136,6 +137,8 @@ class Raw:
     # Play-by-play rush attempts (season, season_type, rusher_player_id, rushing_yards,
     # two_point_attempt) in the dispersion seasons: per-carry yards (S5.10). None skips them.
     rush_plays: pl.DataFrame | None = None
+    # Play-by-play, DST_PLAY_COLUMNS only, in the D/ST seasons: the Analog Games (S6.4). None skips them.
+    dst_plays: pl.DataFrame | None = None
 
 
 def parse_seasons(text: str) -> list[int]:
@@ -147,17 +150,26 @@ def parse_seasons(text: str) -> list[int]:
     return sorted(out)
 
 
-def load_nflverse(seasons: list[int], pbp_seasons: list[int]) -> Raw:  # pragma: no cover - network
+def load_nflverse(seasons: list[int], pbp_seasons: list[int], dst_seasons: list[int]) -> Raw:  # pragma: no cover - network
     import nflreadpy as nfl
 
     nfl.config.update_config(cache_mode="filesystem")
     rush_cols = ["season", "season_type", "rusher_player_id", "rushing_yards", "two_point_attempt"]
+    all_seasons = sorted(set(seasons) | set(dst_seasons))
+    rush, dst = [], []
+    for season in sorted(set(pbp_seasons) | set(dst_seasons)):  # one season at a time: pbp is wide
+        pbp = nfl.load_pbp([season])
+        if season in pbp_seasons:
+            rush.append(pbp.filter(pl.col("rush_attempt") == 1).select(rush_cols))
+        if season in dst_seasons:
+            dst.append(pbp.select(DST_PLAY_COLUMNS))
     return Raw(
-        nfl.load_player_stats(seasons),
+        nfl.load_player_stats(all_seasons),
         nfl.load_snap_counts(seasons),
         nfl.load_players(),
-        nfl.load_schedules(seasons),
-        nfl.load_pbp(pbp_seasons).filter(pl.col("rush_attempt") == 1).select(rush_cols),
+        nfl.load_schedules(all_seasons),
+        pl.concat(rush),
+        pl.concat(dst, how="vertical_relaxed"),
     )
 
 
@@ -612,6 +624,231 @@ def per_carry_params(rush_plays: pl.DataFrame, players: pl.DataFrame) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- Game Lines (S6.3, S6.4)
+
+
+def team_game_lines(schedules: pl.DataFrame, seasons: list[int]) -> pl.DataFrame:
+    """One row per team per played REG/POST Game: game_id, season, week, team, opp, the team's and
+    the opponent's Implied Team Totals from the closing lines (nflverse spread_line > 0: home
+    favoured), the team's expected margin `fav_by`, and its points scored and allowed."""
+    g = schedules.filter(pl.col("season").is_in(seasons), pl.col("game_type").is_in(["REG", "WC", "DIV", "CON", "SB"]),
+                         pl.col("home_score").is_not_null(), pl.col("spread_line").is_not_null(),
+                         pl.col("total_line").is_not_null())
+    home_itt = (pl.col("total_line") + pl.col("spread_line")) / 2
+    away_itt = (pl.col("total_line") - pl.col("spread_line")) / 2
+    base = ["game_id", "season", "week"]
+    home = g.select(*base, pl.col("home_team").alias("team"), pl.col("away_team").alias("opp"),
+                    home_itt.alias("itt"), away_itt.alias("opp_itt"), pl.col("spread_line").alias("fav_by"),
+                    pl.col("home_score").alias("points"), pl.col("away_score").alias("points_allowed"))
+    away = g.select(*base, pl.col("away_team").alias("team"), pl.col("home_team").alias("opp"),
+                    away_itt.alias("itt"), home_itt.alias("opp_itt"), (-pl.col("spread_line")).alias("fav_by"),
+                    pl.col("away_score").alias("points"), pl.col("home_score").alias("points_allowed"))
+    return pl.concat([home, away]).sort("season", "week", "game_id", "team")
+
+
+# ---------------------------------------------------------------- kickers (S6.3)
+
+FGA_TRIALS = 18  # FG attempts ~ Binomial(18, mu/18): underdispersed against a Poisson (research)
+PAT_TRIALS = 12
+KICK_DISTANCE_SEASONS = 2  # the attempt-distance pmf comes from the window's last seasons (distance drifts up)
+
+
+def _distances(column: pl.Expr) -> pl.Expr:
+    """A "29;31" distance list as a list of ints (an empty list for null)."""
+    return column.fill_null("").str.split(";").list.eval(pl.element().filter(pl.element() != "").cast(pl.Int64))
+
+
+def kicking_games(player_stats: pl.DataFrame, lines: pl.DataFrame) -> pl.DataFrame:
+    """Each team-game in `lines` with its kicking summed over players (whoever kicked): FG attempts,
+    PAT attempts and makes, and the made/missed FG distances. A team-game without a kicking row
+    kicked nothing (nflverse writes rows only for stats)."""
+    k = (player_stats.filter(pl.col("game_id").is_not_null())
+         .group_by("game_id", "team")
+         .agg(pl.col("fg_att").fill_null(0).sum().alias("fga"),
+              pl.col("pat_att").fill_null(0).sum().alias("pat_att"),
+              pl.col("pat_made").fill_null(0).sum().alias("pat_made"),
+              _distances(pl.col("fg_made_list")).list.explode(keep_nulls=False, empty_as_null=False)
+              .drop_nulls().alias("made"),
+              pl.concat_list(_distances(pl.col("fg_missed_list")), _distances(pl.col("fg_blocked_list")))
+              .list.explode(keep_nulls=False, empty_as_null=False).drop_nulls().alias("missed")))
+    out = lines.join(k, on=["game_id", "team"], how="left")
+    return out.with_columns(pl.col("fga", "pat_att", "pat_made").fill_null(0),
+                            pl.col("made", "missed").fill_null(pl.lit([], dtype=pl.List(pl.Int64))))
+
+
+def fit_poisson_glm(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Coefficients b of log E[y] = x @ b by Poisson maximum likelihood."""
+    def nll(b):
+        eta = x @ b
+        return float(np.sum(np.exp(eta) - y * eta))
+
+    def grad(b):
+        return x.T @ (np.exp(x @ b) - y)
+
+    b0 = np.zeros(x.shape[1])
+    b0[0] = math.log(max(y.mean(), 1e-6))
+    return optimize.minimize(nll, b0, jac=grad, method="BFGS").x
+
+
+def fit_logistic(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Coefficients b of logit P(y = 1) = x @ b by maximum likelihood."""
+    def nll(b):
+        eta = x @ b
+        return float(np.sum(np.logaddexp(0, eta) - y * eta))
+
+    def grad(b):
+        return x.T @ (special.expit(x @ b) - y)
+
+    return optimize.minimize(nll, np.zeros(x.shape[1]), jac=grad, method="BFGS").x
+
+
+def _binomial_pit_z(y: np.ndarray, mu: np.ndarray, trials: int, rng: np.random.Generator) -> np.ndarray:
+    """Normal scores of the randomized PIT of counts y under Binomial(trials, mu / trials)."""
+    p = np.clip(mu / trials, 1e-9, 1 - 1e-9)
+    below = stats.binom.cdf(y - 1, trials, p)
+    u = below + rng.uniform(size=len(y)) * stats.binom.pmf(y, trials, p)
+    return special.ndtri(np.clip(u, 1e-9, 1 - 1e-9))
+
+
+def kicker_params(player_stats: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int]) -> dict:
+    """The kicker model's parameters (research/kickers-dst.md): FG and PAT attempt GLMs in the
+    Implied Team Total, the expected margin and a season trend; their latent correlation; the
+    attempt-distance pmf of the last KICK_DISTANCE_SEASONS seasons; the FG make probability by
+    distance with a season trend; and the PAT make rate. Season terms count from the last season."""
+    ref = max(seasons)
+    games = kicking_games(player_stats.filter(pl.col("season").is_in(seasons)), team_game_lines(schedules, seasons))
+    x = np.column_stack([np.ones(games.height), games["itt"].to_numpy(), games["fav_by"].to_numpy(),
+                         games["season"].to_numpy() - ref])
+    fga, pat = games["fga"].to_numpy().astype(float), games["pat_att"].to_numpy().astype(float)
+    b_fga, b_pat = fit_poisson_glm(x, fga), fit_poisson_glm(x, pat)
+    rng = np.random.default_rng(0)
+    rho = float(np.mean([np.corrcoef(_binomial_pit_z(fga, np.exp(x @ b_fga), FGA_TRIALS, rng),
+                                     _binomial_pit_z(pat, np.exp(x @ b_pat), PAT_TRIALS, rng))[0, 1] for _ in range(20)]))
+
+    kicks = (games.select("season", pl.col("made").alias("d"), pl.lit(1).alias("good")).explode("d")
+             .vstack(games.select("season", pl.col("missed").alias("d"), pl.lit(0).alias("good")).explode("d"))
+             .drop_nulls("d"))
+    xd = np.column_stack([np.ones(kicks.height), kicks["d"].to_numpy() - 40.0, kicks["season"].to_numpy() - ref])
+    b_make = fit_logistic(xd, kicks["good"].to_numpy().astype(float))
+    recent = kicks.filter(pl.col("season") > ref - KICK_DISTANCE_SEASONS)["d"].to_numpy()
+    lo = int(recent.min())
+    pmf = np.bincount(recent - lo) / len(recent)
+
+    def coef(b):
+        return {"intercept": round(float(b[0]), 5), "itt": round(float(b[1]), 5), "fav_by": round(float(b[2]), 5),
+                "season": round(float(b[3]), 5)}
+
+    return {
+        "reference_season": ref,
+        "fga": {"trials": FGA_TRIALS, "log_mean": coef(b_fga)},
+        "pat_attempts": {"trials": PAT_TRIALS, "log_mean": coef(b_pat)},
+        "attempts_latent_rho": round(rho, 3),
+        "fg_distance": {"lo": lo, "pmf": [float(f"{p:.4g}") for p in pmf], "n": int(len(recent)),
+                        "seasons": [ref - KICK_DISTANCE_SEASONS + 1, ref]},
+        "fg_make_logit": {"intercept": round(float(b_make[0]), 5), "per_yard_over_40": round(float(b_make[1]), 5),
+                          "season": round(float(b_make[2]), 5)},
+        "pat_make_rate": round(float(games["pat_made"].sum() / max(games["pat_att"].sum(), 1)), 4),
+        "n_team_games": games.height,
+        "n_fg_attempts": kicks.height,
+    }
+
+
+# ---------------------------------------------------------------- D/ST (S6.4)
+
+DST_PLAY_COLUMNS = [
+    "game_id", "play_id", "season", "season_type", "play_type", "posteam", "defteam", "yards_gained",
+    "sack", "interception", "safety", "punt_blocked", "touchdown", "td_team", "fumble_lost",
+    "fumble_recovery_1_team", "fumbled_1_team", "forced_fumble_player_1_team", "field_goal_result",
+    "extra_point_result", "two_point_conv_result", "two_point_attempt",
+]
+# The Analog Games' columns: the D/ST's Scoring Stats (ffp.scoring.DST_STATS), its Points Allowed
+# parts (ffp.scoring.points_allowed) and Yards Allowed, plus who and what the lines said.
+DST_COLUMNS = (
+    "season", "week", "team", "opp", "itt", "opp_itt",
+    "sacks", "interceptions", "fumble_recoveries", "forced_fumbles", "safeties", "blocked_kicks",
+    "interception_return_tds", "fumble_return_tds", "kickoff_return_tds", "punt_return_tds",
+    "blocked_kick_return_tds",
+    "points_allowed_all", "opponent_defensive_tds_points", "opponent_return_tds_points", "yards_allowed",
+)
+_KICK_PLAYS = ("kickoff", "punt", "field_goal", "extra_point")
+
+
+def dst_games(plays: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int]) -> pl.DataFrame:
+    """Each team-game's D/ST stats from play-by-play (research/kickers-dst.md), with its Game Lines.
+
+    - A non-offensive TD is one the team not in possession scored, or any kickoff-return TD. On a
+      scrimmage play it is an INT or fumble return TD; on a kick play a return TD (a lost fumble
+      there is a fumble return TD, a blocked kick a blocked-kick return TD).
+    - The opponent's defensive and return TD points include the try that followed (the next play).
+    - Yards Allowed: the opponent's yards on run, pass and kneel plays (sacks count negative),
+      two-point tries left out.
+    """
+    C = pl.col
+    p = (plays.filter(C("season").is_in(seasons), C("season_type").is_in(["REG", "POST"]))
+         .with_columns(C("sack", "interception", "safety", "punt_blocked", "touchdown", "fumble_lost",
+                         "two_point_attempt").fill_null(0))
+         .sort("game_id", "play_id"))
+    nxt = C("posteam").shift(-1).over("game_id")
+    try_points = (pl.when((nxt == C("td_team")) & (C("extra_point_result").shift(-1).over("game_id") == "good")).then(1)
+                  .when((nxt == C("td_team")) & (C("two_point_conv_result").shift(-1).over("game_id") == "success")).then(2)
+                  .otherwise(0))
+    # fill_null(False): a null (no FG on a punt) would otherwise drop the play from every test below.
+    kick = (C("play_type").is_in(_KICK_PLAYS) | (C("punt_blocked") == 1)).fill_null(False)
+    blocked = ((C("field_goal_result") == "blocked") | (C("extra_point_result") == "blocked")
+               | (C("punt_blocked") == 1)).fill_null(False)
+    non_offensive = ((C("touchdown") == 1) & C("td_team").is_not_null()
+                     & ((C("td_team") != C("posteam")) | (C("play_type") == "kickoff")).fill_null(True))
+    p = p.with_columns(
+        (6 + try_points).alias("td_points"),
+        (non_offensive & ~kick & (C("interception") == 1)).alias("int_td"),
+        (non_offensive & ((~kick & (C("interception") == 0)) | (kick & (C("fumble_lost") == 1)))).alias("fum_td"),
+        (non_offensive & kick & (C("fumble_lost") == 0) & blocked).alias("blk_td"),
+        (non_offensive & kick & (C("fumble_lost") == 0) & ~blocked & (C("play_type") == "punt")).alias("punt_td"),
+        (non_offensive & kick & (C("fumble_lost") == 0) & ~blocked & (C("play_type") != "punt")).alias("ko_td"),
+        blocked.alias("blocked"),
+        (C("play_type").is_in(["pass", "run", "qb_kneel"]) & (C("two_point_attempt") == 0)).alias("scrimmage"),
+    )
+    lines = team_game_lines(schedules, seasons)
+    pairs = lines.select("game_id", "team", "opp")
+    q = p.join(pairs, on="game_id", how="inner")
+    T, O = C("team"), C("opp")
+    g = q.group_by("game_id", "team").agg(
+        ((C("defteam") == T) & (C("sack") == 1)).sum().alias("sacks"),
+        ((C("defteam") == T) & (C("interception") == 1)).sum().alias("interceptions"),
+        ((C("fumble_lost") == 1) & (C("fumble_recovery_1_team") == T) & (C("fumbled_1_team") != T)).sum()
+        .alias("fumble_recoveries"),
+        (C("forced_fumble_player_1_team") == T).sum().alias("forced_fumbles"),
+        ((C("safety") == 1) & (C("defteam") == T)).sum().alias("safeties"),
+        (C("blocked") & (C("defteam") == T)).sum().alias("blocked_kicks"),
+        (C("int_td") & (C("td_team") == T)).sum().alias("interception_return_tds"),
+        (C("fum_td") & (C("td_team") == T)).sum().alias("fumble_return_tds"),
+        (C("ko_td") & (C("td_team") == T)).sum().alias("kickoff_return_tds"),
+        (C("punt_td") & (C("td_team") == T)).sum().alias("punt_return_tds"),
+        (C("blk_td") & (C("td_team") == T)).sum().alias("blocked_kick_return_tds"),
+        pl.when((C("int_td") | C("fum_td")) & (C("td_team") == O)).then(C("td_points")).otherwise(0).sum()
+        .alias("opponent_defensive_tds_points"),
+        pl.when((C("ko_td") | C("punt_td") | C("blk_td")) & (C("td_team") == O)).then(C("td_points")).otherwise(0).sum()
+        .alias("opponent_return_tds_points"),
+        pl.when(C("scrimmage") & (C("defteam") == T)).then(C("yards_gained")).otherwise(0).sum().alias("yards_allowed"),
+    )
+    out = lines.join(g, on=["game_id", "team"], how="inner").rename({"points_allowed": "points_allowed_all"})
+    return out.select(DST_COLUMNS).sort("season", "week", "team")
+
+
+def dst_params(plays: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int], stamp: str) -> dict:
+    """params/dst_games.json: the Analog Games as columns of rows (ints, lines to 0.5)."""
+    d = dst_games(plays, schedules, seasons)
+    rows = [[round(v, 2) if isinstance(v, float) else v for v in row] for row in d.iter_rows()]
+    return {
+        "source": f"{stamp}; play-by-play and closing lines, {season_label(seasons)} REG+POST",
+        "note": ("one row per team-game: the D/ST's Scoring Stats, its Points Allowed parts and Yards Allowed "
+                 "(scripts/build_params.py dst_games), with the team's and the opponent's Implied Team Totals "
+                 "from the closing spread and total. ffp.dst draws whole rows as Analog Games."),
+        "columns": list(DST_COLUMNS),
+        "rows": rows,
+    }
+
+
 # ---------------------------------------------------------------- build
 
 
@@ -637,12 +874,21 @@ def existing_shifts(out_dir: Path) -> dict[str, dict[str, float]]:
     return shifts
 
 
+def dumps(doc: dict) -> str:
+    """A params file as indented JSON, except that a "rows" table keeps one row per line."""
+    if "rows" not in doc:
+        return json.dumps(doc, indent=2) + "\n"
+    head = json.dumps({k: v for k, v in doc.items() if k != "rows"}, indent=2)[:-2]
+    rows = ",\n".join("    " + json.dumps(row, separators=(",", ":")) for row in doc["rows"])
+    return f'{head},\n  "rows": [\n{rows}\n  ]\n}}\n'
+
+
 def season_label(seasons: list[int]) -> str:
     return f"{seasons[0]}-{seasons[-1]}" if seasons == list(range(seasons[0], seasons[-1] + 1)) else ",".join(map(str, seasons))
 
 
 def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: dict[str, dict[str, float]], *, draws: int,
-          today: str, runtime_pi0: dict | None = None) -> dict[str, dict]:
+          today: str, runtime_pi0: dict | None = None, dst_seasons: list[int] | None = None) -> dict[str, dict]:
     stamp = f"scripts/build_params.py on {today} from nflverse (CC-BY 4.0) via nflreadpy"
     ps, snaps = raw.player_stats, raw.snap_counts
 
@@ -688,7 +934,21 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
             "are a sum of carries (ffp.distributions.CarriesCompound, S5.10)")
         dispersion["per_carry_yards"] = per_carry_params(raw.rush_plays, raw.players)
         dispersion["borrowed"]["per_carry_yards"] = dict(PER_CARRY_BORROW)
-    return {"correlation": correlation, "base_rates": base, "dispersion": dispersion}
+    docs = {"correlation": correlation, "base_rates": base, "dispersion": dispersion}
+    kicker = kicker_params(ps, raw.schedules, seasons)
+    docs["kicker"] = {
+        "source": f"{stamp}; {season_label(seasons)} REG+POST team-games with closing lines",
+        "note": ("ffp.kicker (S6.3): FG and PAT attempts ~ Binomial(trials, mean/trials), log mean = intercept + "
+                 "itt * Implied Team Total + fav_by * expected margin + season * (season - reference_season); the "
+                 "two joined by a Gaussian copula with attempts_latent_rho; each FG's distance from fg_distance "
+                 "(pmf[i] = P(lo + i yards), the last seasons only: distance drifts up), made with logit p = "
+                 "intercept + per_yard_over_40 * (yards - 40) + season * (season - reference_season); a blocked FG "
+                 "is a miss. Rebuild every season."),
+        **kicker,
+    }
+    if raw.dst_plays is not None and dst_seasons:
+        docs["dst_games"] = dst_params(raw.dst_plays, raw.schedules, dst_seasons, stamp)
+    return docs
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -696,16 +956,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="directory for the JSON files (default: src/ffp/params)")
     ap.add_argument("--seasons", default="2021-2025", help="correlation and Base Rate seasons (default 2021-2025)")
     ap.add_argument("--dispersion-seasons", default="2015-2021", help="dispersion fit seasons (default 2015-2021)")
+    ap.add_argument("--dst-seasons", default="2015-2025", help="D/ST Analog Game seasons (default 2015-2025)")
     ap.add_argument("--draws", type=int, default=40_000, help="simulation draws per latent-rho bisection")
     args = ap.parse_args(argv)
 
     seasons, dseasons = parse_seasons(args.seasons), parse_seasons(args.dispersion_seasons)
-    raw = load_nflverse(sorted(set(seasons) | set(dseasons)), dseasons)
+    dst_seasons = parse_seasons(args.dst_seasons)
+    raw = load_nflverse(sorted(set(seasons) | set(dseasons)), dseasons, dst_seasons)
     docs = build(raw, seasons, dseasons, existing_shifts(args.out), draws=args.draws, today=dt.date.today().isoformat(),
-                 runtime_pi0=calibrated_pi0(args.out))
+                 runtime_pi0=calibrated_pi0(args.out), dst_seasons=dst_seasons)
     args.out.mkdir(parents=True, exist_ok=True)
     for name, doc in docs.items():
-        (args.out / f"{name}.json").write_text(json.dumps(doc, indent=2) + "\n")
+        (args.out / f"{name}.json").write_text(dumps(doc))
         print(f"wrote {args.out / f'{name}.json'}")
     return 0
 

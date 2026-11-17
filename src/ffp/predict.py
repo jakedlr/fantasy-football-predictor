@@ -33,8 +33,9 @@ from ffp.distributions import (
 )
 from ffp.estimates import RUSHING_TDS, RecentGames, estimate_mean, estimated_distribution
 from ffp.fair import DEFAULT_PRIOR_C, TD_PRIOR_C, FairPoint, fair_points
-from ffp.markets import Game, PropMarket, parse_utc
+from ffp.markets import DST_TDS, TEAM_POINTS, Game, GameLine, PropMarket, parse_utc
 from ffp.players import (
+    DST,
     PROPS_NOT_POSTED,
     Player,
     PlayerError,
@@ -55,6 +56,9 @@ from ffp.scoring import ScoringRules
 from ffp.simulate import DEFAULT_SAMPLES, DEFAULT_SEED, ScoreDistribution, simulate_scores
 from ffp.sources import draftkings, fanduel
 from ffp.td_share import TdHistory, rushing_td_share
+from ffp import gamelines
+from ffp.dst import dst_scores
+from ffp.kicker import kicker_scores
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +94,8 @@ POSITION_STATS = {
     "RB": _SKILL_STATS,
     "WR": _SKILL_STATS,
     "TE": _SKILL_STATS,
+    "K": (),  # Game Lines only (Sprint 6); load_live_books fetches kicker markets for the Snapshots
+    DST: (),  # Game Lines, team totals and D/ST TD prices: load_live_books(dsts=True)
 }
 
 
@@ -101,7 +107,9 @@ def market_stats_for(positions) -> list[str]:
 
 # The vig c a book's market is devigged with when it has no Main Line (one-sided TD prices never do).
 PRIOR_C = {TD_STAT: TD_PRIOR_C}
-MODELED_POSITIONS = ("QB", "RB", "WR", "TE")
+PLAYER_POSITIONS = ("QB", "RB", "WR", "TE")  # fitted from the player's own Prop Markets
+MODELED_POSITIONS = (*PLAYER_POSITIONS, "K", DST)
+TEAM_POSITIONS = ("K", DST)  # predicted from Game Lines and team markets, not player Prop Markets
 # What the model leaves out, listed once in the report's assumptions.
 MODEL_ASSUMPTIONS = (
     "Rushing yards count as 0 for a player no book prices them for (most WRs and TEs).",
@@ -109,6 +117,10 @@ MODEL_ASSUMPTIONS = (
     "QB fumbles lost are a flat per-game rate, not tied to sacks.",
     'A stat flagged "estimated" has no market for the player: it is estimated from his other stats and recent games. '
     'A stat flagged "incomplete" could not be estimated and counts as 0, so that player\'s range is too low.',
+    "Kickers come from the Game Lines alone (his team's Implied Team Total and expected margin): the league's "
+    "make rate by distance, no kicker skill, no weather. Kickers' ranges differ little from one to the next.",
+    "A D/ST is drawn from past team-games (2015 on) whose opponent had a similar Implied Team Total, tilted to "
+    "the opponent's team total and the D/ST TD price where a Book prices them.",
 )
 
 NO_MARKETS = "no Prop Markets found for this player"
@@ -120,11 +132,14 @@ KICKOFF_TOLERANCE = timedelta(hours=12)
 
 @dataclass(frozen=True)
 class BookOdds:
-    """One book's Games and its Prop Markets for MARKET_STATS."""
+    """One book's Games, its Prop Markets for MARKET_STATS, and (Sprint 6) its Game Lines and
+    team markets (TEAM_POINTS, DST_TDS) for kickers and D/ST."""
 
     book: str
     games: list[Game]
     markets: list[PropMarket]
+    lines: list[GameLine] = field(default_factory=list)
+    team_markets: list[PropMarket] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -244,9 +259,14 @@ def load_fixture_books(fixtures: Path) -> list[BookOdds]:
         for market in fanduel.parse_prop_markets(tabs[fanduel.TABS[stat]], stat)
     ]
     receiving_tab = tabs["receiving-props"]
+    dk_league, fd_league = read("dk_nfl_league.json"), read("fd_nfl_league.json")
+    dk_team = draftkings.parse_dst_tds(read("dk_nfl_td_scorer.json"))
+    fd_team = fanduel.parse_dst_tds(tabs["td-scorer-props"])
     return [
-        BookOdds(draftkings.BOOK, draftkings.parse_games(ladder), dk_markets),
-        BookOdds(fanduel.BOOK, fanduel.parse_games(receiving_tab), fd_markets),
+        BookOdds(draftkings.BOOK, draftkings.parse_games(ladder), dk_markets, draftkings.parse_game_lines(dk_league),
+                 dk_team),
+        BookOdds(fanduel.BOOK, fanduel.parse_games(receiving_tab), fd_markets, fanduel.parse_game_lines(fd_league),
+                 fd_team),
     ]
 
 
@@ -266,10 +286,17 @@ def load_live_books(
     now: datetime,
     on_response: Callable | None = None,
     stats: Sequence[str] | None = None,
+    kickers: bool = False,
+    dsts: bool = False,
 ) -> list[BookOdds]:
     """Both books' Prop Markets for `stats` (default MARKET_STATS) in `games`, fetched live.
 
     Pass `market_stats_for(positions)` so a run with no QB doesn't fetch passing markets.
+
+    With `kickers` or `dsts` (Sprint 6) each book's Game Lines come too (the league responses
+    already carry them). `dsts` adds the team totals (DraftKings' "Team Totals"; FanDuel's
+    "popular" tab, one request per Game) and the D/ST TD prices. `kickers` fetches DraftKings'
+    kicker subcategories only so the Snapshot keeps them (PLAN Sprint 6: the model doesn't use them).
 
     DraftKings serves every Game in one set of subcategory responses per stat;
     each stat is fetched on its own, so a stat it doesn't list yet costs only
@@ -293,16 +320,42 @@ def load_live_books(
             dk_games = dk_games or draftkings.parse_games(dk["dk_league"])
         except failures as error:
             log.warning("DraftKings %s left out: %s", MARKET_STATS[stat], _describe(error))
+    dk_lines, dk_team = [], []
+    if kickers or dsts:
+        try:
+            league = live.fetch_dk_league(http, on_response=on_response)
+            dk_games = dk_games or draftkings.parse_games(league)
+            dk_lines = draftkings.parse_game_lines(league)
+        except failures as error:
+            log.warning("DraftKings Game Lines left out: %s", _describe(error))
+            league = None
+        wanted_dk = [*(live.DK_TEAM_TOTALS, live.DK_TD_SCORER)] if dsts else []
+        wanted_dk += list(live.DK_KICKER_SUBCATEGORIES) if kickers else []
+        for name in wanted_dk if league is not None else []:
+            try:
+                payload = live.fetch_dk_subcategory(http, league, name, on_response=on_response)
+            except failures as error:
+                log.warning("DraftKings %s left out: %s", name.subcategory, _describe(error))
+                continue
+            if name == live.DK_TEAM_TOTALS:
+                dk_team += draftkings.parse_team_totals(payload)
+            elif name == live.DK_TD_SCORER:
+                dk_team += draftkings.parse_dst_tds(payload)
     if dk_games is not None:
-        books.append(BookOdds(draftkings.BOOK, dk_games, dk_markets))
+        books.append(BookOdds(draftkings.BOOK, dk_games, dk_markets, dk_lines, dk_team))
 
     try:
-        fd_games = fanduel.parse_games(live.fetch_fanduel_league(http, on_response=on_response), now)
+        fd_league = live.fetch_fanduel_league(http, on_response=on_response)
+        fd_games = fanduel.parse_games(fd_league, now)
     except failures as error:
         log.warning("FanDuel left out: %s", _describe(error))
         return books
+    fd_lines = fanduel.parse_game_lines(fd_league) if kickers or dsts else []
     wanted = sorted({g.game_id for g in fd_games for s in games if _same_game(g, s)})
     tabs = live.fd_tabs(stats)
+    fd_team: list[PropMarket] = []
+    if dsts:
+        tabs = list(dict.fromkeys([*tabs, fanduel.GAME_LINES_TAB, fanduel.TABS[TD_STAT]]))
     fd_markets = []
     for event_id in wanted:  # one event at a time, so one failed event costs only its own Game
         for tab in tabs:
@@ -318,7 +371,15 @@ def load_live_books(
                     fd_markets += fanduel.parse_prop_markets(payload, stat)
                 except failures as error:
                     log.warning("FanDuel event %s %s left out: %s", event_id, MARKET_STATS[stat], _describe(error))
-    books.append(BookOdds(fanduel.BOOK, fd_games, fd_markets))
+            if dsts:
+                try:
+                    if tab == fanduel.GAME_LINES_TAB:
+                        fd_team += fanduel.parse_team_totals(payload)
+                    elif tab == fanduel.TABS[TD_STAT]:
+                        fd_team += fanduel.parse_dst_tds(payload)
+                except failures as error:
+                    log.warning("FanDuel event %s team markets left out: %s", event_id, _describe(error))
+    books.append(BookOdds(fanduel.BOOK, fd_games, fd_markets, fd_lines, fd_team))
     return books
 
 
@@ -399,6 +460,10 @@ def predict(
     """
     results, skipped = [], []
     for target in targets:
+        if target.player.position in TEAM_POSITIONS:
+            outcome = _team_result(target, books, rules, chance_thresholds)
+            (results if isinstance(outcome, PlayerResult) else skipped).append(outcome)
+            continue
         priced, by_stat = _markets_for(target, books)
         # A Usage Stat alone (a carries line) is nothing to score: the player has no markets.
         if not has_scoring_markets(by_stat):
@@ -625,6 +690,78 @@ def _player_result(
         stats=fitted.details,
         chances=chances(scores, chance_thresholds),
     )
+
+
+# --- Kickers and D/ST (Sprint 6) -----------------------------------------------------
+
+FROM_GAME_LINES = "from game lines"
+NO_GAME_LINES = "no Game Lines for this Game yet (no Book lists a spread and total, nor does nflverse)"
+NO_TEAM_MARKETS = "from game lines (no team total or D/ST TD market)"
+
+
+def _game_lines(target: Target, books: Sequence[BookOdds]):
+    """(Implied Team Totals or None, the team markets in the target's Game, by book)."""
+    lines, markets = [], []
+    for book in books:
+        games = {g.game_id: g for g in book.games if _same_game(g, target.game)}
+        lines += [(games[line.game_id].home, games[line.game_id].away, line)
+                  for line in book.lines if line.game_id in games]
+        markets += [m for m in book.team_markets if m.game_id in games]
+    return gamelines.implied_totals(target.game, lines), markets
+
+
+def _team_result(target: Target, books: Sequence[BookOdds], rules: ScoringRules,
+                 chance_thresholds: Sequence[float]) -> PlayerResult | SkippedPlayer:
+    """A kicker's or D/ST's Score Distribution from its Game Lines (and, for a D/ST, the opponent's
+    team total and its own TD prices), or why there is none."""
+    position, team, game = target.player.position, target.player.team, target.game
+    section = "kicker" if position == "K" else "dst"
+    if not getattr(rules, section):
+        return SkippedPlayer(target.name, f"the Scoring Rules ({rules.name}) have no {section} section")
+    totals, markets = _game_lines(target, books)
+    if totals is None:
+        return SkippedPlayer(target.name, NO_GAME_LINES)
+    opponent = game.opponent(team)
+    flags = [] if totals.sources != [gamelines.NFLVERSE] else ["Game Lines from nflverse's schedule (no Book lists them)"]
+    if position == "K":
+        scores, k = kicker_scores(totals.by_team[team], totals.expected_margin(team), game.season, rules)
+        flags.insert(0, FROM_GAME_LINES)
+        stats = {"fg_attempts": _sample_detail(k.fga, totals.sources),
+                 "fg_made": _sample_detail(np.sum(~np.isnan(k.fg_made_yards), axis=1), totals.sources),
+                 "pat_made": _sample_detail(k.pat_made, totals.sources)}
+    else:
+        opp_points = gamelines.team_markets(markets, opponent, TEAM_POINTS)
+        tds = gamelines.team_markets(markets, team, DST_TDS)
+        result = dst_scores(totals.by_team[opponent], game.season, rules,
+                            opponent_points=fair_points(opp_points) if opp_points else (),
+                            dst_tds=fair_points(tds, default_c=TD_PRIOR_C) if tds else ())
+        scores, drawn = result.scores, result.sampled
+        if not opp_points and not tds:
+            flags.insert(0, NO_TEAM_MARKETS)
+        stats = {"points_allowed": _sample_detail(drawn["points_allowed"], _books(opp_points) or totals.sources,
+                                                  _rungs(opp_points)),
+                 "sacks": _sample_detail(drawn["sacks"], totals.sources),
+                 "interceptions": _sample_detail(drawn["interceptions"], totals.sources),
+                 "dst_tds": _sample_detail(drawn["dst_tds"], _books(tds) or totals.sources, _rungs(tds))}
+    return PlayerResult(
+        player=target.name, team=team, game=f"{game.away} @ {game.home}", kickoff=game.kickoff,
+        position="D/ST" if position == DST else position, percentiles=scores.percentiles(), flags=flags,
+        stats=stats, chances=chances(scores, chance_thresholds),
+    )
+
+
+def _books(markets: Sequence[PropMarket]) -> list[str]:
+    return sorted({m.book for m in markets})
+
+
+def _rungs(markets: Sequence[PropMarket]) -> int:
+    return sum(len(m.ladder) + (m.main_line is not None) for m in markets)
+
+
+def _sample_detail(values, books: Sequence[str], rungs: int = 0) -> StatDetail:
+    values = np.asarray(values, dtype=float)
+    return StatDetail(mean=float(values.mean()), p50=float(np.quantile(values, 0.5, method="inverted_cdf")),
+                      books=list(books), rungs=rungs)
 
 
 def _read_json(path: Path) -> dict:

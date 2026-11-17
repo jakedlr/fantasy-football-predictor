@@ -8,7 +8,18 @@ research/sportsbook-markets.md, DraftKings section.
 
 from collections.abc import Iterator
 
-from ..markets import Game, MainLine, PropMarket, Rung, format_utc, ladder_without_main_line_copy, parse_utc
+from ..markets import (
+    DST_TDS,
+    TEAM_POINTS,
+    Game,
+    GameLine,
+    MainLine,
+    PropMarket,
+    Rung,
+    format_utc,
+    ladder_without_main_line_copy,
+    parse_utc,
+)
 from ..odds import parse_american
 
 BOOK = "draftkings"
@@ -171,3 +182,76 @@ def parse_prop_markets(ladder_json: dict, main_line_json: dict | None, stat: str
             )
         )
     return markets
+
+
+# --- Game Lines and team markets (Sprint 6) -------------------------------------------
+
+
+def parse_game_lines(league_json: dict) -> list[GameLine]:
+    """Each Game's main spread and total from the league response's "Spread" and "Total" markets
+    (the selections DK marks as the main line). Started Games are left out."""
+    started = {g.game_id for g in parse_games(league_json) if g.started}
+    kind = {m["id"]: (m["eventId"], m.get("marketType", {}).get("name")) for m in league_json.get("markets", [])}
+    lines: dict[str, dict] = {}
+    for sel in league_json.get("selections", []):
+        event_id, name = kind.get(sel.get("marketId"), (None, None))
+        if event_id is None or event_id in started or not _is_main(sel) or sel.get("points") is None:
+            continue
+        entry = lines.setdefault(event_id, {})
+        if name == "Spread" and sel.get("outcomeType") == "Home":
+            entry["home_spread"] = float(sel["points"])
+        elif name == "Total" and sel.get("outcomeType") == "Over":
+            entry["total"] = float(sel["points"])
+    return [GameLine(event_id, BOOK, e.get("home_spread"), e.get("total")) for event_id, e in lines.items()]
+
+
+def parse_team_totals(team_totals_json: dict) -> list[PropMarket]:
+    """Each team's points in its Game ("Team Totals" subcategory) as a TEAM_POINTS Prop Market:
+    the Over/Under DK marks as main is the Main Line, every other line's Over a Rung
+    (Over 18.5 is "19 or more"). `player` is the team as DK spells it, e.g. "HOU Texans"."""
+    games = {g.game_id: g for g in parse_games(team_totals_json)}
+    event_of_market = {m["id"]: m["eventId"] for m in team_totals_json.get("markets", [])}
+    by_team: dict[Key, list[dict]] = {}
+    for sel in team_totals_json.get("selections", []):
+        event_id = event_of_market.get(sel.get("marketId"))
+        if event_id is None or not sel.get("participants") or sel.get("points") is None:
+            continue
+        by_team.setdefault((sel["participants"][0]["name"], event_id), []).append(sel)
+    markets = []
+    for (team, event_id), sels in by_team.items():
+        game = games.get(event_id)
+        if game is not None and game.started:
+            continue
+        main = {s["outcomeType"]: s for s in sels if _is_main(s)}
+        main_line = (MainLine(float(main["Over"]["points"]), _odds(main["Over"]), _odds(main["Under"]), BOOK)
+                     if set(main) >= {"Over", "Under"} and main["Over"]["points"] == main["Under"]["points"] else None)
+        rungs = {}
+        for s in sels:
+            if s.get("outcomeType") == "Over" and not _is_main(s):
+                threshold = int(float(s["points"])) + 1
+                rungs.setdefault(threshold, Rung(threshold, _odds(s), BOOK))
+        markets.append(PropMarket(team, TEAM_POINTS, event_id, BOOK, main_line,
+                                  ladder_without_main_line_copy(list(rungs.values()), main_line), team))
+    return markets
+
+
+DST_SUFFIX = " D/ST"
+
+
+def parse_dst_tds(td_scorer_json: dict) -> list[PropMarket]:
+    """Each team's D/ST TD Rungs from the TD Scorer response: "BAL Ravens D/ST" selections (they
+    have no participants) at Anytime (1), 2 or more and 3 or more. `player` is the team as DK
+    spells it, e.g. "BAL Ravens"."""
+    games = {g.game_id: g for g in parse_games(td_scorer_json)}
+    event_of_market = {m["id"]: m["eventId"] for m in td_scorer_json.get("markets", [])}
+    rungs: dict[Key, dict[int, Rung]] = {}
+    for sel in td_scorer_json.get("selections", []):
+        label, event_id = sel.get("label", ""), event_of_market.get(sel.get("marketId"))
+        threshold = TD_SCORER_THRESHOLDS.get(sel.get("outcomeType"))
+        if event_id is None or threshold is None or not label.endswith(DST_SUFFIX):
+            continue
+        rungs.setdefault((label.removesuffix(DST_SUFFIX), event_id), {}).setdefault(
+            threshold, Rung(threshold, _odds(sel), BOOK))
+    return [PropMarket(team, DST_TDS, event_id, BOOK, None, tuple(sorted(by.values(), key=lambda r: r.threshold)), team)
+            for (team, event_id), by in rungs.items()
+            if not (event_id in games and games[event_id].started)]

@@ -1,0 +1,94 @@
+{
+  "source": "scripts/build_params.py on 2026-11-17 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG+POST team-games with closing lines",
+  "note": "ffp.kicker (S6.3): FG and PAT attempts ~ Binomial(trials, mean/trials), log mean = intercept + itt * Implied Team Total + fav_by * expected margin + season * (season - reference_season); the two joined by a Gaussian copula with attempts_latent_rho; each FG's distance from fg_distance (pmf[i] = P(lo + i yards), the last seasons only: distance drifts up), made with logit p = intercept + per_yard_over_40 * (yards - 40) + season * (season - reference_season); a blocked FG is a miss. Rebuild every season.",
+  "reference_season": 2025,
+  "fga": {
+    "trials": 18,
+    "log_mean": {
+      "intercept": 0.97568,
+      "itt": -0.01221,
+      "fav_by": 0.01349,
+      "season": 0.01482
+    }
+  },
+  "pat_attempts": {
+    "trials": 12,
+    "log_mean": {
+      "intercept": -0.53353,
+      "itt": 0.06039,
+      "fav_by": 0.00308,
+      "season": 0.01465
+    }
+  },
+  "attempts_latent_rho": -0.187,
+  "fg_distance": {
+    "lo": 19,
+    "pmf": [
+      0.002602,
+      0.006071,
+      0.01041,
+      0.01821,
+      0.02342,
+      0.01691,
+      0.02125,
+      0.02168,
+      0.02949,
+      0.02602,
+      0.02732,
+      0.02645,
+      0.02602,
+      0.02428,
+      0.03686,
+      0.02472,
+      0.03339,
+      0.02212,
+      0.02472,
+      0.03296,
+      0.02255,
+      0.02168,
+      0.03296,
+      0.02689,
+      0.03036,
+      0.02775,
+      0.02775,
+      0.02472,
+      0.02949,
+      0.03513,
+      0.02082,
+      0.02905,
+      0.03296,
+      0.03296,
+      0.03122,
+      0.02732,
+      0.01778,
+      0.02125,
+      0.01605,
+      0.01171,
+      0.008239,
+      0.003469,
+      0.002602,
+      0.001735,
+      0.002168,
+      0.001735,
+      0.001735,
+      0.0,
+      0.001301,
+      0.001301,
+      0.0,
+      0.0004337
+    ],
+    "n": 2306,
+    "seasons": [
+      2024,
+      2025
+    ]
+  },
+  "fg_make_logit": {
+    "intercept": 2.17094,
+    "per_yard_over_40": -0.10182,
+    "season": 0.04624
+  },
+  "pat_make_rate": 0.9503,
+  "n_team_games": 2848,
+  "n_fg_attempts": 5594
+}

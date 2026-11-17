@@ -60,7 +60,7 @@ def test_blank_lines_are_ignored_and_unknown_players_are_skipped(tmp_path):
     assert [r["player"] for r in data["players"]] == ["Zay Flowers"]
     [skip] = data["skipped"]
     assert skip["player"] == "Not A Player"
-    assert skip["reason"].startswith('no QB/RB/WR/TE named "Not A Player"')
+    assert skip["reason"].startswith('no QB/RB/WR/TE/K named "Not A Player"')
 
 
 def test_markdown_list_and_heading_markers_are_not_part_of_names(tmp_path):
@@ -147,7 +147,7 @@ def test_a_live_run_snapshots_responses_and_fair_points(tmp_path, monkeypatch):
 
     seen_stats = []
 
-    def fake_live_books(http, games, now, on_response=None, stats=None):
+    def fake_live_books(http, games, now, on_response=None, stats=None, kickers=False, dsts=False):
         seen_games.extend(games)
         seen_stats.extend(stats)
         on_response("fanduel", "fd_league", "https://example.test/page?_ak=SECRET&x=1", {"ok": True})

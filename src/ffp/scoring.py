@@ -1,10 +1,16 @@
-"""Scoring Rules: presets, Custom Scoring Rules from JSON, and stat line -> fantasy points."""
+"""Scoring Rules: presets, Custom Scoring Rules from JSON, and stat line -> fantasy points.
+
+Three kinds of stat line, each with its section of the rules: a QB/RB/WR/TE's (`offense`,
+`score`), a kicker's (`kicker`, `score_kicker`) and a D/ST's (`dst`, `score_dst`).
+"""
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
+
+import numpy as np
 
 DEFAULT_RULES = "espn-league"
 
@@ -25,13 +31,37 @@ SCORING_STATS = (
 )
 
 
+# A kicker's per-unit Scoring Stats; FGs made score by distance (`fg_made_by_distance` tiers).
+KICKER_STATS = ("pat_made", "pat_missed", "fg_missed")
+# A D/ST's per-unit Scoring Stats. Its Points Allowed and Yards Allowed score by tier.
+DST_STATS = (
+    "sacks",
+    "interceptions",
+    "fumble_recoveries",
+    "forced_fumbles",
+    "safeties",
+    "blocked_kicks",
+    "interception_return_tds",
+    "fumble_return_tds",
+    "kickoff_return_tds",
+    "punt_return_tds",
+    "blocked_kick_return_tds",
+)
+# What a league may leave out of Points Allowed: the points (TD and try) of touchdowns the
+# opponent's defense scored (INT and fumble returns), or its returners scored (kickoff, punt
+# and blocked-kick returns). ESPN and Sleeper leave out the first (PLAN Sprint 6).
+POINTS_ALLOWED_EXCLUSIONS = ("opponent_defensive_tds", "opponent_return_tds")
+_TIERS = ("points_allowed_tiers", "yards_allowed_tiers")
+
+
 @dataclass(frozen=True)
 class ScoringRules:
     """Points per unit of each Scoring Stat.
 
-    `offense` maps every Scoring Stat to its points per unit. `kicker` and `dst`
-    are kept as loaded from a Custom Scoring Rules file but are not scored yet.
-    `assumptions` lists anything in the rules that was assumed, not confirmed.
+    `offense` maps every Scoring Stat to its points per unit. `kicker` and `dst` hold the
+    kicker's and D/ST's rules (see `score_kicker`, `score_dst`); empty when the rules
+    don't score that position. `assumptions` lists anything in the rules that was
+    assumed, not confirmed.
     """
 
     name: str
@@ -65,18 +95,101 @@ _STANDARD_OFFENSE = {
 }
 
 
-def _preset(name: str, **changes: float) -> ScoringRules:
+def _tiers(*rows: tuple[int, int | None, float]) -> list[dict]:
+    return [{"min": lo, "max": hi, "points": pts} for lo, hi, pts in rows]
+
+
+# ESPN's default kicker and D/ST scoring (the standard, half-PPR and PPR presets).
+_ESPN_KICKER = {
+    "pat_made": 1,
+    "fg_missed": -1,
+    "fg_made_by_distance": _tiers((0, 39, 3), (40, 49, 4), (50, None, 5)),
+}
+_ESPN_DST = {
+    "sacks": 1, "interceptions": 2, "fumble_recoveries": 2, "safeties": 2, "blocked_kicks": 2,
+    "interception_return_tds": 6, "fumble_return_tds": 6, "kickoff_return_tds": 6, "punt_return_tds": 6,
+    "blocked_kick_return_tds": 6,
+    "points_allowed_excludes": ["opponent_defensive_tds"],
+    "points_allowed_tiers": _tiers((0, 0, 5), (1, 6, 4), (7, 13, 3), (14, 17, 1), (18, 27, 0), (28, 34, -1),
+                                   (35, 45, -3), (46, None, -5)),
+    "yards_allowed_tiers": _tiers((0, 99, 5), (100, 199, 3), (200, 299, 2), (300, 349, 0), (350, 399, -1),
+                                  (400, 449, -3), (450, 499, -5), (500, 549, -6), (550, None, -7)),
+}
+# Sleeper's defaults, which Kalshi's fantasy-points markets settle on (research/kalshi-fantasy-points.md;
+# forced fumbles and the points-allowed definition checked on 298 settled D/ST markets).
+_SLEEPER_KICKER = {
+    "pat_made": 1,
+    "pat_missed": -1,
+    "fg_missed": -1,
+    "fg_made_by_distance": _tiers((0, 39, 3), (40, 49, 4), (50, 59, 5), (60, None, 6)),
+}
+_SLEEPER_DST = {
+    "sacks": 1, "interceptions": 2, "fumble_recoveries": 2, "forced_fumbles": 1, "safeties": 2, "blocked_kicks": 2,
+    "interception_return_tds": 6, "fumble_return_tds": 6, "kickoff_return_tds": 6, "punt_return_tds": 6,
+    "blocked_kick_return_tds": 6,
+    "points_allowed_excludes": ["opponent_defensive_tds"],
+    "points_allowed_tiers": _tiers((0, 0, 10), (1, 6, 7), (7, 13, 4), (14, 20, 1), (21, 27, 0), (28, 34, -1),
+                                   (35, None, -4)),
+}
+_SLEEPER_ASSUMPTIONS = [
+    "D/ST Points Allowed leaves out the opponent's INT and fumble return TDs (it matched 295 of 298 settled "
+    "Kalshi D/ST markets); Yards Allowed is not scored.",
+]
+_ESPN_ASSUMPTIONS = [
+    "Kicker and D/ST rules are ESPN's defaults. Points Allowed leaves out the opponent's INT and fumble return "
+    "TDs and counts its kick and punt return TDs; Yards Allowed is net of sack yards (secondary sources, not "
+    "ESPN's own help page).",
+]
+
+
+def _preset(name: str, kicker: dict, dst: dict, assumptions: list, **changes: float) -> ScoringRules:
     """Standard scoring with `changes` (points per unit by Scoring Stat) applied."""
-    return ScoringRules(name=name, offense=_offense({**_STANDARD_OFFENSE, **changes}, name))
+    return ScoringRules(name=name, offense=_offense({**_STANDARD_OFFENSE, **changes}, name),
+                        kicker=_kicker(kicker, name), dst=_dst(dst, name), assumptions=list(assumptions))
+
+
+def _kicker(section: dict, source: str) -> dict:
+    """Validate a kicker section: known keys, FG tiers well formed."""
+    for key in section:
+        if key not in (*KICKER_STATS, "fg_made_by_distance"):
+            raise ValueError(f"{source}: unknown kicker rule {key!r}")
+    _check_tiers(section.get("fg_made_by_distance", []), f"{source}: kicker fg_made_by_distance")
+    return section
+
+
+def _dst(section: dict, source: str) -> dict:
+    """Validate a D/ST section: known keys and exclusions, tiers well formed."""
+    for key in section:
+        if key not in (*DST_STATS, *_TIERS, "points_allowed_excludes"):
+            raise ValueError(f"{source}: unknown dst rule {key!r}")
+    for what in section.get("points_allowed_excludes", []):
+        if what not in POINTS_ALLOWED_EXCLUSIONS:
+            raise ValueError(f"{source}: unknown points_allowed_excludes {what!r} "
+                             f"(known: {', '.join(POINTS_ALLOWED_EXCLUSIONS)})")
+    for key in _TIERS:
+        _check_tiers(section.get(key, []), f"{source}: dst {key}")
+    return section
+
+
+def _check_tiers(tiers: list, source: str) -> None:
+    """Tiers in ascending order, each {"min", "max", "points"}, max None only on the last."""
+    for i, tier in enumerate(tiers):
+        if set(tier) != {"min", "max", "points"}:
+            raise ValueError(f"{source}: a tier needs exactly min, max and points: {tier}")
+        if tier["max"] is None and i != len(tiers) - 1:
+            raise ValueError(f"{source}: only the last tier may have no max")
+        if i and tier["min"] <= tiers[i - 1]["min"]:
+            raise ValueError(f"{source}: tiers must ascend by min")
 
 
 PRESETS = {
-    "standard": _preset("standard"),
-    "half-ppr": _preset("half-ppr", receptions=0.5),
-    "ppr": _preset("ppr", receptions=1),
+    "standard": _preset("standard", _ESPN_KICKER, _ESPN_DST, _ESPN_ASSUMPTIONS),
+    "half-ppr": _preset("half-ppr", _ESPN_KICKER, _ESPN_DST, _ESPN_ASSUMPTIONS, receptions=0.5),
+    "ppr": _preset("ppr", _ESPN_KICKER, _ESPN_DST, _ESPN_ASSUMPTIONS, receptions=1),
     # Sleeper's default full PPR, which Kalshi's fantasy-points markets settle on
     # (research/kalshi-fantasy-points.md): an interception costs -1, not -2.
-    "sleeper": _preset("sleeper", receptions=1, passing_interceptions=-1),
+    "sleeper": _preset("sleeper", _SLEEPER_KICKER, _SLEEPER_DST, _SLEEPER_ASSUMPTIONS,
+                       receptions=1, passing_interceptions=-1),
 }
 
 
@@ -125,8 +238,8 @@ def _custom_rules(path: Path) -> ScoringRules:
     return ScoringRules(
         name=data["name"],
         offense=_offense(data["offense"], str(path)),
-        kicker=data.get("kicker", {}),
-        dst=data.get("dst", {}),
+        kicker=_kicker(data.get("kicker", {}), str(path)),
+        dst=_dst(data.get("dst", {}), str(path)),
         assumptions=data.get("assumptions", []),
     )
 
@@ -138,3 +251,46 @@ def score(stat_line: Mapping, rules: ScoringRules):
     numpy arrays of Monte Carlo samples; arrays are scored elementwise.
     """
     return sum(points * stat_line.get(stat, 0) for stat, points in rules.offense.items())
+
+
+def _tier_points(values, tiers: list) -> np.ndarray:
+    """Each value's tier points (a value below the first tier gets the first tier's)."""
+    values = np.asarray(values, dtype=float)
+    if not tiers:
+        return np.zeros_like(values)
+    mins = np.array([t["min"] for t in tiers], dtype=float)
+    points = np.array([t["points"] for t in tiers], dtype=float)
+    return points[np.maximum(np.searchsorted(mins, values, side="right") - 1, 0)]
+
+
+def score_kicker(stat_line: Mapping, rules: ScoringRules):
+    """A kicker's fantasy points: `pat_made`, `pat_missed` and `fg_missed` counts, and
+    `fg_made_yards`, the distances of the FGs made (one row per sample, NaN where there was
+    no kick: shape (n, attempts)). Values may be numbers or numpy arrays of samples."""
+    k = rules.kicker
+    total = sum(k.get(stat, 0) * np.asarray(stat_line.get(stat, 0), dtype=float) for stat in KICKER_STATS)
+    yards = np.asarray(stat_line.get("fg_made_yards", []), dtype=float)
+    points = _tier_points(np.nan_to_num(yards, nan=0.0), k.get("fg_made_by_distance", []))
+    made = np.where(np.isnan(yards), 0.0, points).sum(axis=-1) if yards.size else 0.0
+    total = total + made  # a 1-d fg_made_yards is one sample's kicks
+    return total if np.ndim(total) else float(total)
+
+
+def points_allowed(stat_line: Mapping, rules: ScoringRules):
+    """The D/ST's Points Allowed under the rules: `points_allowed_all` less the opponent's
+    defensive and/or return TD points the rules leave out."""
+    pa = np.asarray(stat_line.get("points_allowed_all", 0), dtype=float)
+    for what in rules.dst.get("points_allowed_excludes", []):
+        pa = pa - np.asarray(stat_line.get(f"{what}_points", 0), dtype=float)
+    return pa
+
+
+def score_dst(stat_line: Mapping, rules: ScoringRules):
+    """A D/ST's fantasy points: the DST_STATS counts, plus the Points Allowed tier (`points_allowed`)
+    and the Yards Allowed tier (`yards_allowed`). Values may be numbers or numpy arrays of samples."""
+    d = rules.dst
+    total = sum(d.get(stat, 0) * np.asarray(stat_line.get(stat, 0), dtype=float) for stat in DST_STATS)
+    total = total + _tier_points(points_allowed(stat_line, rules), d.get("points_allowed_tiers", []))
+    if d.get("yards_allowed_tiers"):
+        total = total + _tier_points(stat_line.get("yards_allowed", 0), d["yards_allowed_tiers"])
+    return total if np.ndim(total) else float(total)

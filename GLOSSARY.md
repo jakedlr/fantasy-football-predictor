@@ -20,6 +20,18 @@ _Avoid_: Scoring format, scoring system, settings
 Scoring Rules defined for one specific league instead of a standard preset.
 _Avoid_: League settings
 
+**D/ST**:
+A team's defense and special teams, scored as one fantasy player.
+_Avoid_: DST, DEF, defense (alone)
+
+**Points Allowed**:
+The opponent's points a D/ST is charged with under the Scoring Rules: all of them, or without the touchdowns the opponent's own defense and returners scored, depending on the league.
+_Avoid_: PA, opponent score
+
+**Yards Allowed**:
+The opponent's net offensive yards (rushing plus passing, sacks subtracted) a D/ST is charged with.
+_Avoid_: YA, total yards
+
 **Base Rate**:
 The historical per-game frequency of a Scoring Stat that no book offers, such as fumbles lost or 2-point conversions.
 _Avoid_: Default rate, prior
@@ -54,6 +66,14 @@ _Avoid_: Alt lines, milestones
 One threshold and its price within a Ladder, e.g. "70+ receiving yards at −260".
 _Avoid_: Milestone, alt line, step
 
+**Game Line**:
+A Book's price on a whole Game or one team in it, not a player: the spread, the total, a team total.
+_Avoid_: Game odds, team prop
+
+**Implied Team Total**:
+A team's expected points in a Game, from the Game Lines: half the total plus or minus half the spread, or the team-total Main Line.
+_Avoid_: ITT (in prose), team projection
+
 **Fair Probability**:
 A probability implied by a price after the book's vig is removed.
 _Avoid_: No-vig probability, true odds, devigged odds
@@ -75,6 +95,10 @@ _Avoid_: Event distribution, marginal
 **Score Distribution**:
 The probability distribution of one player's total fantasy points in one Game under given Scoring Rules.
 _Avoid_: Odds distribution, point distribution, projection
+
+**Analog Game**:
+A past team-game whose Game Lines resemble the one being predicted, drawn whole (every D/ST stat from the same game) to build a D/ST Score Distribution.
+_Avoid_: Neighbour, comparable, comp
 
 **Score Percentile (Pₖ)**:
 The fantasy point total x such that the player has a k% chance of scoring x or fewer. P5 is the floor, P95 the ceiling.
