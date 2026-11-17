@@ -320,13 +320,28 @@ def test_summarize_and_render_tables_on_real_records(games, root):
     assert summary["points"]["2026"]["copula"]["line"]["n"] == 1
     text = render_tables(summary)
     for heading in ("### Fantasy points", "### Per-stat calibration", "### Dispersion", "### Rushing yards",
-                    "### Gamma vs lognormal", "### Joint calibration", "### TD Rungs"):
+                    "### Production vs lognormal", "### Joint calibration", "### TD Rungs"):
         assert heading in text
     json.dumps(summary)
 
 
 # --- the CLI ------------------------------------------------------------------------------
 
+
+
+def test_the_sum_of_carries_is_reported_against_the_hurdle_gamma(games, root):
+    # S5.10: with priced RB rushing yards the record keeps the compound's parameters, and the
+    # gamma refit is scored beside it.
+    c, _ = ctx({(GAME, CHASE): CHASE_GAME,
+                (GAME, BROWN): outcome(carries=14, rushing_yards=60, receptions=4, receiving_yards=30)}, root=root)
+    todo, _ = tasks([games[CHASE], games[BROWN]], c)
+    summary = summarize([evaluate(t, samples=500) for t in todo])
+    pit = {"chi2_p": 0.5, "counts": [1] * 10}
+    summary["gamma"] = {"rushing_yards RB": {"n": 3, "pit": pit, "pit_base": pit, "crps": 12.0, "crps_base": 11.0,
+                                             "resid_rmse": 0.05, "resid_rmse_base": 0.04}}
+    text = render_tables(summary)
+    assert "### Sum of carries vs hurdle gamma" in text
+    assert "| rushing_yards RB | 3 | 12.000 / 11.000 |" in text
 
 def test_main_runs_the_backtest_and_writes_the_tables_and_summary(root, tmp_path, capsys):
     stats = {2026: [{"player_id": CHASE, "game_id": GAME, "season": 2026, "week": 10, "team": "CIN",

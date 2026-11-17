@@ -125,6 +125,125 @@ class HurdleShiftedLognormal(HurdleShiftedGamma):
 # The nonzero part's family, by name: gamma in production.
 YARDS_FAMILIES = {"gamma": HurdleShiftedGamma, "lognormal": HurdleShiftedLognormal}
 
+
+class CarriesCompound:
+    """Integer rushing yards as a sum of carries (S5.10, docs/adr/0002): Y = X₁ + … + X_N.
+
+    - N ~ NB(mean λ, size r), r = r_mult · r_a·λ^r_b on the carries dispersion relation.
+    - Each Xᵢ is one carry's yards, iid, from the position's per-carry distribution in
+      nflverse play-by-play (`per_carry_yards` in params/dispersion.json), stretched by the
+      scale s: a carry's pmf on integer k is read as uniform on [k − ½, k + ½], scaled by s
+      and re-binned to the integers. s = 1 is the pooled distribution.
+
+    P(0) is P(N = 0) plus the sums that land on 0; negative yards come from a few stuffed carries,
+    so they are rare and small, and a low-volume back keeps a long right tail (one long run).
+    A shifted gamma can't do both at a low mean (research/backtest-kalshi.md, S5.10).
+    The pmf comes from the NB probability generating function applied to the per-carry
+    characteristic function on an FFT grid.
+    """
+
+    _OFFSET = 64  # grid index of 0 yards: room for a few stuffed carries below it
+
+    def __init__(self, lam: float, scale: float, r: float, per_carry: "PerCarry"):
+        if not lam > 0 or not scale > 0 or not r > 0:
+            raise ValueError(f"invalid parameters lam={lam}, scale={scale}, r={r}")
+        self.lam, self.scale, self.r = lam, scale, r
+        x = per_carry.scaled(scale)
+        mx = float(x.values @ x.pmf)
+        vx = float(((x.values - mx) ** 2) @ x.pmf)
+        var = lam * vx + mx * mx * (lam + lam * lam / r)
+        width = self._OFFSET + lam * mx + 12 * math.sqrt(var) + 8 * x.values[-1]
+        n = 1 << max(11, math.ceil(math.log2(width)))
+        grid = np.zeros(n)
+        np.add.at(grid, x.values % n, x.pmf)
+        phi = np.fft.fft(grid)
+        pmf = np.real(np.fft.ifft((1 + (lam / r) * (1 - phi)) ** (-r)))
+        pmf = np.clip(np.roll(pmf, self._OFFSET), 0.0, None)
+        self._pmf = pmf / pmf.sum()
+        self._ys = np.arange(n) - self._OFFSET
+        self._cdf = np.cumsum(self._pmf)
+        self._mean = float(self._ys @ self._pmf)
+        self.pi0 = float(self._pmf[self._OFFSET])
+        self.sd = float(math.sqrt(max(float(((self._ys - self._mean) ** 2) @ self._pmf), 0.0)))
+
+    def sf(self, x: np.ndarray) -> np.ndarray:
+        """P(Y >= x); a fractional x is rounded up."""
+        i = np.clip(np.ceil(np.asarray(x, dtype=float)).astype(int) + self._OFFSET, 0, len(self._pmf))
+        below = np.concatenate([[0.0], self._cdf])[i]  # P(Y < x)
+        return np.clip(1.0 - below, 0.0, 1.0)
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        """Smallest integer y with P(Y <= y) >= u."""
+        idx = np.searchsorted(self._cdf, np.asarray(u, dtype=float), side="left")
+        return self._ys[np.minimum(idx, len(self._ys) - 1)]
+
+    @property
+    def mean(self) -> float:
+        return self._mean
+
+
+@dataclass(frozen=True)
+class _Pmf:
+    values: np.ndarray  # integer yards, ascending
+    pmf: np.ndarray
+
+
+@dataclass(frozen=True)
+class PerCarry:
+    """One carry's yards: pmf[i] = P(X = lo + i), from nflverse play-by-play."""
+
+    lo: int
+    pmf: tuple[float, ...]
+
+    @property
+    def mean(self) -> float:
+        return float(np.arange(self.lo, self.lo + len(self.pmf)) @ np.asarray(self.pmf))
+
+    def scaled(self, s: float) -> _Pmf:
+        """X·s re-binned to the integers (X uniform within each integer bin)."""
+        p = np.asarray(self.pmf, dtype=float)
+        k = np.arange(self.lo, self.lo + len(p))
+        if s == 1.0:
+            return _Pmf(k, p)
+        edges, cdf = np.append(k - 0.5, k[-1] + 0.5), np.concatenate([[0.0], np.cumsum(p)])
+        j = np.arange(math.floor(edges[0] * s) - 1, math.ceil(edges[-1] * s) + 2)
+        pj = np.interp((j + 0.5) / s, edges, cdf) - np.interp((j - 0.5) / s, edges, cdf)
+        keep = pj > 0
+        return _Pmf(j[keep], pj[keep] / pj[keep].sum())
+
+
+# Positions whose rushing yards are a CarriesCompound (S5.10, docs/adr/0002). A QB keeps the
+# hurdle shifted gamma: kneels and scrambles are not iid carries, and the compound hurt QB
+# calibration in the research.
+COMPOUND_RUSHING_POSITIONS = ("RB", "WR", "TE")
+
+
+@cache
+def per_carry(position: str) -> PerCarry:
+    """The position's per-carry yards, from params/dispersion.json."""
+    table = params.load("dispersion")["per_carry_yards"]
+    try:
+        p = table[position]
+    except KeyError:
+        raise ValueError(f"no per-carry yards for position {position!r} ({', '.join(table)})") from None
+    pmf = np.asarray(p["pmf"], dtype=float)  # stored to 4 significant digits: renormalise
+    return PerCarry(int(p["lo"]), tuple(pmf / pmf.sum()))
+
+
+def carries_compound(lam: float, position: str, scale: float = 1.0, r_mult: float = 1.0) -> CarriesCompound:
+    """The position's CarriesCompound with λ expected carries; r on the carries relation × r_mult."""
+    return CarriesCompound(lam, scale, r_mult * carries_r_relation(lam, position), per_carry(position))
+
+
+def compound_rushing_yards(mu: float, position: str) -> CarriesCompound:
+    """A CarriesCompound with mean mu at s = 1 and r on its relation: λ = mu / E[one carry]."""
+    if not mu > 0:
+        raise ValueError(f"invalid parameter mu={mu}")
+    lam = mu / per_carry(position).mean
+    if not _LAMBDA_RANGE[0] <= lam <= _LAMBDA_RANGE[1]:
+        raise FitError(f"rushing-yards mean {mu} is out of the model's range")
+    return carries_compound(lam, position)
+
 # The yards Scoring Stats modelled as a HurdleShiftedGamma, each with its own relations
 # per position under its key in params/dispersion.json.
 RECEIVING_YARDS = "receiving_yards"
@@ -356,14 +475,71 @@ def fit_receiving_yards(
     return _fit_yards(RECEIVING_YARDS, points, position, pi0)
 
 
-def fit_rushing_yards(points: Sequence[FairPoint], position: str) -> HurdleShiftedGamma:
+def fit_rushing_yards(points: Sequence[FairPoint], position: str) -> StatDistribution:
     """Fit an RB/QB/WR/TE rushing-yards Stat Distribution to Fair Probabilities.
 
-    The receiving-yards fit (see `fit_receiving_yards`) with the rushing relations,
-    and always with P(0) fitted under the δ prior: carries are a Usage Stat and do
-    not set it (Sprint 4), so unlike receiving yards there is no pi0 to pass.
+    RB/WR/TE: a CarriesCompound (`fit_carries_compound`). QB: the receiving-yards fit (see
+    `fit_receiving_yards`) with the rushing relations, and always with P(0) fitted under the
+    δ prior. Carries are a Usage Stat and set neither (Sprint 4).
     """
+    if position in COMPOUND_RUSHING_POSITIONS:
+        return fit_carries_compound(points, position)
     return _fit_yards(RUSHING_YARDS, points, position, None)
+
+
+# Priors of the CarriesCompound fit (S5.10; research/backtest-kalshi.md): ln s and ln r_mult
+# centred on 0 (the pooled per-carry yards, the carries relation).
+FIT_SIGMA_LN_SCALE = 0.2
+FIT_LAMBDA_SCALE = FIT_TAU**2 / FIT_SIGMA_LN_SCALE**2  # = 0.25
+_LAMBDA_RANGE = (0.02, 60.0)  # expected carries the model allows
+_LN_SCALE_MAX, _LN_R_MULT_MAX = 1.5, 4.0
+
+
+def fit_carries_compound(points: Sequence[FairPoint], position: str) -> CarriesCompound:
+    """Fit a CarriesCompound to rushing-yards Fair Probabilities.
+
+    theta = (ln λ, ln s, ln r_mult), by the yards fit's weighted least squares in logit space
+    with Gaussian priors on ln s and ln r_mult (centred on 0):
+
+        Σᵢ wᵢ [logit pᵢ − logit S(xᵢ)]² + λ_s (ln s)² + λ_r (ln r_mult)²
+
+    With a single point (a Main Line only), s = r_mult = 1 and λ is root-found to reproduce it.
+    """
+    per_carry(position)  # validate before doing any work
+    if not points:
+        raise FitError("no Fair Probabilities to fit")
+    anchor = _anchor(points)
+    lo, hi = (math.log(v) for v in _LAMBDA_RANGE)
+
+    def error(ln_lam: float) -> float:
+        return _logit_sf(carries_compound(math.exp(ln_lam), position), np.array([anchor.threshold]))[0] - logit(anchor.prob)
+
+    if error(lo) * error(hi) > 0:
+        raise FitError(f"P(Y >= {anchor.threshold}) = {anchor.prob} is out of reach for carries in {_LAMBDA_RANGE}")
+    ln_lam0 = optimize.brentq(error, lo, hi, xtol=1e-10)
+    if len(points) == 1:
+        return carries_compound(math.exp(ln_lam0), position)
+
+    x = np.array([p.threshold for p in points], dtype=float)
+    target = logit(np.array([p.prob for p in points]))
+    w = np.array([p.weight for p in points], dtype=float)
+
+    def build(theta: np.ndarray) -> CarriesCompound:
+        return carries_compound(math.exp(theta[0]), position, math.exp(theta[1]), math.exp(theta[2]))
+
+    def objective(theta: np.ndarray) -> float:
+        if not lo <= theta[0] <= hi or abs(theta[1]) > _LN_SCALE_MAX or abs(theta[2]) > _LN_R_MULT_MAX:
+            return math.inf
+        resid = _residuals(build(theta), x, target)
+        return float(np.sum(w * resid**2) + FIT_LAMBDA_SCALE * theta[1] ** 2 + FIT_LAMBDA_R * theta[2] ** 2)
+
+    theta0 = np.array([ln_lam0, 0.0, 0.0])
+    simplex = np.vstack([theta0, theta0 + np.diag([0.1, 0.05, 0.2])])
+    result = optimize.minimize(objective, theta0, method="Nelder-Mead",
+                               options={"xatol": 1e-6, "fatol": 1e-10, "initial_simplex": simplex, "maxiter": 2000})
+    if not math.isfinite(result.fun):
+        raise FitError("no fit within the model's range")
+    return build(result.x)
 
 
 def fit_yards(
@@ -373,22 +549,27 @@ def fit_yards(
     pi0: float | None = None,
     *,
     sd_prior: float = FIT_LAMBDA,
-    family: str = "gamma",
+    family: str | None = None,
 ) -> StatDistribution:
     """A yards fit by stat name, with the Backtest's diagnostic switches (S5.2).
 
     With the defaults it is the production fit (`fit_receiving_yards`, `fit_rushing_yards`,
-    `fit_passing_yards`; pi0 is used for receiving yards only). `sd_prior` is the weight λ of
-    the (ln sd − ln sd_rel)² prior: 0 gives the free-fit sd, to check the dispersion
-    relations against the Ladders. `family` "lognormal" swaps the nonzero part of
-    receiving or rushing yards (passing yards are always normal).
+    `fit_passing_yards`; pi0 is used for receiving yards only). `family` "gamma" or
+    "lognormal" fits receiving or rushing yards as that hurdle family (for an RB/WR/TE's
+    rushing yards, instead of the production CarriesCompound; passing yards are always
+    normal). `sd_prior` is the weight λ of the hurdle fit's (ln sd − ln sd_rel)² prior: 0
+    gives the free-fit sd, to check the dispersion relations against the Ladders.
     """
     if stat == "passing_yards":
-        if family != "gamma":
+        if family not in (None, "gamma"):
             raise ValueError(f"passing yards have no {family!r} family: their nonzero part is normal")
         return _fit_passing_yards(points, position, sd_prior)
+    if family is None and stat == RUSHING_YARDS and position in COMPOUND_RUSHING_POSITIONS:
+        if sd_prior != FIT_LAMBDA:
+            raise ValueError("the sum-of-carries fit has no sd prior: pass a hurdle family")
+        return fit_carries_compound(points, position)
     return _fit_yards(stat, points, position, pi0 if stat == RECEIVING_YARDS else None,
-                      sd_prior, YARDS_FAMILIES[family])
+                      sd_prior, YARDS_FAMILIES[family or "gamma"])
 
 
 def _fit_yards(

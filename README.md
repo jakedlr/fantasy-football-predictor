@@ -8,7 +8,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–5 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution; kickers and D/ST are not supported yet. Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. See [research/backtest-kalshi.md](research/backtest-kalshi.md).
+Sprints 0–5.6 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution; kickers and D/ST are not supported yet. Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md).
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
@@ -18,7 +18,8 @@ Sprints 0–5 are done and merged. Every QB, RB, WR and TE gets a full Score Dis
 
 Model choices:
 
-- **Receiving and rushing yards:** point mass at 0 plus a discretised, shifted gamma. Receiving yards take their P(0) from P(0 receptions).
+- **Receiving yards, and QB rushing yards:** point mass at 0 plus a discretised, shifted gamma. Receiving yards take their P(0) from P(0 receptions).
+- **RB, WR and TE rushing yards:** a sum of carries: a negative-binomial number of carries, each with the position's yards per carry from nflverse play-by-play ([ADR 0002](docs/adr/0002-rushing-yards-as-a-sum-of-carries.md)). A low-volume back then has few negative games and still a long right tail.
 - **Passing yards:** point mass at 0 plus a discretised normal.
 - **Receptions and carries:** negative binomial.
 - **Pass TDs:** Binomial(11, μ/11).
@@ -27,7 +28,7 @@ Model choices:
 - **Carries** are only used to set expected touches for fumbles lost. With no carries market (FanDuel has none), expected carries are the rushing-yards mean divided by the position's yards per carry.
 - **Correlation:** Gaussian copula with within-player-season Spearman matrices per position (`--correlation pooled` switches matrices). Receiving yards and TDs are 0 whenever receptions are 0.
 
-A stat the position needs but that has no market, or can't be fitted, becomes an **Estimated Stat**, flagged `estimated: X (no market)`. Its mean comes from the player's other priced stats (for example receptions from his receiving yards) blended with his last 8 games from nflverse. Where nothing can estimate it, the stat is flagged `incomplete: missing X` and counts as 0, so that player's range is too low. Fixture runs are offline and estimate from the other priced stats only. The model's other omissions are listed under "Assumptions" in every `OUTPUT.md`.
+A stat the position needs but that has no market, or can't be fitted, becomes an **Estimated Stat**, flagged `estimated: X (no market)`. Its mean comes from the player's other priced stats (for example receptions from his receiving yards; rushing yards from his expected rushing TDs, capped for RBs with a high TD price) blended with his last 8 games from nflverse, where a game last season counts half. Where nothing can estimate it, the stat is flagged `incomplete: missing X` and counts as 0, so that player's range is too low. Fixture runs are offline and estimate from the other priced stats only. The model's other omissions are listed under "Assumptions" in every `OUTPUT.md`.
 
 ## Install
 
@@ -109,7 +110,7 @@ pytest                 # full offline suite (tests never touch the network)
 pytest -m live         # live smoke tests against the real sportsbooks
 ```
 
-Model parameters are committed JSON in `src/ffp/params/`: dispersion relations, correlation matrices and Base Rates. Regenerate them from nflverse (this needs the network and caches to disk):
+Model parameters are committed JSON in `src/ffp/params/`: dispersion relations, per-carry rushing yards, correlation matrices and Base Rates. Regenerate them from nflverse (this needs the network, downloads play-by-play for the dispersion seasons, and caches to disk). `market_calibration.json` is measured on the Kalshi backtest and kept by hand:
 
 ```bash
 python scripts/build_params.py [--out src/ffp/params] [--seasons 2021-2025] \

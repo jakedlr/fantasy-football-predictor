@@ -32,5 +32,17 @@
         "zeros": 59
       }
     }
+  },
+  "estimate_cap_note": "S5.9: an RB's Estimated rushing yards from TDs are at most c x (TD mean)^b, a line in logs through the fitted means of the 1,087 RB player-games Kalshi priced both rushing yards and TDs for (Backtest summary 'estimate_cap'; market means, not outcomes). Yards per expected TD fall as the TD price rises; the linear ratio overstated starters.",
+  "estimate_cap": {
+    "rushing_yards": {
+      "RB": {
+        "applies_to": "rushing_tds",
+        "source": "rush_rec_tds",
+        "c": 91.2,
+        "b": 0.817,
+        "n": 1087
+      }
+    }
   }
 }

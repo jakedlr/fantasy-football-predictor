@@ -31,7 +31,7 @@ from ffp.distributions import (
     prob_zero,
     split_touchdowns,
 )
-from ffp.estimates import RecentGames, estimate_mean, estimated_distribution
+from ffp.estimates import RUSHING_TDS, RecentGames, estimate_mean, estimated_distribution
 from ffp.fair import DEFAULT_PRIOR_C, TD_PRIOR_C, FairPoint, fair_points
 from ffp.markets import Game, PropMarket, parse_utc
 from ffp.players import (
@@ -528,6 +528,7 @@ def _estimate_gaps(
     means = {stat: float(d.mean) for stat, d in {**fitted.dists, **fitted.usage}.items()}
     if tds is not None:
         means[TD_STAT] = float(tds.mean)
+        means[RUSHING_TDS] = float(tds.mean) * fitted.rushing_share  # rushing yards come from these
     for stat in [s for s in MARKET_STATS if s in gaps]:
         mean = estimate_mean(stat, position, means, recent)
         dist = None if mean is None else estimated_distribution(stat, position, mean, fitted.dists.get("receptions"))

@@ -56,6 +56,12 @@ def test_last_games_count_games_played_without_a_stat_row():
     assert (games, totals) == (2, [20.0])  # weeks 3 and 4
 
 
+def test_last_games_weight_earlier_seasons():
+    ws = WeeklyStats([row("p", 2025, 17, carries=10), row("p", 2026, 1, carries=20)])
+    [(games, totals)] = ws.last_games(["carries"], n=8, since_season=2025, from_season=2026, earlier_weight=0.5).values()
+    assert (games, totals) == (1.5, [25.0])
+
+
 def test_played_games_maps_pfr_ids_to_gsis_ids():
     snaps = [{"game_id": "g1", "pfr_player_id": "AbcX00", "offense_snaps": 30},
              {"game_id": "g2", "pfr_player_id": "AbcX00", "offense_snaps": 0},

@@ -15,6 +15,7 @@ from ffp.distributions import (
     fit_carries,
     fit_receiving_yards,
     fit_rushing_yards,
+    fit_yards,
     receiving_yards,
     rushing_yards,
     rushing_yards_pi0_relation,
@@ -103,16 +104,17 @@ def test_rushing_yards_reject_an_unknown_position():
     ("RB", 35.0, [10, 15, 20, 25, 30, 40, 50, 60], 35),
 ])
 def test_fit_recovers_a_distribution_on_the_relation(position, mu, rungs, main):
+    # The hurdle gamma's fit: production for a QB, the Backtest's comparison for an RB (S5.10).
     sd = sd_relation(mu, position)
     truth = rushing_yards(mu, sd, position)
-    fit = fit_rushing_yards(points_from(truth, rungs, main), position)
+    fit = fit_yards("rushing_yards", points_from(truth, rungs, main), position, family="gamma")
     assert fit.mean == pytest.approx(mu, rel=1e-3)
     assert fit.sd == pytest.approx(sd, rel=1e-3)
     assert fit.pi0 == pytest.approx(truth.pi0, abs=1e-3)
 
 
 def test_main_line_only_reproduces_the_main_line_exactly():
-    fit = fit_rushing_yards([FairPoint(82, 0.48, 3.0)], "RB")  # Henry, Over 81.5
+    fit = fit_yards("rushing_yards", [FairPoint(82, 0.48, 3.0)], "RB", family="gamma")  # Henry, Over 81.5
     assert fit.sf(np.array([82]))[0] == pytest.approx(0.48, abs=1e-9)
     assert fit.sd == pytest.approx(kappa("rushing_yards", "RB") * sd_relation(fit.mean, "RB"), rel=1e-9)
     assert fit.pi0 == pytest.approx(pi0_relation(fit.mean, "RB"), rel=1e-9)

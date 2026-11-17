@@ -37,6 +37,8 @@ from scipy.special import logit, ndtri
 
 from ffp import metrics, params
 from ffp.distributions import (
+    COMPOUND_RUSHING_POSITIONS,
+    CarriesCompound,
     StatDistribution,
     fit_yards,
     passing_yards_sd_relation,
@@ -69,7 +71,7 @@ log = logging.getLogger(__name__)
 RULES: ScoringRules = PRESETS["sleeper"]  # what KXNFLFFPTS and KXNFLFFPTSLADDER settle on
 PRIOR_C = {"kalshi": KALSHI_PRIOR_C}  # an exchange's mid is its Fair Probability
 DEFAULT_SAMPLES = 4000
-RECORD_VERSION = 3  # bump when a record's content changes for the same inputs: the cache recomputes
+RECORD_VERSION = 4  # bump when a record's content changes for the same inputs: the cache recomputes
 DEFAULT_SEED = 20261116
 PERCENTILES = (5, 10, 25, 50, 75, 90, 95)
 YARDS_STATS = ("receiving_yards", "rushing_yards", "passing_yards")
@@ -348,7 +350,9 @@ def _stat_record(stat, dist, pg: PlayerGame, points, outcome, position, fitted: 
     rec = {"y": y, "k": thresholds, "mid": [r.mid for r in rungs], "fair": fair_probs,
            "p_neg": prob_negative(dist), "p_zero": prob_zero(dist),
            **_scores(stat, dist, y, thresholds, fair_probs, rng)}
-    if stat in YARDS_STATS:
+    if isinstance(dist, CarriesCompound):  # a sum of carries (S5.10): no nonzero-part sd to compare
+        rec["compound"] = {"lam": dist.lam, "scale": dist.scale, "r": dist.r}
+    elif stat in YARDS_STATS:
         rec["sd"] = float(dist.sd)
         rec["pi0"] = float(dist.pi0)
         rec["sd_rel"] = _sd_relation(stat, float(dist.mean), position, float(dist.pi0))
@@ -364,15 +368,19 @@ def _sd_relation(stat: str, mu: float, position: str, pi0: float) -> float:
 
 
 def _yards_diagnostics(stat, points, position, fitted: Fitted, y, thresholds, fair_probs, rng) -> dict:
-    """The free-fit sd (no sd prior, ≥ FREE_SD_MIN_RUNGS Rungs) and a lognormal refit, each scored."""
+    """The free-fit sd (no sd prior, ≥ FREE_SD_MIN_RUNGS Rungs), a lognormal refit and, where
+    production rushing yards are a sum of carries, the hurdle gamma it replaced (S5.10); each
+    scored. Free and lognormal are hurdle fits: of the gamma, not of the sum of carries."""
     receptions = fitted.dists.get("receptions")
     pi0 = None if receptions is None else prob_zero(receptions)
     out = {}
     variants = []
     if len(points) >= FREE_SD_MIN_RUNGS:
-        variants.append(("free", {"sd_prior": 0.0}))
+        variants.append(("free", {"sd_prior": 0.0, "family": "gamma"}))
     if stat != "passing_yards":
         variants.append(("lognormal", {"family": "lognormal"}))
+    if stat == "rushing_yards" and position in COMPOUND_RUSHING_POSITIONS:
+        variants.append(("gamma", {"family": "gamma"}))
     for name, kwargs in variants:
         try:
             dist = fit_yards(stat, points, position, pi0, **kwargs)
@@ -381,6 +389,7 @@ def _yards_diagnostics(stat, points, position, fitted: Fitted, y, thresholds, fa
             continue
         out[name] = {"sd": float(dist.sd), "pi0": float(dist.pi0),
                      "sd_rel": _sd_relation(stat, float(dist.mean), position, float(dist.pi0)),
+                     "p_neg": prob_negative(dist), "p_zero": prob_zero(dist),
                      **_scores(stat, dist, y, thresholds, fair_probs, rng)}
     return out
 
@@ -640,13 +649,34 @@ def summarize(records: Sequence[dict]) -> dict:
     summary["lognormal"] = {f"{stat} {pos}": v for stat in ("receiving_yards", "rushing_yards")
                             for (pos,), g in _by(stats.get(stat, []), "position").items()
                             if (v := _variant_summary(g, "lognormal"))}
+    summary["gamma"] = {f"rushing_yards {pos}{'' if b == 'all' else ' mu ' + b}": v
+                        for (pos,), g in _by(stats.get("rushing_yards", []), "position").items()
+                        for b, gb in [("all", g), *((k[0], v) for k, v in _by(
+                            [{**s, "b": _mu_bucket(s["mean"], MU_EDGES["rushing_yards"])} for s in g], "b").items())]
+                        if (v := _variant_summary(gb, "gamma"))}
     summary["free_fit"] = {f"{stat} {pos}": v for stat in YARDS_STATS
                            for (pos,), g in _by(stats.get(stat, []), "position").items()
                            if (v := _variant_summary(g, "free"))}
     summary["joint"] = _joint(ok)
     summary["td"] = _td(ok)
     summary["estimated"] = _estimated_summary(ok)
+    summary["estimate_cap"] = _estimate_cap(ok)
     return summary
+
+
+def _estimate_cap(ok: Sequence[dict]) -> dict:
+    """The rushing-yards cap c·TD^b of Estimated Stats (S5.9; params/market_calibration.json
+    `estimate_cap`): a least-squares line in logs through the fitted means of players Kalshi
+    priced both rushing yards and TDs for, by position. Market means, not outcomes."""
+    out = {}
+    for (pos,), g in _by([r for r in ok if "rushing_yards" in r["stats"] and TD_STAT in r["stats"]], "position").items():
+        td = np.array([r["stats"][TD_STAT]["mean"] for r in g])
+        yd = np.array([r["stats"]["rushing_yards"]["mean"] for r in g])
+        keep = (td > 0) & (yd > 0)
+        if keep.sum() >= 30:
+            b, ln_c = np.polyfit(np.log(td[keep]), np.log(yd[keep]), 1)
+            out[pos] = {"n": int(keep.sum()), "c": float(np.exp(ln_c)), "b": float(b)}
+    return out
 
 
 def _estimated_summary(ok: Sequence[dict]) -> dict:
@@ -705,7 +735,7 @@ def _dispersion(stats) -> dict:
         rows = [s for s in stats.get(stat, []) if "free" in s and "sd" in s["free"]]
         for (pos,), g in _by(rows, "position").items():
             out[f"{stat} {pos}"] = {"free": _geo([s["free"]["sd"] / s["free"]["sd_rel"] for s in g]),
-                                    "fitted": _geo([s["sd"] / s["sd_rel"] for s in g])}
+                                    "fitted": _geo([s["sd"] / s["sd_rel"] for s in g if "sd" in s])}
             for bucket, gb in _by([{**s, "b": _mu_bucket(s["mean"], MU_EDGES[stat])} for s in g], "b").items():
                 out[f"{stat} {pos} mu {bucket[0]}"] = {"free": _geo([s["free"]["sd"] / s["free"]["sd_rel"] for s in gb])}
     return out
@@ -723,6 +753,10 @@ def _shift(stats) -> dict:
                 "p_zero": float(np.mean([s["p_zero"] for s in gb])), "obs_zero": float(np.mean([s["y"] == 0 for s in gb])),
                 "obs_le_minus5": float(np.mean([s["y"] <= -5 for s in gb])),
             }
+            gam = [s["gamma"] for s in gb if "p_neg" in s.get("gamma", {})]
+            if gam:  # the hurdle gamma that the sum of carries replaced (S5.10)
+                out[f"{pos} mu {bucket[0]}"]["gamma"] = {"n": len(gam), "p_neg": float(np.mean([v["p_neg"] for v in gam])),
+                                                         "p_zero": float(np.mean([v["p_zero"] for v in gam]))}
     return out
 
 
@@ -879,6 +913,10 @@ def render_tables(summary: dict) -> str:
         for name, e in summary["estimated"].items():
             out.append(f"| {name} | {e['n']} | {_f(e['pit']['chi2_p'])} | {_hist(e['pit']['counts'])} | "
                        f"{_f(e['mean'], 2)} | {_f(e['mean_error'], 2)} | {_f(e['crps'], 2)} |")
+    if summary.get("estimate_cap"):
+        out += ["", "Rushing yards from TDs: c·TD^b through priced players' fitted means "
+                "(the RB cap in params/market_calibration.json):", ""]
+        out += [f"- {pos}: n {v['n']}, c {_f(v['c'], 1)}, b {_f(v['b'], 3)}" for pos, v in summary["estimate_cap"].items()]
     out += ["", "### Dispersion: sd / relation sd", "",
             "Free fit: no sd prior, players with ≥ 4 Rungs. Fitted: the production fit (prior λ = 0.44).", "",
             "| Stat, position, mu | n | free: geo mean | median | p25–p75 | fitted: geo mean |", "|---|---|---|---|---|---|"]
@@ -894,13 +932,28 @@ def render_tables(summary: dict) -> str:
                    f"{_f(v['pit_base']['chi2_p'])} | {_f(v['resid_rmse'])} / {_f(v['resid_rmse_base'])} |")
 
     out += ["", "### Rushing yards below and at zero", "",
-            "| Position, mu | n | model P(Y<0) | observed | model P(Y=0) | observed | observed P(Y ≤ −5) |", "|---|---|---|---|---|---|---|"]
+            "Model: production (RB/WR/TE a sum of carries, QB the hurdle gamma); gamma: the hurdle gamma refitted "
+            "on the same Rungs.", "",
+            "| Position, mu | n | model P(Y<0) | gamma P(Y<0) | observed | model P(Y=0) | gamma P(Y=0) | observed | observed P(Y ≤ −5) |",
+            "|---|---|---|---|---|---|---|---|---|"]
     for name, s in summary["shift"].items():
-        out.append(f"| {name} | {s['n']} | {_pct(s['p_neg'])} | {_pct(s['obs_neg'])} | {_pct(s['p_zero'])} | {_pct(s['obs_zero'])} | "
-                   f"{_pct(s['obs_le_minus5'])} |")
+        g = s.get("gamma", {})
+        out.append(f"| {name} | {s['n']} | {_pct(s['p_neg'])} | {_pct(g.get('p_neg'))} | {_pct(s['obs_neg'])} | "
+                   f"{_pct(s['p_zero'])} | {_pct(g.get('p_zero'))} | {_pct(s['obs_zero'])} | {_pct(s['obs_le_minus5'])} |")
+    if summary.get("gamma"):
+        out += ["", "### Sum of carries vs hurdle gamma: rushing yards", "",
+                "Production (sum of carries) against the hurdle gamma with shift fitted to the same Rungs (S5.10).", "",
+                "| Position, mu | n | CRPS gamma / carries | PIT χ² p gamma / carries | fit resid gamma / carries | PIT gamma | PIT carries |",
+                "|---|---|---|---|---|---|---|"]
+        for name, v in summary["gamma"].items():
+            out.append(f"| {name} | {v['n']} | {_f(v['crps'], 3)} / {_f(v['crps_base'], 3)} | {_f(v['pit']['chi2_p'])} / "
+                       f"{_f(v['pit_base']['chi2_p'])} | {_f(v['resid_rmse'])} / {_f(v['resid_rmse_base'])} | "
+                       f"{_hist(v['pit']['counts'])} | {_hist(v['pit_base']['counts'])} |")
 
-    out += ["", "### Gamma vs lognormal nonzero part", "", "Same fit (production prior and pi0), only the family changes.", "",
-            "| Stat, position | n | CRPS lognormal / gamma | PIT χ² p lognormal / gamma | fit resid lognormal / gamma | PIT lognormal |",
+    out += ["", "### Production vs lognormal nonzero part", "",
+            "The hurdle refitted with a lognormal nonzero part (production prior and pi0) against production (the "
+            "hurdle gamma; for RB/WR/TE rushing yards, the sum of carries).", "",
+            "| Stat, position | n | CRPS lognormal / production | PIT χ² p lognormal / production | fit resid lognormal / production | PIT lognormal |",
             "|---|---|---|---|---|---|"]
     for name, v in summary["lognormal"].items():
         out.append(f"| {name} | {v['n']} | {_f(v['crps'], 3)} / {_f(v['crps_base'], 3)} | {_f(v['pit']['chi2_p'])} / "
