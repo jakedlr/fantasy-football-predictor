@@ -328,7 +328,7 @@ def test_fit_nb_relation_recovers_size_law():
 
 def test_existing_shifts_reads_committed_dispersion(tmp_path):
     assert bp.existing_shifts(tmp_path) == bp.DEFAULT_SHIFT
-    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 7.0, "RB": 3.0, "WR": 3.0, "TE": 3.0}  # S5.6, Kalshi Backtest
+    assert bp.DEFAULT_SHIFT["rushing_yards"] == {"QB": 7.0, "RB": 5.0, "WR": 5.0, "TE": 5.0}  # S5.6 and its review
     (tmp_path / "dispersion.json").write_text(json.dumps({
         "receiving_yards": {"WR": {"shift": 4.1}},
         "rushing_yards": {"QB": {"shift": 8.0}},
@@ -522,3 +522,19 @@ def test_dispersion_params_fits_every_sprint4_relation():
         assert set(out["n_games"][stat]) | set(out["borrowed"].get(stat, {})) == set(out[stat])
         assert not set(out["n_games"][stat]) & set(out["borrowed"].get(stat, {}))
         assert all(n > 0 for n in out["n_games"][stat].values())
+
+
+def test_the_sd_relation_is_fitted_with_the_runtime_pi0(tmp_path):
+    # Review finding 3: market_calibration.json overrides P(0) at runtime, so the sd relation of the
+    # nonzero part (mean mu / (1 - pi0)) must be fitted with that pi0, not the nflverse one.
+    rng = np.random.default_rng(3)
+    mu = rng.uniform(10, 80, 4000)
+    nonzero = rng.gamma(4.0, mu / 4.0) - 3.0
+    y = np.where(rng.uniform(size=mu.size) < 0.05, 0.0, np.round(nonzero))
+    own = bp.hurdle_entry(mu, y, bp.HURDLE_GAMMA, 3.0)
+    calibrated = bp.hurdle_entry(mu, y, bp.HURDLE_GAMMA, 3.0, runtime_pi0=(4.0, -2.5))
+    assert (calibrated["pi0_c0"], calibrated["pi0_c1"]) == (own["pi0_c0"], own["pi0_c1"])  # kept
+    assert (calibrated["sd_a"], calibrated["sd_b"]) != (own["sd_a"], own["sd_b"])
+    (tmp_path / "market_calibration.json").write_text(json.dumps({"pi0": {"rushing_yards": {"RB": {"c0": 4.0, "c1": -2.5}}}}))
+    assert bp.calibrated_pi0(tmp_path) == {"rushing_yards": {"RB": {"c0": 4.0, "c1": -2.5}}}
+    assert bp.calibrated_pi0(tmp_path / "nowhere") == {}

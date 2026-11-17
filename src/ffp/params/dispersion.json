@@ -1,5 +1,5 @@
 {
-  "source": "scripts/build_params.py on 2026-11-16 from nflverse (CC-BY 4.0) via nflreadpy; fit on 2015-2021 REG+POST with zero-stat games recovered from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); shifted-gamma shifts are inputs, not fitted; QB relations on starters (trailing 4-game pass attempts >= 20); see RELATIONS in the script for the per-position mu floors",
+  "source": "scripts/build_params.py on 2026-11-17 from nflverse (CC-BY 4.0) via nflreadpy; fit on 2015-2021 REG+POST with zero-stat games recovered from snap counts, mu = leave-one-season-out OLS proxy (stat-distributions.md Q2); shifted-gamma shifts are inputs, not fitted; QB relations on starters (trailing 4-game pass attempts >= 20); see RELATIONS in the script for the per-position mu floors",
   "receiving_yards": {
     "WR": {
       "family": "hurdle_shifted_gamma",
@@ -46,35 +46,35 @@
   "rushing_yards": {
     "RB": {
       "family": "hurdle_shifted_gamma",
-      "shift": 3.0,
+      "shift": 5.0,
       "pi0_c0": 6.23,
       "pi0_c1": -2.645,
-      "sd_a": 4.002,
-      "sd_b": 0.556
+      "sd_a": 3.446,
+      "sd_b": 0.59
     },
     "QB": {
       "family": "hurdle_shifted_gamma",
       "shift": 7.0,
       "pi0_c0": 0.655,
       "pi0_c1": -1.05,
-      "sd_a": 2.184,
-      "sd_b": 0.681
+      "sd_a": 2.191,
+      "sd_b": 0.679
     },
     "WR": {
       "family": "hurdle_shifted_gamma",
-      "shift": 3.0,
+      "shift": 5.0,
       "pi0_c0": 2.941,
       "pi0_c1": -1.745,
-      "sd_a": 3.3,
-      "sd_b": 0.533
+      "sd_a": 4.66,
+      "sd_b": 0.395
     },
     "TE": {
       "family": "hurdle_shifted_gamma",
-      "shift": 3.0,
+      "shift": 5.0,
       "pi0_c0": 2.941,
       "pi0_c1": -1.745,
-      "sd_a": 3.3,
-      "sd_b": 0.533
+      "sd_a": 4.66,
+      "sd_b": 0.395
     }
   },
   "carries": {

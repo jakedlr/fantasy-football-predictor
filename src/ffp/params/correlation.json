@@ -1,5 +1,5 @@
 {
-  "source": "scripts/build_params.py on 2026-11-16 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG, nflverse-data.md section 3 filters",
+  "source": "scripts/build_params.py on 2026-11-17 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG, nflverse-data.md section 3 filters",
   "note": "matrix = latent Gaussian-copula rho found by bisection so that simulating with the sample's pooled empirical margins reproduces the observed Spearman (spearman): within-player-season centred ranks (player-seasons with >= 6 qualifying games) for 'within', pooled player-games for 'pooled'; eigenvalues clipped and rescaled if not positive definite",
   "default": "within",
   "within": {

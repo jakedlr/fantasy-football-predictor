@@ -1,5 +1,5 @@
 {
-  "source": "scripts/build_params.py on 2026-11-16 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG qualifying games (nflverse-data.md section 4)",
+  "source": "scripts/build_params.py on 2026-11-17 from nflverse (CC-BY 4.0) via nflreadpy; 2021-2025 REG qualifying games (nflverse-data.md section 4)",
   "fumbles_lost_per_touch": {
     "RB": 0.0044,
     "WR": 0.0065,
