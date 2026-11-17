@@ -24,6 +24,10 @@ _Avoid_: League settings
 The historical per-game frequency of a Scoring Stat that no book offers, such as fumbles lost or 2-point conversions.
 _Avoid_: Default rate, prior
 
+**Estimated Stat**:
+A Scoring Stat with no Prop Market for this player in this Game, whose Stat Distribution is estimated from his other stats or recent games.
+_Avoid_: Fallback stat, imputed stat, filled stat
+
 ## Markets
 
 **Game**:
