@@ -8,7 +8,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–4 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution. Kickers and D/ST are not supported yet.
+Sprints 0–4 are done and merged. Every QB, RB, WR and TE gets a full Score Distribution. Kickers and D/ST are not supported yet. Sprint 5 (in progress) backtests the model against settled Kalshi markets; see [PLAN.md](PLAN.md).
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|

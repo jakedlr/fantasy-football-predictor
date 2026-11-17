@@ -30,6 +30,10 @@ _Avoid_: Default rate, prior
 One scheduled NFL game. A sportsbook's "event" means a Game.
 _Avoid_: Event, matchup, fixture
 
+**Book**:
+A sportsbook or prediction exchange that prices Prop Markets: DraftKings, FanDuel or Kalshi. An exchange's prices carry no vig.
+_Avoid_: Sportsbook (when an exchange is meant too), site, operator
+
 **Prop Market**:
 A book's offer on one player's Scoring Stat or Usage Stat in one Game.
 _Avoid_: Prop, bet, market

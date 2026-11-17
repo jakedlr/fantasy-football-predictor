@@ -150,11 +150,24 @@ Done when a QB, RB, WR and TE each get a full Score Distribution and the suite p
 - **S4.3 Position matrices** for QB and RB (one per position, no workhorse override), and the **per-player rushing TD share** for all four positions (research/nflverse-data.md section 6): volume share v = (ρr·C + κ·m)/(ρr·C + ρt·T + κ) from the player's carries C and targets T, then share = (R + k·v)/(N + k) from his rushing TDs R of N rush+rec TDs; κ = 2, k = 30; window this season to date + the previous 2 seasons. It splits both TDs and 2-pt conversions. History comes from nflverse weekly player stats fetched at runtime; no history, or nflverse unreachable (logged), gives the position share m.
 - ~~S4.4 QB fumbles from sacks.~~ Dropped (Sprint 4 planning): no book offers a QB sacks-taken market, and research/nflverse-data.md finds QB fumbles lost barely vary by usage, so the flat per-game rate stays.
 
-## Backlog (later sprints, order decided after Sprint 4)
+## Sprint 5 — Kalshi backtest
 
-- **Backtest on Kalshi** (Oct 2025 → now): pull settled Ladders and pre-kickoff candles, then report PIT histograms, P(≥k) reliability, CRPS and pinball loss. Compare against an independent-stats baseline. Recalibrate the dispersion relations and the gamma-vs-lognormal choice on real devigged Ladders.
+**Research wave:** Kalshi coverage per stat, Oct 2025 → now (settled games, players, Ladders; `/historical` before the 2026-09-17 cutoff and the live endpoints after), bid/ask spreads and which pre-kickoff price to use; Kalshi's API terms for personal research use; the Sleeper scoring that Kalshi's fantasy-points contracts settle on.
+
+**Build wave:** 3 subagents (Kalshi fetcher + cache; backtest runner; `sleeper` preset + scoring metrics).
+
+Done when `research/backtest-kalshi.md` reports calibration per stat, position and fantasy points, with proposed recalibrations listed for approval.
+
+- **S5.1 Kalshi fetcher.** Settled markets and the last pre-kickoff candle into git-ignored `data/kalshi/`; each Kalshi Ladder becomes a Prop Market whose Fair Probability is the bid/ask mid (an exchange charges no vig).
+- **S5.2 Backtest runner** (`scripts/backtest_kalshi.py`): the full pipeline on Kalshi's Ladders per Game, scored against nflverse outcomes. Per stat: PIT histograms, P(≥k) reliability, CRPS. Headline: fantasy points under Sleeper scoring, P5–P95 calibration, and our percentiles against Kalshi's own fantasy-points Ladder. Every metric also for an independent-stats baseline (no copula).
+- **S5.3 `sleeper` Scoring Rules preset** matching Kalshi's contract terms, and the shared metric functions.
+- **Findings change nothing automatically.** Each proposed recalibration (dispersion relations, κ, rushing shift, gamma vs lognormal, TD vig prior, conditional receptions→yards, workhorse override) is brought to the user for approval.
+
+## Backlog (Sprint 5 chosen after Sprint 4; kickers and D/ST likely next)
+
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
-- **Kicker and D/ST** from team totals and opponent totals.
+- **Kicker and D/ST** from team totals and opponent totals (likely Sprint 6).
+- **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).
 - **Conditional receptions→yards model** or a supervised alternative, adopted only if the backtest shows the copula is miscalibrated.
 - **Backtest on our own `snapshots/`** once enough weeks have accumulated.
 - **QB fumbles from sacks** (S4.4, dropped from Sprint 4): needs an expected-sacks estimate, e.g. pass attempts × a sack-rate Base Rate.
