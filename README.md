@@ -27,7 +27,7 @@ Model choices:
 - **Carries** are only used to set expected touches for fumbles lost. With no carries market (FanDuel has none), expected carries are the rushing-yards mean divided by the position's yards per carry.
 - **Correlation:** Gaussian copula with within-player-season Spearman matrices per position (`--correlation pooled` switches matrices). Receiving yards and TDs are 0 whenever receptions are 0.
 
-A stat the position needs but that has no market or can't be fitted is flagged `incomplete: missing X`. The model's other omissions are listed under "Assumptions" in every `OUTPUT.md`.
+A stat the position needs but that has no market, or can't be fitted, becomes an **Estimated Stat**, flagged `estimated: X (no market)`. Its mean comes from the player's other priced stats (for example receptions from his receiving yards) blended with his last 8 games from nflverse. Where nothing can estimate it, the stat is flagged `incomplete: missing X` and counts as 0, so that player's range is too low. Fixture runs are offline and estimate from the other priced stats only. The model's other omissions are listed under "Assumptions" in every `OUTPUT.md`.
 
 ## Install
 
@@ -155,6 +155,7 @@ src/ffp/
   distributions.py   Stat Distribution families and their fits
   base_rates.py      fumbles lost and 2-pt from nflverse Base Rates
   td_share.py        per-player rushing TD share
+  estimates.py       Estimated Stats: a missing core stat from other stats and recent games
   copula.py, simulate.py   correlated sampling → Score Distribution
   scoring.py, rules/ Scoring Rules
   report.py          OUTPUT.md + output.json
