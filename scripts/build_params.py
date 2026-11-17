@@ -885,6 +885,16 @@ def existing_shifts(out_dir: Path) -> dict[str, dict[str, float]]:
     return shifts
 
 
+def hand_kept_inputs(inputs_dir: Path) -> tuple[dict[str, dict[str, float]], dict]:
+    """(shifts, runtime P(0)) from the committed params in `inputs_dir`, read there whatever --out
+    says: built to an empty --out, the rushing sd relations were silently fitted without the P(0)
+    overrides. A missing market_calibration.json is an error, not an empty override table."""
+    if not (inputs_dir / "market_calibration.json").exists():
+        raise FileNotFoundError(f"{inputs_dir / 'market_calibration.json'} not found: --inputs must be the "
+                                "committed params directory (it holds the hand-kept P(0) overrides)")
+    return existing_shifts(inputs_dir), calibrated_pi0(inputs_dir)
+
+
 def dumps(doc: dict) -> str:
     """A params file as indented JSON, except that a "rows" table keeps one row per line."""
     if "rows" not in doc:
@@ -965,6 +975,9 @@ def build(raw: Raw, seasons: list[int], dispersion_seasons: list[int], shifts: d
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="directory for the JSON files (default: src/ffp/params)")
+    ap.add_argument("--inputs", type=Path, default=DEFAULT_OUT,
+                    help="where the hand-kept inputs are read: market_calibration.json's P(0) overrides and "
+                         "dispersion.json's shifts (default: src/ffp/params, whatever --out is)")
     ap.add_argument("--seasons", default="2021-2025", help="correlation and Base Rate seasons (default 2021-2025)")
     ap.add_argument("--dispersion-seasons", default="2015-2021", help="dispersion fit seasons (default 2015-2021)")
     ap.add_argument("--dst-seasons", default="2015-2025", help="D/ST Analog Game seasons (default 2015-2025)")
@@ -973,9 +986,10 @@ def main(argv: list[str] | None = None) -> int:
 
     seasons, dseasons = parse_seasons(args.seasons), parse_seasons(args.dispersion_seasons)
     dst_seasons = parse_seasons(args.dst_seasons)
+    shifts, runtime_pi0 = hand_kept_inputs(args.inputs)  # before the download: a bad --inputs fails fast
     raw = load_nflverse(sorted(set(seasons) | set(dseasons)), dseasons, dst_seasons)
-    docs = build(raw, seasons, dseasons, existing_shifts(args.out), draws=args.draws, today=dt.date.today().isoformat(),
-                 runtime_pi0=calibrated_pi0(args.out), dst_seasons=dst_seasons)
+    docs = build(raw, seasons, dseasons, shifts, draws=args.draws, today=dt.date.today().isoformat(),
+                 runtime_pi0=runtime_pi0, dst_seasons=dst_seasons)
     args.out.mkdir(parents=True, exist_ok=True)
     for name, doc in docs.items():
         (args.out / f"{name}.json").write_text(dumps(doc))
