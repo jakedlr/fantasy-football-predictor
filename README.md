@@ -130,6 +130,8 @@ src/ffp/
   scoring.py, rules/ Scoring Rules
   report.py          OUTPUT.md + output.json
   snapshots.py       raw responses saved per live run
+  outcomes.py        Backtest outcomes: actual stats per player-game from nflverse
+  metrics.py         Backtest metrics: PIT, CRPS, reliability/Brier, coverage, pinball, log loss
   params/            committed model parameters (scripts/build_params.py)
 scripts/build_params.py   regenerates params/ from nflverse
 research/          research notes, recorded fixtures, research scripts
