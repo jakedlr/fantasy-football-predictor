@@ -13,11 +13,14 @@ BEFORE_MNF = "2026-11-16T12:00:00Z"  # the fixtures' Game, LAC @ BAL, kicks off 
 
 
 def run_predict(tmp_path: Path, names: list[str], *options: str) -> tuple[str, dict]:
+    """One CLI run on the fixtures, in one process unless `options` set --jobs: a test's monkeypatches
+    don't reach worker processes (the parallel path has its own tests)."""
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("\n".join(names) + "\n")
+    jobs = [] if "--jobs" in options else ["--jobs", "1"]
     exit_code = main(
         ["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
-         "--output-dir", str(tmp_path), *options]
+         "--output-dir", str(tmp_path), *jobs, *options]
     )
     assert exit_code == 0
     return (tmp_path / "OUTPUT.md").read_text(), json.loads((tmp_path / "output.json").read_text())
@@ -201,7 +204,9 @@ def test_a_live_run_with_nobody_to_price_makes_no_requests(tmp_path, monkeypatch
     assert not (tmp_path / "snaps").exists()
 
 
-def test_a_live_run_whose_odds_fail_fetches_no_td_history(tmp_path, monkeypatch):
+def test_a_live_run_whose_odds_fail_throws_the_player_history_away(tmp_path, monkeypatch):
+    # Sprint 8 (S8.2): the history download overlaps the odds, so it may start; with no odds it is
+    # thrown away (even a failing one) and the run stops as before.
     import ffp.cli
     import ffp.predict
 
@@ -209,12 +214,37 @@ def test_a_live_run_whose_odds_fail_fetches_no_td_history(tmp_path, monkeypatch)
     monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
     monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
     monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: [])
-    monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
-    monkeypatch.setattr(ffp.cli, "load_recent_games", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
-    monkeypatch.setattr(ffp.cli, "_played", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(ffp.cli, "load_recent_games", lambda *a, **k: {})
+    monkeypatch.setattr(ffp.cli, "_played", lambda *a, **k: set())
     input_md = tmp_path / "INPUT.md"
     input_md.write_text("Zay Flowers\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
+
+
+def test_the_player_history_downloads_while_the_odds_are_fetched(tmp_path, monkeypatch):
+    # S8.2: the odds can't finish until the history download has started.
+    import threading
+
+    import ffp.cli
+    import ffp.predict
+
+    started = threading.Event()
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.cli, "load_td_history", lambda *a, **k: (started.set(), {})[1])
+    monkeypatch.setattr(ffp.cli, "load_recent_games", lambda *a, **k: {})
+    monkeypatch.setattr(ffp.cli, "_played", lambda *a, **k: set())
+
+    def odds(http, games, now, **kw):
+        assert started.wait(5), "the history download did not start alongside the odds"
+        return ffp.predict.load_fixture_books(FIXTURES)
+
+    monkeypatch.setattr(ffp.predict, "load_live_books", odds)
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 0
 
 
 def test_the_chance_option_reports_the_thresholds_supplied(tmp_path):
@@ -314,3 +344,49 @@ def test_the_timing_line_names_a_book_left_out_or_rate_limited():
     }
     assert timing_line(timing, 12.04) == ("Odds in 12.0 s: DraftKings 4 live requests in 3.0 s (rate-limited, "
                                           "left out), FanDuel 30 in 11.9 s (+2 cached)")
+
+
+@pytest.mark.parametrize("extra, jobs", [([], "auto"), (["--jobs", "1"], 1), (["--jobs", "3"], 3)])
+def test_jobs_sets_the_prediction_worker_processes(tmp_path, monkeypatch, extra, jobs):
+    # Sprint 8: by default one worker per player, a fifth of the cores left free; --jobs 1 stays in one process.
+    import ffp.predict
+
+    seen = {}
+    real = ffp.predict.predict
+
+    def spy(targets, books, rules, **kw):
+        seen["jobs"], seen["n"] = kw.get("jobs"), len(targets)
+        return real(targets, books, rules, **{**kw, "jobs": 1})
+
+    monkeypatch.setattr(ffp.predict, "predict", spy)
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\nDerrick Henry\n")
+    assert main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
+                 "--output-dir", str(tmp_path), *extra]) == 0
+    # Auto is None: predict sizes it by the players with markets to fit (ffp.predict.default_jobs).
+    assert seen["jobs"] == (None if jobs == "auto" else jobs)
+
+
+def test_jobs_must_be_a_whole_number_of_one_or_more(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        main(["predict", "x.md", "--jobs", "0"])
+    assert "--jobs" in capsys.readouterr().err
+
+
+def test_a_failed_odds_run_lets_the_history_download_finish_before_exiting(tmp_path, monkeypatch):
+    # Review finding 3: the process exited with the download (and its cache write) half done.
+    import time as _time
+
+    import ffp.cli
+    import ffp.predict
+
+    done = []
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: [])
+    monkeypatch.setattr(ffp.cli, "_player_history", lambda season: (_time.sleep(0.3), done.append(1), ({}, {}))[2])
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
+    assert done == [1]

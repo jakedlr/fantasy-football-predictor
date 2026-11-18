@@ -266,3 +266,24 @@ def test_a_value_above_a_closed_last_tier_scores_nothing():
         {"min": 0, "max": 0, "points": 5}, {"min": 1, "max": 20, "points": 1}]})
     assert score_dst({"points_allowed_all": 20}, capped) == 1
     assert score_dst({"points_allowed_all": 21}, capped) == 0
+
+
+def test_scoring_rules_pickle_for_worker_processes():
+    # Sprint 8: the rules go to each prediction worker; offense stays read-only.
+    import pickle
+
+    rules = PRESETS["sleeper"]
+    copy = pickle.loads(pickle.dumps(rules))
+    assert copy == rules and copy.offense["receptions"] == 1
+    with pytest.raises(TypeError):
+        copy.offense["receptions"] = 2
+
+
+def test_pickled_rules_keep_every_field():
+    # Review finding 10: the fields were listed by hand.
+    import dataclasses
+    import pickle
+
+    rules = dataclasses.replace(PRESETS["ppr"], assumptions=["a"], name="z")
+    copy = pickle.loads(pickle.dumps(rules))
+    assert all(getattr(copy, f.name) == getattr(rules, f.name) for f in dataclasses.fields(rules))

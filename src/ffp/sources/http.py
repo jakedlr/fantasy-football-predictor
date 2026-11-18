@@ -223,8 +223,10 @@ class Http:
         fetch=scrapling_fetch,
         sleep=None,
         clock=time.monotonic,
+        book_pacing=None,
     ):
         self.cache_dir = Path(cache_dir)
+        self.book_pacing = dict(BOOK_PACING if book_pacing is None else book_pacing)  # {Book: Pacing}
         self.ttl = ttl
         self.use_cache = use_cache
         self.fetch = fetch
@@ -267,8 +269,10 @@ class Http:
             return {book: dict(self._timing[book]) for book in self._books if book in self._timing}
 
     def for_book(self, book: str, pacing: Pacing | None = None) -> "BookHttp":
-        """This Http as `book` uses it: same cache, paced by `pacing` (without one, the slow pause), its live
-        requests and time recorded. A Book keeps its first Pacer for the run, slowed or not."""
+        """This Http as `book` uses it: same cache, paced by `pacing` (without one, the Book's own from
+        `book_pacing`, else the slow pause), its live requests and time recorded. A Book keeps its first
+        Pacer for the run, slowed or not."""
+        pacing = pacing if pacing is not None else self.book_pacing.get(book)
         with self._lock:
             if book not in self._books:
                 self._books.append(book)

@@ -334,7 +334,8 @@ def test_a_paced_book_starts_requests_at_least_min_gap_apart(tmp_path):
 
 def test_a_book_without_pacing_keeps_one_request_at_a_time_with_the_slow_pause(tmp_path):
     clock, net, slept = FakeClock(), Network(seconds=0), []
-    http = Http(tmp_path, fetch=net, sleep=lambda t: (slept.append(t), clock.sleep(t)), clock=clock, delay=(3.5, 5))
+    http = Http(tmp_path, fetch=net, sleep=lambda t: (slept.append(t), clock.sleep(t)), clock=clock, delay=(3.5, 5),
+                book_pacing={})
     with http.for_book("draftkings") as dk:
         dk.get_many(URLS[:4])
     assert net.peak == 1 and len(slept) == 3 and all(3.5 <= s <= 5 for s in slept)
@@ -524,3 +525,10 @@ def test_a_book_slowed_by_a_refusal_is_timed_as_slowed(tmp_path):
     http, _, _ = run_book(tmp_path, limits_first(URLS[0], status=403))
     t = http.timing["draftkings"]
     assert (t["slowed"], t["rate_limited"]) == (True, False)
+
+
+def test_a_book_is_paced_by_its_own_pacing_unless_told_otherwise(tmp_path):
+    http = Http(tmp_path, fetch=Network(seconds=0.05), sleep=no_sleep)
+    with http.for_book("fanduel") as fd:  # BOOK_PACING's 3 in flight
+        fd.get_many(URLS[:6])
+    assert http._pacer("fanduel").in_flight == 3

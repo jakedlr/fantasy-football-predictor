@@ -327,10 +327,8 @@ def load_live_books(
 def _run_book(http, book: str, label: str, job) -> "BookOdds | None":
     """One Book's fetch through its own view of `http`, or None with one warning when the Book fails
     outright."""
-    from ffp.sources.http import BOOK_PACING
-
     try:
-        with http.for_book(book, BOOK_PACING.get(book)) as view:
+        with http.for_book(book) as view:  # paced by the Book's own Pacing (Http.book_pacing)
             return job(view)
     except _book_failures() as error:
         log.warning("%s left out: %s", label, _describe(error))
@@ -532,6 +530,7 @@ def predict(
     td_history: Mapping[str, TdHistory] | None = None,
     chance_thresholds: Sequence[float] = (),
     recent_games: Mapping[str, RecentGames] | None = None,
+    jobs: int | None = 1,
 ) -> tuple[list[PlayerResult], list[SkippedPlayer]]:
     """A Score Distribution for each target with Prop Markets in its Game.
 
@@ -549,28 +548,144 @@ def predict(
     "estimated"; where no estimate can be made it is left out and flagged "incomplete" (S3.5). With no book pricing the Game at all,
     the player is skipped as "props not posted"; with the Game priced but not
     the player, as "no Prop Markets"; with no fit succeeding, as unfittable.
+
+    With `jobs` above 1 (Sprint 8), the players with markets to fit are predicted in that many worker
+    processes; None picks `default_jobs` for them. Each player's prediction is independent and seeded
+    on its own, so the results are identical to a one-process run. A worker's Fair Points
+    (`on_fair_points`) and log records are replayed here as each player lands, in target order, so a
+    crash keeps what came before it. One player to fit is predicted in process (a worker start costs
+    about a second), and so are D/STs, kickers and skips.
     """
+    context = _Context(books, rules, correlation, chance_thresholds)
+    task = {id(t): (t, (td_history or {}).get(t.player.gsis_id), (recent_games or {}).get(t.player.gsis_id))
+            for t in targets}
+    # Only players with markets to fit are worth a worker: a D/ST, a kicker or a skip is near instant.
+    to_fit = [t for t in targets if _needs_fitting(t, books)]
+    jobs = default_jobs(len(to_fit)) if jobs is None else jobs
     results, skipped = [], []
-    for target in targets:
-        if target.player.position in TEAM_POSITIONS:
-            outcome = _team_result(target, books, rules, chance_thresholds)
-            (results if isinstance(outcome, PlayerResult) else skipped).append(outcome)
-            continue
-        priced, by_stat = _markets_for(target, books)
-        # A Usage Stat alone (a carries line) is nothing to score: the player has no markets.
-        if not has_scoring_markets(by_stat):
-            skipped.append(SkippedPlayer(target.name, NO_MARKETS if priced else PROPS_NOT_POSTED))
-            continue
-        share = rushing_td_share(target.player.position, (td_history or {}).get(target.player.gsis_id))
-        report = None if on_fair_points is None else (lambda stat, pts, t=target: on_fair_points(t, stat, pts))
-        recent = (recent_games or {}).get(target.player.gsis_id)
-        fitted = fit_player(target.player.position, by_stat, share, on_fair_points=report, recent=recent)
-        if not fitted.dists:
-            reason = f"could not fit any of its markets ({'; '.join(fitted.errors)})"
-            skipped.append(SkippedPlayer(target.name, reason))
-            continue
-        results.append(_player_result(target, fitted, rules, correlation, chance_thresholds))
+
+    def keep(outcome):
+        (results if isinstance(outcome, PlayerResult) else skipped).append(outcome)
+
+    def here(target):  # in this process: logging and the Fair Points go straight through
+        report = None if on_fair_points is None else (lambda stat, pts: on_fair_points(target, stat, pts))
+        keep(_predict_target(context, *task[id(target)], report))
+
+    if jobs <= 1 or len(to_fit) <= 1:
+        for target in targets:
+            here(target)
+        return results, skipped
+    from ffp.workers import in_order
+
+    with _worker_pool(min(jobs, len(to_fit)), context) as pool:
+        fitted = in_order(pool, _predict_in_worker, [task[id(t)] for t in to_fit])  # answers in to_fit order
+        fitting = {id(t) for t in to_fit}
+        for target in targets:
+            if id(target) not in fitting:
+                here(target)
+                continue
+            # Replayed as each player lands, in target order: a later crash keeps what came before.
+            outcome, fair_points, records, error = next(fitted)
+            for name, level, message in records:
+                logging.getLogger(name).log(level, "%s", message)
+            if on_fair_points is not None:
+                for stat, points in fair_points:
+                    on_fair_points(target, stat, points)
+            if error is not None:
+                raise error
+            keep(outcome)
     return results, skipped
+
+
+def _needs_fitting(target: Target, books: Sequence[BookOdds]) -> bool:
+    """Whether a target has Prop Markets to fit: the slow part of a prediction."""
+    if target.player.position in TEAM_POSITIONS:
+        return False
+    return has_scoring_markets(_markets_for(target, books)[1])
+
+
+def default_jobs(players: int, cpus: int | None = None) -> int:
+    """Worker processes for predicting `players`: one per player, leaving a fifth of the usable cores (at
+    least one) free for the rest of the machine."""
+    from ffp.workers import usable_cpus
+
+    cpus = cpus or usable_cpus()
+    return max(1, min(players, cpus - max(1, cpus // 5)))
+
+
+@dataclass(frozen=True)
+class _Context:
+    """What every player's prediction shares: sent to each worker once, not once per player."""
+
+    books: Sequence[BookOdds]
+    rules: ScoringRules
+    correlation: str | None
+    chance_thresholds: Sequence[float]
+
+
+class _Records(logging.Handler):
+    """In a worker, collects what one player's prediction logs, to be replayed by the main process."""
+
+    def __init__(self):
+        super().__init__(logging.NOTSET)
+        self.records: list[tuple[str, int, str]] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append((record.name, record.levelno, record.getMessage()))
+
+
+def _predict_target(context: "_Context", target: Target, td_history, recent, report):
+    books, rules = context.books, context.rules
+    if target.player.position in TEAM_POSITIONS:
+        return _team_result(target, books, rules, context.chance_thresholds)
+    priced, by_stat = _markets_for(target, books)
+    # A Usage Stat alone (a carries line) is nothing to score: the player has no markets.
+    if not has_scoring_markets(by_stat):
+        return SkippedPlayer(target.name, NO_MARKETS if priced else PROPS_NOT_POSTED)
+    share = rushing_td_share(target.player.position, td_history)
+    fitted = fit_player(target.player.position, by_stat, share, on_fair_points=report, recent=recent)
+    if not fitted.dists:
+        return SkippedPlayer(target.name, f"could not fit any of its markets ({'; '.join(fitted.errors)})")
+    return _player_result(target, fitted, rules, context.correlation, context.chance_thresholds)
+
+
+_WORKER_CONTEXT: "_Context | None" = None
+
+
+def _start_worker(context: "_Context") -> None:
+    """Set up a prediction worker: the shared context, and every log record collected (levels are
+    filtered when the main process replays them under its own logging setup)."""
+    global _WORKER_CONTEXT
+    _WORKER_CONTEXT = context
+    root = logging.getLogger()
+    root.handlers = []
+    root.setLevel(logging.DEBUG)
+
+
+def _predict_in_worker(task):
+    """One target in a worker: (outcome, [(stat, Fair Points)], [(logger, level, message)], error). An
+    exception comes back as `error` with what was logged before it, for the main process to replay
+    and then raise."""
+    target, td_history, recent = task
+    fair_points: list = []
+    handler = _Records()
+    root = logging.getLogger()
+    root.addHandler(handler)
+    try:
+        outcome = _predict_target(_WORKER_CONTEXT, target, td_history, recent,
+                                  lambda stat, pts: fair_points.append((stat, pts)))
+        return outcome, fair_points, handler.records, None
+    except Exception as error:  # noqa: BLE001 - raised by the main process, in target order
+        return None, fair_points, handler.records, error
+    finally:
+        root.removeHandler(handler)
+
+
+def _worker_pool(workers: int, context: "_Context"):
+    """Worker processes for `predict` (ffp.workers: spawn, Ctrl-C left to this process)."""
+    from ffp.workers import process_pool
+
+    return process_pool(workers, _start_worker, (context,))
 
 
 def has_scoring_markets(by_stat: Mapping[str, Sequence[PropMarket]]) -> bool:
