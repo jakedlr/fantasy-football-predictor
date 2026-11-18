@@ -203,3 +203,16 @@ def test_two_players_with_one_name_keep_their_own_fair_points(tmp_path):
     path = snap.save_fair_points("Josh Johnson", "receiving_yards", [FairPoint(20, 0.5, 3.0)], player_id="00-2")
     entries = _load(path)["fair_points"]
     assert [(e["player_id"], e["points"][0]["threshold"]) for e in entries] == [("00-1", 30), ("00-2", 20)]
+
+
+def test_the_runs_timing_is_kept_in_the_manifest(tmp_path):
+    # Sprint 7: the console's timing line, kept with the prices it timed.
+    snap = Snapshot(RUN_AT, root=tmp_path)
+    snap.save_response("draftkings", "dk_league", {"ok": True}, url="https://dk.example/league")
+    timing = {"draftkings": {"requests": 23, "cached": 0, "failed": False, "rate_limited": False, "seconds": 9.8}}
+    snap.save_timing(timing, seconds=12.3)
+    manifest = json.loads((snap.run_dir / "manifest.json").read_text())
+    assert manifest["timing"] == {"seconds": 12.3, "books": timing}
+    assert len(manifest["responses"]) == 1
+    snap.save_response("fanduel", "fd_league", {"ok": True})
+    assert json.loads((snap.run_dir / "manifest.json").read_text())["timing"]["seconds"] == 12.3

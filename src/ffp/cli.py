@@ -2,6 +2,7 @@ import argparse
 import math
 import logging
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -76,7 +77,32 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+BOOK_LABELS = {"draftkings": "DraftKings", "fanduel": "FanDuel"}
+
+
+def timing_line(books: dict, seconds: float) -> str:
+    """The run's odds timing in one line (Http.timing; Sprint 7), e.g. "Odds in 12.3 s: DraftKings 23 live
+    requests in 9.8 s, FanDuel 30 in 12.1 s (+2 cached)"."""
+    parts = []
+    for i, (book, t) in enumerate(books.items()):
+        notes = [f"+{t['cached']} cached"] if t["cached"] else []
+        notes += ["rate-limited"] if t["rate_limited"] else []
+        notes += ["left out"] if t["failed"] else []
+        what = "live requests " if i == 0 else ""
+        parts.append(f"{BOOK_LABELS.get(book, book)} {t['requests']} {what}in {t['seconds']:.1f} s"
+                     + (f" ({', '.join(notes)})" if notes else ""))
+    return f"Odds in {seconds:.1f} s: " + ", ".join(parts)
+
+
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:  # Ctrl-C: the Books were stopped where they were (Sprint 7)
+        print("cancelled", file=sys.stderr)
+        return 130
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     rules = load_rules(args.scoring)
@@ -99,14 +125,20 @@ def main(argv: list[str] | None = None) -> int:
 
         # Filed under the real fetch time, never --now: snapshots are price history (ADR 0001).
         snapshot = None if args.no_snapshot else _open_snapshot(args.snapshots, datetime.now(timezone.utc))
+        http, started = Http(), time.monotonic()
         books = pipeline.load_live_books(
-            Http(), list({t.game.game_id: t.game for t in targets}.values()), now,
+            http, list({t.game.game_id: t.game for t in targets}.values()), now,
             on_response=_response_saver(snapshot),
             stats=pipeline.market_stats_for(positions),
             kickers="K" in positions,
             dst_games=list({t.game.game_id: t.game for t in targets if t.player.position == pipeline.DST}.values()),
             kicker_ladders="K" in positions and snapshot is not None,  # kept for a later Backtest, not used
         )
+        seconds = round(time.monotonic() - started, 2)
+        if http.timing:
+            print(timing_line(http.timing, seconds))
+            if snapshot is not None:
+                snapshot.save_timing(http.timing, seconds)
         if not books:
             print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)
             return 1

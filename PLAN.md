@@ -215,7 +215,7 @@ Research: two agents (kickers; D/ST), reports summarised in research/kickers-dst
 - Fixture runs load the team totals; Kalshi's D/ST KXNFLFFPTSLADDER markets drop as `dst_mean`, and wide lines kept on request are not counted as drops; a D/ST hint naming another team is an error.
 - Fewer requests: FanDuel's D/ST tabs only for Games with a D/ST; DraftKings' kicker Ladders only when a Snapshot is saved; no nflverse weekly stats for a K/D/ST-only run, and only the columns used otherwise.
 
-## Sprint 7 — Concurrent fetching (approved 2026-11-17, planned)
+## Sprint 7 — Concurrent fetching (approved 2026-11-17, done)
 
 A live run spends nearly all its time waiting on the Books. Every request goes one at a time, DraftKings then FanDuel, with a 3.5–5 s pause after each: about 4.6 s per request, from the HTTP cache's file times. A full lineup is roughly 60 requests, about 4–5 minutes. The CPU side is small: a fixture run of 8 players takes 4.7 s with imports. This sprint ports what prizepicks-optimizer's Sprints 6–7 proved on the same endpoints, where 77 requests went from 89.8 s to 14 s with no rate-limit warning. Terms are in GLOSSARY.md (*Pacing*).
 
@@ -230,14 +230,30 @@ A live run spends nearly all its time waiting on the Books. Every request goes o
 | Process | Done criteria approved first; branch `sprint-7`. Every behaviour test-first, against a fake clock and a fake fetch. Thread-safety plumbing is written without tests (races don't reproduce on demand) and listed in the notes. README in the same commit; PR, `/code-review`, findings fixed test-first, merge when green. |
 
 **Done criteria**
-- [ ] A baseline live run is timed before any change and noted here: fresh, a 9-player lineup across at least 6 Games.
-- [ ] S7.1: DraftKings and FanDuel fetch at the same time, each paced on its own. A failing Book still leaves the other's markets.
-- [ ] S7.2: a Book never has more than 3 requests in flight, nor starts two less than 0.3 s apart. The requests after each league response go to `Http` as one batch, and the answers come back in order.
-- [ ] Pushback as above: hold, slow down, one retry, then a warning naming the rate limit or the refusal.
-- [ ] Ctrl-C stops both Books within about a second, with no worker traceback.
-- [ ] The timing line is printed and saved in the Snapshot manifest.
-- [ ] The Snapshot writer, the request counters and the HTTP cache writes are safe across threads: a lock, and cache files written aside then renamed.
-- [ ] A fresh 9-player lineup across at least 6 Games runs in under 30 s with no rate-limit warning. The live timing is noted here against the baseline.
+- [x] A baseline live run is timed before any change and noted here: fresh, a 9-player lineup across at least 6 Games.
+- [x] S7.1: DraftKings and FanDuel fetch at the same time, each paced on its own. A failing Book still leaves the other's markets.
+- [x] S7.2: a Book never has more than 3 requests in flight, nor starts two less than 0.3 s apart. The requests after each league response go to `Http` as one batch, and the answers come back in order.
+- [x] Pushback as above: hold, slow down, one retry, then a warning naming the rate limit or the refusal.
+- [x] Ctrl-C stops both Books within about a second, with no worker traceback.
+- [x] The timing line is printed and saved in the Snapshot manifest.
+- [x] The Snapshot writer, the request counters and the HTTP cache writes are safe across threads: a lock, and cache files written aside then renamed.
+- [x] A fresh 9-player lineup across at least 6 Games runs in under 30 s with no rate-limit warning. The live timing is noted here against the baseline.
+
+**Notes**
+- Lineup for every timing, fresh each time: Allen, Henry, Gibbs, St. Brown, Lamb, Chase, Kelce, Dicker and the Ravens D/ST, across 7 Games of week 11, on 2026-11-18 around 05:25 UTC.
+  - **Baseline:** 3 min 57 s for the whole run, 53 sportsbook responses (DraftKings 23, FanDuel 30).
+  - **S7.1** (side by side, each Book still one request at a time with the 3.5–5 s pause): 2 min 17 s. Odds took 128.1 s: DraftKings 22 requests in 98.3 s, FanDuel 30 in 128.1 s.
+  - **S7.2** (3 in flight, 0.3 s apart): **16.3 s**. Odds took 8.8 s: DraftKings 22 in 7.4 s, FanDuel 30 in 8.8 s, with no warning. The other 7.5 s is nflverse and prediction, which Sprint 8 looks at.
+- The S7.2 predictions match the baseline's apart from price moves between the runs: 7 of 9 players' percentiles are identical, two moved by at most 1 point, and every flag matches.
+- DraftKings made 22 requests, not 23: its batch fetches each URL once, and the anytime-TD Ladder and the D/ST TD scorer are the same subcategory.
+- Unlike prizepicks, a failed request in a batch costs only its own answer (one FanDuel event, one stat). Only a Book being left out (`PushedBack`) or the run stopping (`Cancelled`) stops a batch.
+- Once a Book is left out, retries still queued behind the failed one are not sent. A test caught this: the 3 requests in flight when the first 429 landed would each have retried.
+- Requests made by no Book (nflverse through `Http`, Kalshi) keep the slow per-host pause and the doubled pause after pushback, as before.
+- Written without tests, since thread races don't reproduce on demand:
+  - the lock around `Http`'s counters and Pacers;
+  - the lock in the Snapshot writer, and in `_once`, which serialises `on_response`;
+  - cache temp files named by process and thread.
+- Ctrl-C: the Books run on daemon threads and the main thread joins in 0.1 s steps, so an interrupt lands at once. `Http.stop()` ends every Pacing wait, and a request still in flight is abandoned with its thread.
 
 ## Sprint 8 — Parallel prediction and data (approved 2026-11-17, planned; after Sprint 7)
 

@@ -130,6 +130,71 @@ def fetch_draftkings(http: Http, stats: Iterable[str], on_response: OnResponse |
     return payloads
 
 
+def dk_stat_requests(league: dict, stat: str) -> list[tuple[str, list[str]]]:
+    """A stat's (payload name, subcategory URLs) for its Ladder and Main Line, looked up in `league`:
+    SubcategoryNotFound when the league doesn't list it (yet)."""
+    dk = DK_STATS[stat]
+    ladder_ids = dk_subcategory_ids(league, dk.category, dk.ladder)
+    for extra in dk.extra_ladders:
+        try:
+            ladder_ids += dk_subcategory_ids(league, dk.category, extra)
+        except SubcategoryNotFound:
+            pass
+    out = [(f"dk_{dk.slug}_ladder", _subcategory_urls(ladder_ids))]
+    if dk.main_line is not None:
+        out.append((f"dk_{dk.slug}_ou", _subcategory_urls(dk_subcategory_ids(league, dk.category, dk.main_line))))
+    return out
+
+
+def dk_subcategory_request(league: dict, sub: DkSubcategory) -> tuple[str, list[str]]:
+    """A named subcategory's (payload name, URLs), looked up in `league`."""
+    return f"dk_{sub.payload}", _subcategory_urls(dk_subcategory_ids(league, sub.category, sub.subcategory))
+
+
+def _subcategory_urls(ids: list[tuple[int, int]]) -> list[str]:
+    return [DK_SUBCATEGORY_URL.format(category_id=c, subcategory_id=s) for c, s in ids]
+
+
+def fetch_dk_batch(http, requests: Iterable[tuple[str, list[str]]],
+                   on_response: OnResponse | None = None) -> dict[str, dict | Exception]:
+    """Every request's payload by name, fetched as one batch (each URL once): a name listed under several
+    subcategories is merged into one payload, and a name whose any part failed is answered by its error."""
+    requests = list(requests)
+    urls = list(dict.fromkeys(u for _, parts in requests for u in parts))
+    got = dict(zip(urls, get_many(http, urls)))
+    out = {}
+    for name, parts in requests:
+        answers = [got[u] for u in parts]
+        error = next((a for a in answers if isinstance(a, Exception)), None)
+        if error is not None:
+            out[name] = error
+            continue
+        if on_response is not None:
+            for url, payload in zip(parts, answers):
+                on_response(DK_BOOK, name, url, payload)
+        out[name] = answers[0] if len(answers) == 1 else _merge(answers)
+    return out
+
+
+def get_many(http, urls: list[str]) -> list:
+    """Each URL's JSON in order, or the FetchError that request failed with: as one batch when `http` is a
+    Book's view (several in flight, ffp.sources.http.BookHttp), else one at a time. A Book left out
+    (PushedBack) or a stopped run (Cancelled) is raised, not answered."""
+    from ffp.sources.http import FetchError, PushedBack
+
+    if hasattr(http, "get_many"):
+        return http.get_many(urls)
+    out = []
+    for url in urls:
+        try:
+            out.append(http.get_json(url))
+        except PushedBack:
+            raise
+        except FetchError as error:
+            out.append(error)
+    return out
+
+
 def fetch_dk_league(http: Http, on_response: OnResponse | None = None) -> dict:
     """The DraftKings league response: its Games, their main spread, total and moneyline, and the
     category catalogue."""
@@ -206,6 +271,10 @@ def fetch_fanduel_events(
             payloads[("fd_event", event_id, tab)] = _get(http, FD_BOOK, f"fd_event_{event_id}_{tab}", url,
                                                          on_response)
     return payloads
+
+
+def fd_event_url(event_id: str | int, tab: str) -> str:
+    return FD_EVENT_URL.format(event_id=event_id, tab=tab)
 
 
 def _get(http: Http, book: str, name: str, url: str, on_response: OnResponse | None) -> dict:
