@@ -1,6 +1,7 @@
 """End-to-end: `ffp predict INPUT.md --fixtures research/fixtures`, replaying DK + FD and nflverse fixtures."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -257,3 +258,59 @@ def test_a_kicker_and_dst_run_fetches_no_player_history(tmp_path, monkeypatch):
     input_md.write_text("Cameron Dicker\nRavens D/ST\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 0
     assert calls == [(True, ["2026_10_LAC_BAL"], False)]
+
+
+def _live_cli(tmp_path, monkeypatch, fake_live_books):
+    import ffp.cli
+    import ffp.predict
+
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    for loader in ("load_td_history", "load_recent_games"):
+        monkeypatch.setattr(ffp.cli, loader, lambda season, **kw: {})
+    monkeypatch.setattr(ffp.cli, "_played", lambda season: set())
+    monkeypatch.setattr(ffp.predict, "load_live_books", fake_live_books)
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    return ["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path),
+            "--snapshots", str(tmp_path / "snaps")]
+
+
+def test_a_live_run_prints_and_snapshots_its_timing(tmp_path, monkeypatch, capsys):
+    import ffp.predict
+
+    def fake_live_books(http, games, now, **kw):
+        with http.for_book("draftkings"):
+            pass
+        with http.for_book("fanduel"):
+            pass
+        return ffp.predict.load_fixture_books(FIXTURES)
+
+    assert main(_live_cli(tmp_path, monkeypatch, fake_live_books)) == 0
+    out = capsys.readouterr().out
+    assert re.search(r"Odds in [\d.]+ s: DraftKings 0 live requests in [\d.]+ s, FanDuel 0 in [\d.]+ s", out)
+    [run_dir] = (tmp_path / "snaps").glob("*/*")
+    timing = json.loads((run_dir / "manifest.json").read_text())["timing"]
+    assert list(timing["books"]) == ["draftkings", "fanduel"]
+
+
+def test_ctrl_c_during_a_live_run_ends_it_quietly(tmp_path, monkeypatch, capsys):
+    def fake_live_books(http, games, now, **kw):
+        raise KeyboardInterrupt
+
+    assert main(_live_cli(tmp_path, monkeypatch, fake_live_books)) == 130
+    err = capsys.readouterr().err
+    assert "cancelled" in err and "Traceback" not in err
+    assert not (tmp_path / "OUTPUT.md").exists()
+
+
+def test_the_timing_line_names_a_book_left_out_or_rate_limited():
+    from ffp.cli import timing_line
+
+    timing = {
+        "draftkings": {"requests": 4, "cached": 0, "failed": True, "rate_limited": True, "seconds": 3.0},
+        "fanduel": {"requests": 30, "cached": 2, "failed": False, "rate_limited": False, "seconds": 11.94},
+    }
+    assert timing_line(timing, 12.04) == ("Odds in 12.0 s: DraftKings 4 live requests in 3.0 s (rate-limited, "
+                                          "left out), FanDuel 30 in 11.9 s (+2 cached)")

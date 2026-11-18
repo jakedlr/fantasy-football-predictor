@@ -15,6 +15,7 @@ import json
 import os
 import re
 from collections.abc import Sequence
+import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +42,8 @@ class Snapshot:
         )
         self._responses: list[dict] = []
         self._fair_points: dict[tuple[str, str], dict] = {}
+        self._timing: dict | None = None
+        self._lock = threading.Lock()  # the Books save their responses from their own threads (Sprint 7)
 
     def save_response(
         self,
@@ -57,6 +60,10 @@ class Snapshot:
         received. url is stored with its secret query parameters removed.
         fetched_at defaults to the run time.
         """
+        with self._lock:
+            return self._save_response(book, name, payload, url, fetched_at)
+
+    def _save_response(self, book, name, payload, url, fetched_at) -> Path:
         fmt, ext, data = _encode(payload)
         path = self.run_dir / (
             f"{len(self._responses) + 1:03d}-{_safe_part(book, 'book')}-{_safe_part(name, 'response')}{ext}"
@@ -72,7 +79,7 @@ class Snapshot:
         responses = [*self._responses, entry]
         _write_atomic(path, data)
         try:
-            self._write_index("manifest.json", "responses", responses)
+            self._write_manifest(responses)
         except BaseException:
             path.unlink(missing_ok=True)  # never leave a response the manifest doesn't list
             raise
@@ -107,10 +114,21 @@ class Snapshot:
         self._fair_points = fair_points
         return path
 
-    def _write_index(self, filename: str, key: str, entries: list[dict]) -> Path:
+    def save_timing(self, books: dict, seconds: float) -> Path:
+        """Record the run's odds timing in manifest.json: {"seconds": the whole fetch, "books": each Book's
+        live and cached requests, seconds, and whether it failed or was rate-limited (Http.timing)}."""
+        with self._lock:
+            self._timing = {"seconds": seconds, "books": books}
+            return self._write_manifest(self._responses)
+
+    def _write_manifest(self, responses: list[dict]) -> Path:
+        extra = {} if self._timing is None else {"timing": self._timing}
+        return self._write_index("manifest.json", "responses", responses, **extra)
+
+    def _write_index(self, filename: str, key: str, entries: list[dict], **extra) -> Path:
         """Atomically (re)write one of the run's JSON index files."""
         path = self.run_dir / filename
-        doc = {"run_id": self.run_id, "run_at": self.run_at.isoformat(), key: entries}
+        doc = {"run_id": self.run_id, "run_at": self.run_at.isoformat(), key: entries, **extra}
         _write_atomic(path, _json_bytes(doc))
         return path
 

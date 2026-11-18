@@ -107,41 +107,72 @@ def fetch_draftkings(http: Http, stats: Iterable[str], on_response: OnResponse |
 
     league = _get(http, DK_BOOK, "dk_league", DK_LEAGUE_URL, on_response)
     # Look every name up before fetching any of them: a renamed subcategory fails without wasted requests.
-    plan = []
-    for stat in wanted:
-        dk = DK_STATS[stat]
-        ladder_ids = dk_subcategory_ids(league, dk.category, dk.ladder)
-        for extra in dk.extra_ladders:
-            try:
-                ladder_ids += dk_subcategory_ids(league, dk.category, extra)
-            except SubcategoryNotFound:
-                pass
-        plan.append((f"dk_{dk.slug}_ladder", ladder_ids))
-        if dk.main_line is not None:
-            plan.append((f"dk_{dk.slug}_ou", dk_subcategory_ids(league, dk.category, dk.main_line)))
+    requests = [r for stat in wanted for r in dk_stat_requests(league, stat)]
+    got = fetch_dk_batch(http, requests, on_response)
+    error = next((p for p in got.values() if isinstance(p, Exception)), None)
+    if error is not None:
+        raise error
+    return {"dk_league": league, **got}
 
-    payloads = {"dk_league": league}
-    for name, ids in plan:
-        parts = [
-            _get(http, DK_BOOK, name, DK_SUBCATEGORY_URL.format(category_id=c, subcategory_id=s), on_response)
-            for c, s in ids
-        ]
-        payloads[name] = parts[0] if len(parts) == 1 else _merge(parts)
-    return payloads
+
+def dk_stat_requests(league: dict, stat: str) -> list[tuple[str, list[str]]]:
+    """A stat's (payload name, subcategory URLs) for its Ladder and Main Line, looked up in `league`:
+    SubcategoryNotFound when the league doesn't list it (yet)."""
+    dk = DK_STATS[stat]
+    ladder_ids = dk_subcategory_ids(league, dk.category, dk.ladder)
+    for extra in dk.extra_ladders:
+        try:
+            ladder_ids += dk_subcategory_ids(league, dk.category, extra)
+        except SubcategoryNotFound:
+            pass
+    out = [(f"dk_{dk.slug}_ladder", _subcategory_urls(ladder_ids))]
+    if dk.main_line is not None:
+        out.append((f"dk_{dk.slug}_ou", _subcategory_urls(dk_subcategory_ids(league, dk.category, dk.main_line))))
+    return out
+
+
+def dk_subcategory_request(league: dict, sub: DkSubcategory) -> tuple[str, list[str]]:
+    """A named subcategory's (payload name, URLs), looked up in `league`."""
+    return f"dk_{sub.payload}", _subcategory_urls(dk_subcategory_ids(league, sub.category, sub.subcategory))
+
+
+def _subcategory_urls(ids: list[tuple[int, int]]) -> list[str]:
+    return [DK_SUBCATEGORY_URL.format(category_id=c, subcategory_id=s) for c, s in ids]
+
+
+def fetch_dk_batch(http, requests: Iterable[tuple[str, list[str]]],
+                   on_response: OnResponse | None = None) -> dict[str, dict | Exception]:
+    """Every request's payload by name, fetched as one batch (each URL once): a name listed under several
+    subcategories is merged into one payload, and a name whose any part failed is answered by its error."""
+    requests = list(requests)
+    urls = list(dict.fromkeys(u for _, parts in requests for u in parts))
+    got = dict(zip(urls, get_many(http, urls)))
+    out = {}
+    for name, parts in requests:
+        answers = [got[u] for u in parts]
+        if on_response is not None:  # every part that answered is kept, even if another part failed
+            for url, payload in zip(parts, answers):
+                if not isinstance(payload, Exception):
+                    on_response(DK_BOOK, name, url, payload)
+        error = next((a for a in answers if isinstance(a, Exception)), None)
+        if error is not None:
+            out[name] = error
+            continue
+        out[name] = answers[0] if len(answers) == 1 else _merge(answers)
+    return out
+
+
+def get_many(http, urls: list[str]) -> list:
+    """Each URL's JSON in order, or the FetchError that request failed with: as one batch through a Book's
+    view (several in flight, ffp.sources.http.BookHttp), one at a time through a plain Http. A Book left out
+    (PushedBack) or a stopped run (Cancelled) is raised, not answered."""
+    return http.get_many(urls)
 
 
 def fetch_dk_league(http: Http, on_response: OnResponse | None = None) -> dict:
     """The DraftKings league response: its Games, their main spread, total and moneyline, and the
     category catalogue."""
     return _get(http, DK_BOOK, "dk_league", DK_LEAGUE_URL, on_response)
-
-
-def fetch_dk_subcategory(http: Http, league: dict, sub: DkSubcategory, on_response: OnResponse | None = None) -> dict:
-    """One subcategory's response, looked up by name in `league` (merged when listed under several ids)."""
-    parts = [_get(http, DK_BOOK, f"dk_{sub.payload}", DK_SUBCATEGORY_URL.format(category_id=c, subcategory_id=s),
-                  on_response)
-             for c, s in dk_subcategory_ids(league, sub.category, sub.subcategory)]
-    return parts[0] if len(parts) == 1 else _merge(parts)
 
 
 def _merge(responses: list[dict]) -> dict:
@@ -197,15 +228,22 @@ def fetch_fanduel_events(
     tabs: Iterable[str] = (FD_RECEIVING_TAB,),
     on_response: OnResponse | None = None,
 ) -> dict[tuple[str, str, str], dict]:
-    """Each event's page for each tab, as {("fd_event", event id, tab): payload}, event by event in order."""
-    tabs = list(tabs)
+    """Each event's page for each tab, as {("fd_event", event id, tab): payload}, event by event in order,
+    fetched as one batch; the first failure is raised."""
+    pages = [(event_id, tab) for event_id in map(str, event_ids) for tab in tabs]
+    urls = [fd_event_url(event_id, tab) for event_id, tab in pages]
     payloads = {}
-    for event_id in map(str, event_ids):
-        for tab in tabs:
-            url = FD_EVENT_URL.format(event_id=event_id, tab=tab)
-            payloads[("fd_event", event_id, tab)] = _get(http, FD_BOOK, f"fd_event_{event_id}_{tab}", url,
-                                                         on_response)
+    for (event_id, tab), url, payload in zip(pages, urls, get_many(http, urls)):
+        if isinstance(payload, Exception):
+            raise payload
+        if on_response is not None:
+            on_response(FD_BOOK, f"fd_event_{event_id}_{tab}", url, payload)
+        payloads[("fd_event", event_id, tab)] = payload
     return payloads
+
+
+def fd_event_url(event_id: str | int, tab: str) -> str:
+    return FD_EVENT_URL.format(event_id=event_id, tab=tab)
 
 
 def _get(http: Http, book: str, name: str, url: str, on_response: OnResponse | None) -> dict:

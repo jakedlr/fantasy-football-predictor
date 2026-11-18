@@ -302,103 +302,189 @@ def load_live_books(
     only) and the D/ST TD prices. `kicker_ladders` fetches DraftKings' kicker subcategories, only
     so a Snapshot keeps them (PLAN Sprint 6: the model doesn't use them): pass it when saving one.
 
-    DraftKings serves every Game in one set of subcategory responses per stat;
-    each stat is fetched on its own, so a stat it doesn't list yet costs only
-    that stat. FanDuel needs one request per Game and tab, so only the events
-    matching `games` are fetched, one at a time. A book, stat or event that
-    fails is logged and left out; the rest still count.
+    The two Books fetch side by side (Sprint 7), each through its own view of `http`, paced by its
+    Pacing (`ffp.sources.http.BOOK_PACING`); after its league response, each Book's requests go out as
+    one batch. DraftKings serves every Game in one set of subcategory responses per stat, so a stat it
+    doesn't list yet costs only that stat. FanDuel needs one request per Game and tab, so only the
+    events matching `games` are fetched. A stat or event that fails is logged and left out; the rest
+    still count. A Book that fails outright, or pushes back again after backing off, is left out
+    with one warning. Ctrl-C stops both Books (`http.stop()`) and is raised.
     """
+    stats = list(MARKET_STATS if stats is None else stats)
+    on_response = _once(on_response)
+    dsts = bool(dst_games)
+    jobs = [
+        (draftkings.BOOK, "DraftKings",
+         lambda view: _draftkings_book(view, stats, kickers, dsts, kicker_ladders, on_response)),
+        (fanduel.BOOK, "FanDuel",
+         lambda view: _fanduel_book(view, games, now, stats, kickers, dst_games, on_response)),
+    ]
+    results = _side_by_side([lambda book=book, label=label, job=job: _run_book(http, book, label, job)
+                             for book, label, job in jobs], stop=http.stop)
+    return [book for book in results if book is not None]
+
+
+def _run_book(http, book: str, label: str, job) -> "BookOdds | None":
+    """One Book's fetch through its own view of `http`, or None with one warning when the Book fails
+    outright."""
+    from ffp.sources.http import BOOK_PACING
+
+    try:
+        with http.for_book(book, BOOK_PACING.get(book)) as view:
+            return job(view)
+    except _book_failures() as error:
+        log.warning("%s left out: %s", label, _describe(error))
+        return None
+
+
+def _side_by_side(jobs: Sequence[Callable], stop: Callable[[], None]) -> list:
+    """Each job's result, in order, the jobs run at once on daemon threads. Ctrl-C calls `stop` and is
+    raised at once: a request still in flight is abandoned (its thread dies with the run), and every wait
+    ends. A job's own exception is raised once all have finished."""
+    import threading
+
+    results: list = [None] * len(jobs)
+    errors: list = [None] * len(jobs)
+
+    def run(i: int) -> None:
+        try:
+            results[i] = jobs[i]()
+        except BaseException as error:  # noqa: BLE001 - handed to the main thread
+            errors[i] = error
+
+    threads = [threading.Thread(target=run, args=(i,), daemon=True) for i in range(len(jobs))]
+    for thread in threads:
+        thread.start()
+    try:
+        for thread in threads:
+            while thread.is_alive():
+                thread.join(0.1)  # short joins, so Ctrl-C reaches the main thread at once
+    except KeyboardInterrupt:
+        stop()
+        raise
+    for error in errors:
+        if error is not None:
+            raise error
+    return results
+
+
+def _draftkings_book(http, stats, kickers: bool, dsts: bool, kicker_ladders: bool, on_response) -> "BookOdds | None":
+    """DraftKings: the league response, then every stat's and team market's subcategories as one batch."""
     from ffp.sources import live
 
     failures = _book_failures()
-    on_response = _once(on_response)
-    books = []
-
-    stats = list(MARKET_STATS if stats is None else stats)
-    dk_markets, dk_games = [], None
+    league = live.fetch_dk_league(http, on_response=on_response)
+    requests, by_stat = [], {}
     for stat in stats:
         try:
-            dk = live.fetch_draftkings(http, [stat], on_response=on_response)
-            slug = live.DK_STATS[stat].slug
-            dk_markets += draftkings.parse_prop_markets(dk[f"dk_{slug}_ladder"], dk.get(f"dk_{slug}_ou"), stat)
-            dk_games = dk_games or draftkings.parse_games(dk["dk_league"])
+            by_stat[stat] = live.dk_stat_requests(league, stat)
         except failures as error:
             log.warning("DraftKings %s left out: %s", MARKET_STATS[stat], _describe(error))
-    dk_lines, dk_team = [], []
-    dsts = bool(dst_games)
+            continue
+        requests += by_stat[stat]
+    subs = [*(live.DK_TEAM_TOTALS, live.DK_TD_SCORER)] if dsts else []
+    subs += list(live.DK_KICKER_SUBCATEGORIES) if kicker_ladders else []
+    sub_names = {}
+    for sub in subs:
+        try:
+            name, urls = live.dk_subcategory_request(league, sub)
+        except failures as error:
+            log.warning("DraftKings %s left out: %s", sub.subcategory, _describe(error))
+            continue
+        sub_names[sub] = name
+        requests.append((name, urls))
+    got = live.fetch_dk_batch(http, requests, on_response=on_response)
+
+    markets, priced = [], False
+    for stat, entries in by_stat.items():
+        try:
+            payloads = {name: got[name] for name, _ in entries}
+            error = next((p for p in payloads.values() if isinstance(p, Exception)), None)
+            if error is not None:
+                raise error
+            slug = live.DK_STATS[stat].slug
+            markets += draftkings.parse_prop_markets(payloads[f"dk_{slug}_ladder"], payloads.get(f"dk_{slug}_ou"), stat)
+            priced = True
+        except failures as error:
+            log.warning("DraftKings %s left out: %s", MARKET_STATS[stat], _describe(error))
+    lines, team = [], []
     if kickers or dsts:
         try:
-            league = live.fetch_dk_league(http, on_response=on_response)
-            dk_games = dk_games or draftkings.parse_games(league)
-            dk_lines = draftkings.parse_game_lines(league)
+            lines = draftkings.parse_game_lines(league)
         except failures as error:
             log.warning("DraftKings Game Lines left out: %s", _describe(error))
-            league = None
-        wanted_dk = [*(live.DK_TEAM_TOTALS, live.DK_TD_SCORER)] if dsts else []
-        wanted_dk += list(live.DK_KICKER_SUBCATEGORIES) if kicker_ladders else []
-        for name in wanted_dk if league is not None else []:
-            try:
-                payload = live.fetch_dk_subcategory(http, league, name, on_response=on_response)
-            except failures as error:
-                log.warning("DraftKings %s left out: %s", name.subcategory, _describe(error))
-                continue
-            if name == live.DK_TEAM_TOTALS:
-                dk_team += draftkings.parse_team_totals(payload)
-            elif name == live.DK_TD_SCORER:
-                dk_team += draftkings.parse_dst_tds(payload)
-    if dk_games is not None:
-        books.append(BookOdds(draftkings.BOOK, dk_games, dk_markets, dk_lines, dk_team))
+    for sub, name in sub_names.items():
+        payload = got[name]
+        try:
+            if isinstance(payload, Exception):
+                raise payload
+            if sub == live.DK_TEAM_TOTALS:
+                team += draftkings.parse_team_totals(payload)
+            elif sub == live.DK_TD_SCORER:
+                team += draftkings.parse_dst_tds(payload)
+        except failures as error:
+            log.warning("DraftKings %s left out: %s", sub.subcategory, _describe(error))
+    if not (priced or kickers or dsts):
+        return None  # nothing it prices parsed: no Games either, as before
+    return BookOdds(draftkings.BOOK, draftkings.parse_games(league), markets, lines, team)
 
-    try:
-        fd_league = live.fetch_fanduel_league(http, on_response=on_response)
-        fd_games = fanduel.parse_games(fd_league, now)
-    except failures as error:
-        log.warning("FanDuel left out: %s", _describe(error))
-        return books
-    fd_lines = fanduel.parse_game_lines(fd_league) if kickers or dsts else []
+
+def _fanduel_book(http, games, now, stats, kickers: bool, dst_games, on_response) -> "BookOdds":
+    """FanDuel: the league page, then every wanted event's tabs as one batch."""
+    from ffp.sources import live
+
+    failures = _book_failures()
+    league = live.fetch_fanduel_league(http, on_response=on_response)
+    fd_games = fanduel.parse_games(league, now)
+    lines = fanduel.parse_game_lines(league) if kickers or dst_games else []
     wanted = sorted({g.game_id for g in fd_games for s in games if _same_game(g, s)})
     wanted_dst = {g.game_id for g in fd_games for s in dst_games if _same_game(g, s)}
     prop_tabs = live.fd_tabs(stats)
     dst_tabs = [fanduel.GAME_LINES_TAB, fanduel.TABS[TD_STAT]]
-    fd_team: list[PropMarket] = []
-    fd_markets = []
-    for event_id in wanted:  # one event at a time, so one failed event costs only its own Game
-        tabs = list(dict.fromkeys([*prop_tabs, *dst_tabs])) if event_id in wanted_dst else prop_tabs
-        for tab in tabs:
-            try:
-                [payload] = live.fetch_fanduel_events(http, [event_id], tabs=[tab], on_response=on_response).values()
-            except failures as error:
-                log.warning("FanDuel event %s tab %s left out: %s", event_id, tab, _describe(error))
+    pages = [(event_id, tab) for event_id in wanted
+             for tab in (list(dict.fromkeys([*prop_tabs, *dst_tabs])) if event_id in wanted_dst else prop_tabs)]
+    urls = [live.fd_event_url(event_id, tab) for event_id, tab in pages]
+    team: list[PropMarket] = []
+    markets = []
+    for (event_id, tab), url, payload in zip(pages, urls, live.get_many(http, urls)):
+        if isinstance(payload, Exception):  # one failed event page costs only its own Game's tab
+            log.warning("FanDuel event %s tab %s left out: %s", event_id, tab, _describe(payload))
+            continue
+        if on_response is not None:
+            on_response(fanduel.BOOK, f"fd_event_{event_id}_{tab}", url, payload)
+        for stat in stats:  # one stat at a time: a tab holds several (receiving yards, receptions)
+            if fanduel.TABS.get(stat) != tab:  # .get: NOT_OFFERED stats have no tab
                 continue
-            for stat in stats:  # one stat at a time: a tab holds several (receiving yards, receptions)
-                if fanduel.TABS.get(stat) != tab:  # .get: NOT_OFFERED stats have no tab
-                    continue
-                try:
-                    fd_markets += fanduel.parse_prop_markets(payload, stat)
-                except failures as error:
-                    log.warning("FanDuel event %s %s left out: %s", event_id, MARKET_STATS[stat], _describe(error))
-            if event_id in wanted_dst:
-                try:
-                    if tab == fanduel.GAME_LINES_TAB:
-                        fd_team += fanduel.parse_team_totals(payload)
-                    elif tab == fanduel.TABS[TD_STAT]:
-                        fd_team += fanduel.parse_dst_tds(payload)
-                except failures as error:
-                    log.warning("FanDuel event %s team markets left out: %s", event_id, _describe(error))
-    books.append(BookOdds(fanduel.BOOK, fd_games, fd_markets, fd_lines, fd_team))
-    return books
+            try:
+                markets += fanduel.parse_prop_markets(payload, stat)
+            except failures as error:
+                log.warning("FanDuel event %s %s left out: %s", event_id, MARKET_STATS[stat], _describe(error))
+        if event_id in wanted_dst:
+            try:
+                if tab == fanduel.GAME_LINES_TAB:
+                    team += fanduel.parse_team_totals(payload)
+                elif tab == fanduel.TABS[TD_STAT]:
+                    team += fanduel.parse_dst_tds(payload)
+            except failures as error:
+                log.warning("FanDuel event %s team markets left out: %s", event_id, _describe(error))
+    return BookOdds(fanduel.BOOK, fd_games, markets, lines, team)
 
 
 def _once(on_response: Callable | None) -> Callable | None:
-    """on_response, called once per (book, name, url): the cached league response is reused per stat."""
+    """on_response, called once per (book, name, url), one call at a time: the Books fetch on their own
+    threads (Sprint 7), and the Snapshot writer numbers its files in call order."""
+    import threading
+
     if on_response is None:
         return None
     seen = set()
+    lock = threading.Lock()
 
     def call(book: str, name: str, url: str, payload) -> None:
-        if (book, name, url) not in seen:
-            seen.add((book, name, url))
-            on_response(book, name, url, payload)
+        with lock:
+            if (book, name, url) not in seen:
+                seen.add((book, name, url))
+                on_response(book, name, url, payload)
 
     return call
 

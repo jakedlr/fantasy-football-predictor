@@ -200,7 +200,11 @@ class _FakeHttp:
 
 
 def _live(http, nflverse):
+    from conftest import over_http
     from ffp.predict import load_live_books
+    from ffp.sources.http import Http
+
+    http = http if isinstance(http, Http) else over_http(http)
 
     _, schedule = nflverse
     game = next(g for g in schedule if g.game_id == "2026_10_LAC_BAL")
@@ -556,3 +560,89 @@ def test_market_stats_for_skips_passing_without_a_qb():
     assert "passing_yards" not in market_stats_for({"WR", "RB"})
     assert set(market_stats_for({"QB", "WR"})) == set(MARKET_STATS)
     assert "carries" not in market_stats_for({"QB"}) and "receptions" not in market_stats_for({"QB"})
+
+
+# --- Sprint 7: the Books fetch side by side ----------------------------------------
+
+def _real_http(fake, tmp_path, net=None):
+    """A real Http (pacing, views, batches) over `fake`'s fixture pages; `net(url)` may block or answer first."""
+    import json as _json
+
+    from ffp.sources.http import Http, FetchError
+
+    def fetch(url):
+        if net is not None:
+            answer = net(url)
+            if answer is not None:
+                return answer
+        try:
+            return 200, _json.dumps(fake.get_json(url)).encode(), {}
+        except FetchError:
+            return 500, b"", {}
+
+    return Http(tmp_path, fetch=fetch, use_cache=False, delay=(0, 0))
+
+
+def test_the_books_fetch_side_by_side(nflverse, tmp_path):
+    import threading
+
+    fd_started = threading.Event()
+
+    def net(url):
+        if "fanduel" in url:
+            fd_started.set()
+        elif not fd_started.wait(2):  # DraftKings can't finish unless FanDuel is asked meanwhile
+            raise AssertionError("FanDuel was not asked while DraftKings was fetching")
+        return None
+
+    books = _live(_real_http(_FakeHttp(), tmp_path, net), nflverse)
+    assert [b.book for b in books] == ["draftkings", "fanduel"] and all(b.markets for b in books)
+
+
+def test_a_book_that_pushes_back_again_is_left_out_once_and_the_other_kept(nflverse, tmp_path, caplog):
+    asked = []
+
+    def net(url):
+        if "draftkings" in url and "/subcategories/" in url:
+            asked.append(url)
+            return 429, b"", {}
+        return None
+
+    books = _live(_real_http(_FakeHttp(), tmp_path, net), nflverse)
+    assert [b.book for b in books] == ["fanduel"]
+    warnings = [r.getMessage() for r in caplog.records if "DraftKings" in r.getMessage()]
+    assert len(warnings) == 1 and "rate-limited" in warnings[0]
+    # The 3 in flight when the first 429 landed, and one retry: then nothing more to a Book left out.
+    assert len(asked) <= 4
+
+
+def test_the_books_are_timed(nflverse, tmp_path):
+    http = _real_http(_FakeHttp(), tmp_path)
+    _live(http, nflverse)
+    timing = http.timing
+    assert list(timing) == ["draftkings", "fanduel"]
+    assert all(t["requests"] > 0 and not t["failed"] for t in timing.values())
+
+
+def test_ctrl_c_stops_both_books_within_a_second(nflverse, tmp_path):
+    import _thread
+    import threading
+    import time as _time
+
+    from ffp.sources.http import Http
+
+    blocked = threading.Event()
+
+    def fetch(url):
+        if not blocked.is_set():
+            blocked.set()
+            threading.Timer(0.1, _thread.interrupt_main).start()  # Ctrl-C while requests are in flight
+        threading.Event().wait(30)  # a request that never answers
+        return 200, b"{}", {}
+
+    http = Http(tmp_path, fetch=fetch, use_cache=False, delay=(0, 0))
+    began = _time.monotonic()
+    with pytest.raises(KeyboardInterrupt):
+        _live(http, nflverse)
+    assert _time.monotonic() - began < 1.5
+    assert http._stopped.is_set()  # every wait ends and nothing more starts
