@@ -363,11 +363,30 @@ def test_jobs_sets_the_prediction_worker_processes(tmp_path, monkeypatch, extra,
     input_md.write_text("Zay Flowers\nDerrick Henry\n")
     assert main(["predict", str(input_md), "--fixtures", str(FIXTURES), "--now", BEFORE_MNF,
                  "--output-dir", str(tmp_path), *extra]) == 0
-    expected = ffp.predict.default_jobs(seen["n"]) if jobs == "auto" else jobs
-    assert seen["jobs"] == expected
+    # Auto is None: predict sizes it by the players with markets to fit (ffp.predict.default_jobs).
+    assert seen["jobs"] == (None if jobs == "auto" else jobs)
 
 
 def test_jobs_must_be_a_whole_number_of_one_or_more(tmp_path, capsys):
     with pytest.raises(SystemExit):
         main(["predict", "x.md", "--jobs", "0"])
     assert "--jobs" in capsys.readouterr().err
+
+
+def test_a_failed_odds_run_lets_the_history_download_finish_before_exiting(tmp_path, monkeypatch):
+    # Review finding 3: the process exited with the download (and its cache write) half done.
+    import time as _time
+
+    import ffp.cli
+    import ffp.predict
+
+    done = []
+    roster, schedule = ffp.predict.load_fixture_nflverse(FIXTURES, 2026)
+    monkeypatch.setattr(ffp.cli, "load_roster", lambda season: roster)
+    monkeypatch.setattr(ffp.cli, "load_schedule", lambda season: schedule)
+    monkeypatch.setattr(ffp.predict, "load_live_books", lambda *a, **k: [])
+    monkeypatch.setattr(ffp.cli, "_player_history", lambda season: (_time.sleep(0.3), done.append(1), ({}, {}))[2])
+    input_md = tmp_path / "INPUT.md"
+    input_md.write_text("Zay Flowers\n")
+    assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
+    assert done == [1]

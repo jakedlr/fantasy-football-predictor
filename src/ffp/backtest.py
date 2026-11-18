@@ -28,13 +28,14 @@ import time
 import zlib
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence, Set
-from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
 from scipy.special import logit, ndtri
 
+from ffp.workers import in_order, process_pool
 from ffp import metrics, params
 from ffp.distributions import (
     COMPOUND_RUSHING_POSITIONS,
@@ -480,12 +481,9 @@ def run(
     start, done = time.monotonic(), 0
     args = [(t, samples, seed, diagnostics) for t in pending]
     with open(cache, "a") as f:
-        if jobs > 1:
-            pool = ProcessPoolExecutor(jobs)
-            results = pool.map(_evaluate_star, args, chunksize=8)
-        else:
-            pool, results = None, map(_evaluate_star, args)
-        try:
+        pool = process_pool(jobs) if jobs > 1 else nullcontext()
+        with pool as executor:
+            results = in_order(executor, _evaluate_star, args) if jobs > 1 else map(_evaluate_star, args)
             for record in results:
                 f.write(json.dumps(record) + "\n")
                 held[record["key"]] = record
@@ -494,9 +492,6 @@ def run(
                     f.flush()
                     rate = done / (time.monotonic() - start)
                     say(f"{done}/{len(pending)} evaluated ({rate:.1f}/s, ~{(len(pending) - done) / rate / 60:.0f} min left)")
-        finally:
-            if pool is not None:
-                pool.shutdown(cancel_futures=True)
     return [held[t.game.key] for t in todo]
 
 

@@ -146,17 +146,15 @@ def _by_season(model: str, seasons: list[int], n: int, jobs: int, **data) -> dic
     if jobs <= 1 or len(seasons) <= 1:
         parts = [_SEASON[model](t, n, **data) for t in seasons]
     else:
-        import multiprocessing
-        from concurrent.futures import ProcessPoolExecutor
+        from ffp.workers import in_order, process_pool
 
-        # Workers import this script by name: put its directory where they look (spawned workers
-        # start from this process's sys.path). forkserver: polars' thread pool makes fork unsafe.
+        # Workers import this script by name: put its directory where they look (spawned workers start
+        # from this process's sys.path).
         here = str(Path(__file__).resolve().parent)
         if here not in sys.path:
             sys.path.insert(0, here)
-        with ProcessPoolExecutor(min(jobs, len(seasons)), mp_context=multiprocessing.get_context("forkserver"),
-                                 initializer=_start_worker, initargs=(data,)) as pool:
-            parts = list(pool.map(_season_in_worker, [(model, t, n) for t in seasons]))
+        with process_pool(min(jobs, len(seasons)), _start_worker, (data,)) as pool:
+            parts = list(in_order(pool, _season_in_worker, [(model, t, n) for t in seasons]))
     out = defaultdict(list)
     for part in parts:
         for key, rows in part.items():

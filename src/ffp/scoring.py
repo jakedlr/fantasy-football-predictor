@@ -5,7 +5,7 @@ Three kinds of stat line, each with its section of the rules: a QB/RB/WR/TE's (`
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
@@ -71,12 +71,15 @@ class ScoringRules:
     assumptions: list = field(default_factory=list)
 
     def __reduce__(self):
-        # Pickled for prediction workers (Sprint 8): a mappingproxy can't be, so offense goes as a dict.
-        return _rules, (self.name, dict(self.offense), self.kicker, self.dst, self.assumptions)
+        # Pickled for prediction workers (Sprint 8). A mappingproxy can't be pickled, so each read-only
+        # field goes as a dict and comes back read-only; every field is carried, however many there are.
+        state = {f.name: getattr(self, f.name) for f in fields(self)}
+        proxies = [name for name, value in state.items() if isinstance(value, MappingProxyType)]
+        return _rules, ({name: dict(v) if name in proxies else v for name, v in state.items()}, proxies)
 
 
-def _rules(name: str, offense: dict, kicker: dict, dst: dict, assumptions: list) -> "ScoringRules":
-    return ScoringRules(name, MappingProxyType(offense), kicker, dst, assumptions)
+def _rules(state: dict, proxies: list) -> "ScoringRules":
+    return ScoringRules(**{name: MappingProxyType(v) if name in proxies else v for name, v in state.items()})
 
 
 def _offense(points_per_unit: Mapping[str, float], source: str) -> Mapping[str, float]:

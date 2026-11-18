@@ -277,3 +277,13 @@ def test_scoring_rules_pickle_for_worker_processes():
     assert copy == rules and copy.offense["receptions"] == 1
     with pytest.raises(TypeError):
         copy.offense["receptions"] = 2
+
+
+def test_pickled_rules_keep_every_field():
+    # Review finding 10: the fields were listed by hand.
+    import dataclasses
+    import pickle
+
+    rules = dataclasses.replace(PRESETS["ppr"], assumptions=["a"], name="z")
+    copy = pickle.loads(pickle.dumps(rules))
+    assert all(getattr(copy, f.name) == getattr(rules, f.name) for f in dataclasses.fields(rules))

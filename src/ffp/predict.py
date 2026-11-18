@@ -7,7 +7,6 @@ Games -> Fair Probabilities -> Stat Distributions -> simulation.
 import csv
 import json
 import logging
-import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -531,7 +530,7 @@ def predict(
     td_history: Mapping[str, TdHistory] | None = None,
     chance_thresholds: Sequence[float] = (),
     recent_games: Mapping[str, RecentGames] | None = None,
-    jobs: int = 1,
+    jobs: int | None = 1,
 ) -> tuple[list[PlayerResult], list[SkippedPlayer]]:
     """A Score Distribution for each target with Prop Markets in its Game.
 
@@ -550,35 +549,67 @@ def predict(
     the player is skipped as "props not posted"; with the Game priced but not
     the player, as "no Prop Markets"; with no fit succeeding, as unfittable.
 
-    With `jobs` above 1 (Sprint 8), players are predicted in that many worker processes (`default_jobs`
-    picks a number for the run). Each player's prediction is independent and seeded on its own, so the
-    results are identical to a one-process run. Each player's Fair Points (`on_fair_points`) and warnings
-    are handed back and replayed here, in target order, however many processes ran. One player is always
-    predicted in process: starting a worker costs about a second.
+    With `jobs` above 1 (Sprint 8), the players with markets to fit are predicted in that many worker
+    processes; None picks `default_jobs` for them. Each player's prediction is independent and seeded
+    on its own, so the results are identical to a one-process run. A worker's Fair Points
+    (`on_fair_points`) and log records are replayed here as each player lands, in target order, so a
+    crash keeps what came before it. One player to fit is predicted in process (a worker start costs
+    about a second), and so are D/STs, kickers and skips.
     """
     context = _Context(books, rules, correlation, chance_thresholds)
-    tasks = [(t, (td_history or {}).get(t.player.gsis_id), (recent_games or {}).get(t.player.gsis_id))
-             for t in targets]
-    if jobs > 1 and len(targets) > 1:
-        with _worker_pool(min(jobs, len(targets)), context) as pool:
-            outcomes = list(pool.map(_predict_in_worker, tasks))
-    else:
-        outcomes = [_predict_one(context, *task) for task in tasks]
+    task = {id(t): (t, (td_history or {}).get(t.player.gsis_id), (recent_games or {}).get(t.player.gsis_id))
+            for t in targets}
+    # Only players with markets to fit are worth a worker: a D/ST, a kicker or a skip is near instant.
+    to_fit = [t for t in targets if _needs_fitting(t, books)]
+    jobs = default_jobs(len(to_fit)) if jobs is None else jobs
     results, skipped = [], []
-    for target, (outcome, fair_points, records) in zip(targets, outcomes):
-        for name, level, message in records:
-            logging.getLogger(name).log(level, "%s", message)
-        if on_fair_points is not None:
-            for stat, points in fair_points:
-                on_fair_points(target, stat, points)
+
+    def keep(outcome):
         (results if isinstance(outcome, PlayerResult) else skipped).append(outcome)
+
+    def here(target):  # in this process: logging and the Fair Points go straight through
+        report = None if on_fair_points is None else (lambda stat, pts: on_fair_points(target, stat, pts))
+        keep(_predict_target(context, *task[id(target)], report))
+
+    if jobs <= 1 or len(to_fit) <= 1:
+        for target in targets:
+            here(target)
+        return results, skipped
+    from ffp.workers import in_order
+
+    with _worker_pool(min(jobs, len(to_fit)), context) as pool:
+        fitted = in_order(pool, _predict_in_worker, [task[id(t)] for t in to_fit])  # answers in to_fit order
+        fitting = {id(t) for t in to_fit}
+        for target in targets:
+            if id(target) not in fitting:
+                here(target)
+                continue
+            # Replayed as each player lands, in target order: a later crash keeps what came before.
+            outcome, fair_points, records, error = next(fitted)
+            for name, level, message in records:
+                logging.getLogger(name).log(level, "%s", message)
+            if on_fair_points is not None:
+                for stat, points in fair_points:
+                    on_fair_points(target, stat, points)
+            if error is not None:
+                raise error
+            keep(outcome)
     return results, skipped
 
 
+def _needs_fitting(target: Target, books: Sequence[BookOdds]) -> bool:
+    """Whether a target has Prop Markets to fit: the slow part of a prediction."""
+    if target.player.position in TEAM_POSITIONS:
+        return False
+    return has_scoring_markets(_markets_for(target, books)[1])
+
+
 def default_jobs(players: int, cpus: int | None = None) -> int:
-    """Worker processes for predicting `players`: one per player, leaving a fifth of the cores (at least
-    one) free for the rest of the machine."""
-    cpus = cpus or os.cpu_count() or 1
+    """Worker processes for predicting `players`: one per player, leaving a fifth of the usable cores (at
+    least one) free for the rest of the machine."""
+    from ffp.workers import usable_cpus
+
+    cpus = cpus or usable_cpus()
     return max(1, min(players, cpus - max(1, cpus // 5)))
 
 
@@ -593,35 +624,14 @@ class _Context:
 
 
 class _Records(logging.Handler):
-    """Collects what one player's prediction logs, to be replayed by the caller in target order."""
+    """In a worker, collects what one player's prediction logs, to be replayed by the main process."""
 
     def __init__(self):
-        super().__init__(logging.DEBUG)
+        super().__init__(logging.NOTSET)
         self.records: list[tuple[str, int, str]] = []
 
     def emit(self, record: logging.LogRecord) -> None:
         self.records.append((record.name, record.levelno, record.getMessage()))
-
-
-def _predict_one(context: "_Context", target: Target, td_history: TdHistory | None, recent: RecentGames | None):
-    """One target's (PlayerResult or SkippedPlayer, [(stat, Fair Points)], [(logger, level, message)]).
-    What it would log at WARNING and above is returned, not logged, so a parallel run's warnings come out
-    in target order and a one-process run's the same way."""
-    fair_points: list[tuple[str, list[FairPoint]]] = []
-    root = logging.getLogger()
-    handler = _Records()
-    handler.setLevel(logging.WARNING)
-    # The root logger's handlers are swapped for the collector while this player is predicted.
-    saved_handlers, saved_level = root.handlers[:], root.level
-    root.handlers = [handler]
-    root.setLevel(logging.WARNING if root.level in (logging.NOTSET,) or root.level > logging.WARNING else root.level)
-    try:
-        outcome = _predict_target(context, target, td_history, recent,
-                                  lambda stat, pts: fair_points.append((stat, pts)))
-    finally:
-        root.handlers = saved_handlers
-        root.setLevel(saved_level)
-    return outcome, fair_points, handler.records
 
 
 def _predict_target(context: "_Context", target: Target, td_history, recent, report):
@@ -643,22 +653,39 @@ _WORKER_CONTEXT: "_Context | None" = None
 
 
 def _start_worker(context: "_Context") -> None:
+    """Set up a prediction worker: the shared context, and every log record collected (levels are
+    filtered when the main process replays them under its own logging setup)."""
     global _WORKER_CONTEXT
     _WORKER_CONTEXT = context
+    root = logging.getLogger()
+    root.handlers = []
+    root.setLevel(logging.DEBUG)
 
 
 def _predict_in_worker(task):
-    return _predict_one(_WORKER_CONTEXT, *task)
+    """One target in a worker: (outcome, [(stat, Fair Points)], [(logger, level, message)], error). An
+    exception comes back as `error` with what was logged before it, for the main process to replay
+    and then raise."""
+    target, td_history, recent = task
+    fair_points: list = []
+    handler = _Records()
+    root = logging.getLogger()
+    root.addHandler(handler)
+    try:
+        outcome = _predict_target(_WORKER_CONTEXT, target, td_history, recent,
+                                  lambda stat, pts: fair_points.append((stat, pts)))
+        return outcome, fair_points, handler.records, None
+    except Exception as error:  # noqa: BLE001 - raised by the main process, in target order
+        return None, fair_points, handler.records, error
+    finally:
+        root.removeHandler(handler)
 
 
 def _worker_pool(workers: int, context: "_Context"):
-    """Worker processes for `predict`. forkserver, not fork: the run may still hold the Books' abandoned
-    daemon threads (Sprint 7), and forking a threaded process can deadlock."""
-    import multiprocessing
-    from concurrent.futures import ProcessPoolExecutor
+    """Worker processes for `predict` (ffp.workers: spawn, Ctrl-C left to this process)."""
+    from ffp.workers import process_pool
 
-    return ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("forkserver"),
-                               initializer=_start_worker, initargs=(context,))
+    return process_pool(workers, _start_worker, (context,))
 
 
 def has_scoring_markets(by_stat: Mapping[str, Sequence[PropMarket]]) -> bool:

@@ -143,16 +143,15 @@ class _Background:
         except BaseException as error:  # noqa: BLE001 - raised in the caller's thread by result()
             self._error = error
 
-    def result(self):
+    def wait(self) -> None:
         while self._thread.is_alive():
             self._thread.join(0.1)
+
+    def result(self):
+        self.wait()
         if self._error is not None:
             raise self._error
         return self._value
-
-
-def _in_background(call) -> _Background:
-    return _Background(call)
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -177,7 +176,7 @@ def _main(argv: list[str] | None = None) -> int:
     # neither, so a run of only those skips the download.
     history = None
     if not args.fixtures and targets and positions & set(pipeline.PLAYER_POSITIONS):
-        history = _in_background(lambda: _player_history(season))
+        history = _Background(lambda: _player_history(season))
     if args.fixtures:
         books = pipeline.load_fixture_books(args.fixtures)
     elif targets:
@@ -200,6 +199,8 @@ def _main(argv: list[str] | None = None) -> int:
             if snapshot is not None:
                 snapshot.save_timing(http.timing, seconds)
         if not books:
+            if history is not None:
+                history.wait()  # let the download finish its disk-cache writes; its result is thrown away
             print("error: could not get odds from DraftKings or FanDuel; see the warnings above", file=sys.stderr)
             return 1
     else:
@@ -209,7 +210,7 @@ def _main(argv: list[str] | None = None) -> int:
     results, unfitted = pipeline.predict(
         targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,
         td_history=td_history, chance_thresholds=args.chance, recent_games=recent_games,
-        jobs=args.jobs or pipeline.default_jobs(len(targets)),
+        jobs=args.jobs,  # None: one worker per player with markets to fit (pipeline.default_jobs)
     )
     order = {name: i for i, name in reversed(list(enumerate(names)))}
     skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))

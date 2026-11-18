@@ -294,7 +294,7 @@ Three small stories. Same process as Sprint 7.
   | Processes (fork), 4 / 9 | 2.4 / 1.8 s | identical |
   | Processes (forkserver), 4 / 9 | 3.0 / 1.8 s | identical |
 
-  Threads are slower than serial: the model's Python holds the GIL. Processes save 70%, so S8.1 shipped. It uses forkserver, not fork, because a run may still hold the Books' abandoned daemon threads, and forking a threaded process can deadlock.
+  Threads are slower than serial: the model's Python holds the GIL. Processes save 70%, so S8.1 shipped. It first used forkserver; the review moved every pool to spawn (see below).
 - S8.1 design:
   - `predict(jobs=N)` with the CLI's `--jobs N`. The default is one worker per player, leaving a fifth of the cores free; one player always runs in process.
   - Each worker gets the Books and the rules once, through its initializer. Each task carries the player's own TD history and recent games.
@@ -304,9 +304,30 @@ Three small stories. Same process as Sprint 7.
 - **S8.2:** the history download (TD history, recent games, snap counts, rosters) runs on a daemon thread from the moment the targets are known. With nflreadpy's disk cache warm it takes about 1.2 s, now hidden behind the odds' ~9 s.
 - **Live, S8.1 + S8.2:** fresh, the Sprint 7 lineup without a Snapshot, main and this branch alternated three times on the same machine. Main took 23.9, 23.0 and 22.9 s; this branch 19.1, 18.5 and 17.8 s. That is about 4.8 s (21%) faster. The machine was slower than during Sprint 7's runs: main's 23 s here was 16.9 s then.
 - In that live run, prediction took 6.5 s with workers against 11.1 s in one process; live markets are fuller than the fixtures'.
-- **S8.3:** test seasons run in worker processes (forkserver; polars' thread pool makes fork unsafe), each sent the data once. 10 seasons: 60.8 s with `--jobs 1`, 33.3 s with `--jobs 8`. The `summary.json` is byte-identical, and the same as the committed run's.
+- **S8.3:** test seasons run in worker processes, each sent the data once. 10 seasons: 60.8 s with `--jobs 1`, 33.3 s with `--jobs 8`. The `summary.json` is byte-identical, and the same as the committed run's.
 - Tests: CLI tests that monkeypatch the model run with `--jobs 1`, since patches don't reach worker processes; the parallel path has its own identical-output tests. Test fakes use no-gap Pacing (`Http(book_pacing=...)`), which brought the suite back from 4 to about 2 minutes.
 - `ffp/__main__.py` now has a `__main__` guard. multiprocessing already skips a package's `__main__`, but worker processes now rely on it, so the guard makes it explicit.
+
+**Review:** done 2026-11-18. `/code-review` (medium) found ten issues, all fixed test-first except where noted:
+- **One place starts workers** (`ffp.workers`), for prediction and both Backtests:
+  - spawn on every platform: it reads the current sys.path, and Windows has no forkserver. A forkserver started by an earlier pool kept a sys.path without `scripts/`, so the D/ST Backtest's workers could fail depending on test order.
+  - Workers ignore SIGINT, so a Ctrl-C prints no worker tracebacks. The main process cancels the queue and terminates the workers at once.
+  - The main process waits for results in 0.1 s steps (`in_order`). The full suite showed why: a SIGINT can land on another thread, such as an abandoned daemon thread, and a main thread blocked without a timeout saw it only 30 s later.
+  - The worker count comes from the CPUs this process may use (`os.process_cpu_count`), not every CPU on the machine.
+- **Prediction:**
+  - Worker results are replayed as each player lands, in target order, so a crash keeps the Fair Points and warnings of the players before it. A worker's error comes back with what it logged before raising.
+  - Only players with markets to fit get workers; D/STs, kickers and skips run in process. `--jobs` unset means "size it by those players".
+  - The one-process path no longer touches logging; only workers collect records, at every level, and the main process's logging filters them on replay.
+- **Smaller fixes:**
+  - When both Books fail, the run waits for the history download to finish its disk-cache writes before exiting, rather than killing it mid-write.
+  - `ScoringRules` pickles every field generically, so a new field can't be silently dropped.
+  - `tests/test_predict.py` uses `conftest.over_http`, not a copy of it.
+- Re-checked after the fixes:
+  - the D/ST Backtest's `summary.json` at `--jobs 8` is identical to `--jobs 1`;
+  - the fixture CLI output is identical with and without workers (14.3 s vs 7.1 s on a busier machine);
+  - a live run took 19.8 s, with prediction 5.1 s.
+  
+  Two alternating live A/B pairs were unusable: main and this branch both ran 31–108 s, while DraftKings or the network was slow.
 
 ## Backlog
 

@@ -565,25 +565,10 @@ def test_market_stats_for_skips_passing_without_a_qb():
 # --- Sprint 7: the Books fetch side by side ----------------------------------------
 
 def _real_http(fake, tmp_path, net=None):
-    """A real Http (pacing, views, batches) over `fake`'s fixture pages; `net(url)` may block or answer first."""
-    import json as _json
+    """A real Http over `fake`'s fixture pages (conftest.over_http); `net(url)` may block or answer first."""
+    from conftest import over_http
 
-    from ffp.sources.http import Http, FetchError
-
-    def fetch(url):
-        if net is not None:
-            answer = net(url)
-            if answer is not None:
-                return answer
-        try:
-            return 200, _json.dumps(fake.get_json(url)).encode(), {}
-        except FetchError:
-            return 500, b"", {}
-
-    from ffp.sources.http import BOOK_PACING, Pacing
-
-    no_gap = {book: Pacing(p.in_flight, 0.0) for book, p in BOOK_PACING.items()}
-    return Http(tmp_path, fetch=fetch, use_cache=False, delay=(0, 0), book_pacing=no_gap)
+    return over_http(fake, net, tmp_path)
 
 
 def test_the_books_fetch_side_by_side(nflverse, tmp_path):
@@ -700,3 +685,57 @@ def test_default_jobs_leave_cores_free_and_never_exceed_the_players():
     assert default_jobs(30, cpus=20) == 16
     assert default_jobs(9, cpus=4) == 3
     assert default_jobs(1, cpus=20) == 1 and default_jobs(5, cpus=1) == 1
+
+
+def test_a_crash_keeps_what_the_players_before_it_saved_and_logged(nflverse, books, monkeypatch, caplog):
+    # Review finding 1: everything was replayed after the last player, so one crash lost it all.
+    import logging
+
+    import ffp.predict
+
+    real = ffp.predict.fit_player
+
+    def crash_on_herbert(position, *a, **k):
+        if position == "QB":
+            logging.getLogger("ffp.test").warning("about to crash")
+            raise RuntimeError("a bug")
+        return real(position, *a, **k)
+
+    monkeypatch.setattr(ffp.predict, "fit_player", crash_on_herbert)
+    saved = []
+    with caplog.at_level(logging.WARNING), pytest.raises(RuntimeError, match="a bug"):
+        run(["Zay Flowers", "Justin Herbert", "Derrick Henry"], nflverse, books, jobs=1,
+            on_fair_points=lambda t, stat, pts: saved.append(t.name))
+    assert "Zay Flowers" in saved and "Derrick Henry" not in saved
+    assert "about to crash" in caplog.text
+
+
+def test_one_process_prediction_leaves_logging_alone(nflverse, books, monkeypatch, caplog):
+    # Review finding 6: the serial path swapped the root handlers and kept only warnings.
+    import logging
+
+    import ffp.predict
+
+    real = ffp.predict.fit_player
+
+    def chatty(*a, **k):
+        logging.getLogger("ffp.test").debug("fitting")
+        return real(*a, **k)
+
+    monkeypatch.setattr(ffp.predict, "fit_player", chatty)
+    with caplog.at_level(logging.DEBUG):
+        run(["Zay Flowers"], nflverse, books, jobs=1)
+    assert "fitting" in caplog.text
+
+
+def test_only_players_to_fit_get_workers(nflverse, books, monkeypatch):
+    # Review finding 8: a D/ST, a kicker or a player without markets cost a worker start for no work.
+    import ffp.predict
+
+    sizes = []
+    real = ffp.predict._worker_pool
+    monkeypatch.setattr(ffp.predict, "_worker_pool", lambda n, c: (sizes.append(n), real(n, c))[1])
+    run(["Zay Flowers", "Ravens D/ST", "Cameron Dicker", "Nobody Atall"], nflverse, books, jobs=None)
+    assert sizes == []  # one player to fit: in process
+    run(["Zay Flowers", "Derrick Henry", "Ravens D/ST"], nflverse, books, jobs=None)
+    assert sizes == [2]

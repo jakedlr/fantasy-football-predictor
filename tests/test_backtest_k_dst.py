@@ -68,3 +68,13 @@ def test_seasons_in_worker_processes_give_the_same_rows():
     parallel = bkd.dst_walk_forward(d, [2017, 2018], 200, jobs=2)
     assert serial.keys() == parallel.keys() and serial
     assert all(serial[k] == parallel[k] for k in serial)
+
+
+def test_seasons_run_in_workers_after_another_pool_has_run():
+    # Review finding 2: a forkserver started by an earlier pool lacked scripts/ on sys.path.
+    from ffp import workers
+
+    with workers.process_pool(1) as pool:
+        list(pool.map(abs, [-1]))
+    d = _synthetic_dst()
+    assert bkd.dst_walk_forward(d, [2017, 2018], 50, jobs=2).keys() == bkd.dst_walk_forward(d, [2017, 2018], 50).keys()
