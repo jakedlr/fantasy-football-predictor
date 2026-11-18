@@ -215,6 +215,46 @@ Research: two agents (kickers; D/ST), reports summarised in research/kickers-dst
 - Fixture runs load the team totals; Kalshi's D/ST KXNFLFFPTSLADDER markets drop as `dst_mean`, and wide lines kept on request are not counted as drops; a D/ST hint naming another team is an error.
 - Fewer requests: FanDuel's D/ST tabs only for Games with a D/ST; DraftKings' kicker Ladders only when a Snapshot is saved; no nflverse weekly stats for a K/D/ST-only run, and only the columns used otherwise.
 
+## Sprint 7 — Concurrent fetching (approved 2026-11-17, planned)
+
+A live run spends nearly all its time waiting on the Books. Every request goes one at a time, DraftKings then FanDuel, with a 3.5–5 s pause after each: about 4.6 s per request, from the HTTP cache's file times. A full lineup is roughly 60 requests, about 4–5 minutes. The CPU side is small: a fixture run of 8 players takes 4.7 s with imports. This sprint ports what prizepicks-optimizer's Sprints 6–7 proved on the same endpoints, where 77 requests went from 89.8 s to 14 s with no rate-limit warning. Terms are in GLOSSARY.md (*Pacing*).
+
+| Topic | Decision |
+|---|---|
+| Scope | Live fetching only. Parallel prediction, nflverse alongside the odds, and a parallel kicker/D/ST Backtest are Sprint 8. |
+| Stories | One sprint, two stories on one branch. S7.1: the Books fetch side by side. S7.2: several requests in flight per Book. Each records its own live timing. |
+| Pacing | Each Book: at most 3 requests in flight, starts at least 0.3 s apart (prizepicks' values). One constant per Book in `ffp.sources.http`. Requests that aren't to a Book (nflverse, Kalshi) keep today's slow pacing. |
+| Pushback | Ported from prizepicks Sprint 7, review fixes included. On a 429 or 403 the Book holds all its requests, drops to one at a time for the rest of the run, honours `Retry-After` up to 10 s and retries once. If that fails, the Book is left out with a warning: "rate-limited" for a 429, "refused" for a 403. The other Book carries on. Waits end early when the run stops. |
+| Measurement | One timing line on the console (live requests and seconds per Book), with the same numbers in the Snapshot manifest. OUTPUT.md is unchanged. |
+| Ctrl-C | Stops both Books within about a second, with no traceback from the worker threads: in-flight requests are abandoned and pending Pacing waits end. |
+| Process | Done criteria approved first; branch `sprint-7`. Every behaviour test-first, against a fake clock and a fake fetch. Thread-safety plumbing is written without tests (races don't reproduce on demand) and listed in the notes. README in the same commit; PR, `/code-review`, findings fixed test-first, merge when green. |
+
+**Done criteria**
+- [ ] A baseline live run is timed before any change and noted here: fresh, a 9-player lineup across at least 6 Games.
+- [ ] S7.1: DraftKings and FanDuel fetch at the same time, each paced on its own. A failing Book still leaves the other's markets.
+- [ ] S7.2: a Book never has more than 3 requests in flight, nor starts two less than 0.3 s apart. The requests after each league response go to `Http` as one batch, and the answers come back in order.
+- [ ] Pushback as above: hold, slow down, one retry, then a warning naming the rate limit or the refusal.
+- [ ] Ctrl-C stops both Books within about a second, with no worker traceback.
+- [ ] The timing line is printed and saved in the Snapshot manifest.
+- [ ] The Snapshot writer, the request counters and the HTTP cache writes are safe across threads: a lock, and cache files written aside then renamed.
+- [ ] A fresh 9-player lineup across at least 6 Games runs in under 30 s with no rate-limit warning. The live timing is noted here against the baseline.
+
+## Sprint 8 — Parallel prediction and data (approved 2026-11-17, planned; after Sprint 7)
+
+Three small stories. Same process as Sprint 7.
+
+| Topic | Decision |
+|---|---|
+| S8.1 Parallel prediction | A spike first: threads against processes on a 9-player fixture lineup. Starting processes alone costs about 1–2 s of imports, against 4.7 s of prediction. The story ships only if it saves at least 30% of the prediction time; otherwise it is dropped and the measurement noted here. |
+| S8.2 nflverse alongside the odds | The nflverse download starts with the odds fetch and is thrown away if both Books fail. That costs one wasted download in a rare case, and replaces today's rule that a run whose odds fail downloads nothing. Only for a run whose input has a QB, RB, WR or TE; kicker- and D/ST-only runs still download nothing. |
+| S8.3 Parallel kicker/D/ST Backtest | `scripts/backtest_k_dst.py --jobs N`, like the Kalshi Backtest's. |
+| Same results | Parallel output is identical to a single-threaded run. S8.1: OUTPUT.md and output.json, apart from the timestamp. S8.3: `summary.json`. Every player and team-game keeps its own fixed seed, whatever order the workers finish in. |
+
+**Done criteria**
+- [ ] S8.1: spike timings noted here; shipped only at a saving of 30% or more, with identical output.
+- [ ] S8.2: the nflverse download overlaps the odds fetch; a run whose odds fail discards it; a K/D/ST-only run makes none.
+- [ ] S8.3: `--jobs N` gives the same `summary.json` as `--jobs 1`, and its run time is noted here.
+
 ## Backlog
 
 - **Kickers from DraftKings' FG Made and PAT Made Ladders**, once live runs have saved a few weeks of them (every live run with a K that saves a Snapshot keeps them): does fitting attempts to them beat the Game Lines alone?
