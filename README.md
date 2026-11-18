@@ -8,7 +8,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–6 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md).
+Sprints 0–6 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Next, planned in [PLAN.md](PLAN.md): Sprint 7 fetches the books concurrently (target: a fresh lineup in under 30 s), and Sprint 8 parallelises prediction, the nflverse download and the kicker/D/ST backtest.
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|

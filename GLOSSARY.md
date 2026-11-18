@@ -82,6 +82,10 @@ _Avoid_: No-vig probability, true odds, devigged odds
 The saved raw prices from one run, kept so the run can be backtested later.
 _Avoid_: Cache, log
 
+**Pacing**:
+How fast a run may send requests to one Book: how many at once and how far apart their starts are. Each Book is paced on its own. A Book that pushes back is *rate-limited* and falls back to one request at a time for the rest of the run.
+_Avoid_: Throttle, rate, politeness
+
 **Backtest**:
 Scoring past Score Distributions against what the players actually scored, to check calibration.
 _Avoid_: Validation, evaluation
