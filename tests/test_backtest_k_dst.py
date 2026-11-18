@@ -40,3 +40,31 @@ def test_the_report_has_both_walk_forwards_and_kalshi():
                                                "brier_model": 0.25, "brier_mid": 0.26, "corr_model_mid": 0.8}}})
     assert "### Kicker: walk-forward" in text and "### DST: walk-forward" in text
     assert "| K priced | 3 |" in text
+
+
+def _synthetic_dst(seasons=range(2015, 2019), games=60):
+    import polars as pl
+
+    sys.path.insert(0, str(SCRIPTS))
+    import build_params as bp
+
+    sys.path.remove(str(SCRIPTS))
+    rng = np.random.default_rng(7)
+    rows = []
+    for s in seasons:
+        for w in range(games):
+            row = {c: int(rng.integers(0, 3)) for c in bp.DST_COLUMNS}
+            row.update(season=s, week=w % 18 + 1, team=f"T{w}", opp=f"O{w}", itt=float(rng.uniform(14, 30)),
+                       opp_itt=float(rng.uniform(14, 30)), points_allowed_all=int(rng.integers(0, 45)),
+                       yards_allowed=int(rng.integers(150, 500)))
+            rows.append(row)
+    return pl.DataFrame(rows).select(bp.DST_COLUMNS)
+
+
+def test_seasons_in_worker_processes_give_the_same_rows():
+    # S8.3: each test season is seeded on its own, so --jobs only changes how long it takes.
+    d = _synthetic_dst()
+    serial = bkd.dst_walk_forward(d, [2017, 2018], 200)
+    parallel = bkd.dst_walk_forward(d, [2017, 2018], 200, jobs=2)
+    assert serial.keys() == parallel.keys() and serial
+    assert all(serial[k] == parallel[k] for k in serial)

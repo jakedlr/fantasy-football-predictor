@@ -49,6 +49,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="predict as if it were this time (ISO 8601, UTC unless an offset is given); default: now",
     )
     predict.add_argument(
+        "--jobs",
+        type=_jobs,
+        metavar="N",
+        help="worker processes for predicting players (default: one per player, leaving a fifth of the cores "
+             "free; 1 predicts in this process)",
+    )
+    predict.add_argument(
         "--correlation",
         choices=CORRELATION_KINDS,
         help="latent correlation matrix for the copula: within-player-season (default) or pooled",
@@ -77,6 +84,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _jobs(text: str) -> int:
+    try:
+        n = int(text)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"needs a whole number of 1 or more, not {text!r}")
+    return n
+
+
 BOOK_LABELS = {"draftkings": "DraftKings", "fanduel": "FanDuel"}
 
 
@@ -102,6 +119,42 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
+def _player_history(season: int) -> tuple[dict, dict]:
+    """The players' TD histories and recent games, from one nflverse weekly-stats download."""
+    stats = weekly.memoized(weekly.nflreadpy_player_stats)  # one download, both loaders
+    return (load_td_history(season, fetch=stats),
+            load_recent_games(season, fetch=stats, played=_played(season)))
+
+
+class _Background:
+    """A call running on a daemon thread (abandoned if the run ends first: S8.2). `result()` waits in
+    short steps, so Ctrl-C still lands, and re-raises the call's own error."""
+
+    def __init__(self, call):
+        import threading
+
+        self._value, self._error = None, None
+        self._thread = threading.Thread(target=self._run, args=(call,), daemon=True)
+        self._thread.start()
+
+    def _run(self, call):
+        try:
+            self._value = call()
+        except BaseException as error:  # noqa: BLE001 - raised in the caller's thread by result()
+            self._error = error
+
+    def result(self):
+        while self._thread.is_alive():
+            self._thread.join(0.1)
+        if self._error is not None:
+            raise self._error
+        return self._value
+
+
+def _in_background(call) -> _Background:
+    return _Background(call)
+
+
 def _main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
@@ -118,6 +171,13 @@ def _main(argv: list[str] | None = None) -> int:
 
     snapshot = None
     positions = {t.player.position for t in targets}
+    # Each player's TD history splits his TDs and 2-pt, and his recent games feed his Estimated Stats.
+    # Downloaded alongside the odds (S8.2), and thrown away if both Books fail. Fixture runs stay
+    # offline (position shares, estimates from the other priced stats only); kickers and D/ST use
+    # neither, so a run of only those skips the download.
+    history = None
+    if not args.fixtures and targets and positions & set(pipeline.PLAYER_POSITIONS):
+        history = _in_background(lambda: _player_history(season))
     if args.fixtures:
         books = pipeline.load_fixture_books(args.fixtures)
     elif targets:
@@ -144,20 +204,12 @@ def _main(argv: list[str] | None = None) -> int:
             return 1
     else:
         books = []  # nobody to price: don't touch the sportsbooks
-    # Each player's TD history splits his TDs and 2-pt, and his recent games feed his Estimated
-    # Stats. Fetched only once odds are in hand (a failed odds fetch costs no nflverse download);
-    # fixture runs stay offline (position shares, estimates from the other priced stats only).
-    # Kickers and D/ST use neither, so a run of only those skips the download.
-    live = bool(books) and not args.fixtures and bool(positions & set(pipeline.PLAYER_POSITIONS))
-    td_history, recent_games = {}, {}
-    if live:
-        stats = weekly.memoized(weekly.nflreadpy_player_stats)  # one download, both loaders
-        td_history = load_td_history(season, fetch=stats)
-        recent_games = load_recent_games(season, fetch=stats, played=_played(season))
+    td_history, recent_games = history.result() if history is not None else ({}, {})
 
     results, unfitted = pipeline.predict(
         targets, books, rules, on_fair_points=_fair_points_saver(snapshot), correlation=args.correlation,
         td_history=td_history, chance_thresholds=args.chance, recent_games=recent_games,
+        jobs=args.jobs or pipeline.default_jobs(len(targets)),
     )
     order = {name: i for i, name in reversed(list(enumerate(names)))}
     skipped = sorted(skipped + unfitted, key=lambda s: order.get(s.name, len(names)))

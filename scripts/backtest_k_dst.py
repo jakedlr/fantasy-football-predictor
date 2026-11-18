@@ -2,7 +2,7 @@
 """Backtest the kicker and D/ST models (PLAN S6.6) against nflverse outcomes and Kalshi's lines.
 
     python scripts/backtest_k_dst.py [--seasons 2016-2025] [--samples 2000] [--out data/backtest-k-dst]
-                                     [--kalshi data/kalshi] [--no-kalshi]
+                                     [--kalshi data/kalshi] [--no-kalshi] [--jobs N]
 
 1. Walk-forward on nflverse: each test season's models are fitted on earlier seasons only (the
    kicker on the 5 before it, as scripts/build_params.py fits it; the D/ST on every season from
@@ -73,22 +73,25 @@ def kicker_line(row: dict) -> dict:
             "fg_made_yards": np.array(row["made"], dtype=float) if row["made"] else np.empty(0)}
 
 
-def kicker_walk_forward(ps: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int], n: int) -> dict:
+def kicker_walk_forward(ps: pl.DataFrame, schedules: pl.DataFrame, seasons: list[int], n: int, jobs: int = 1) -> dict:
+    return _by_season("kicker", seasons, n, jobs, ps=ps, schedules=schedules)
+
+
+def _kicker_season(t: int, n: int, ps: pl.DataFrame, schedules: pl.DataFrame) -> dict:
     out = defaultdict(list)
-    for t in seasons:
-        p = bp.kicker_params(ps, schedules, list(range(t - KICKER_WINDOW, t)))
-        games = bp.kicking_games(ps.filter(pl.col("season") == t), bp.team_game_lines(schedules, [t])).to_dicts()
-        past = bp.kicking_games(ps.filter(pl.col("season").is_between(t - BASELINE_SEASONS, t - 1)),
-                                bp.team_game_lines(schedules, list(range(t - BASELINE_SEASONS, t)))).to_dicts()
-        baseline = {name: np.array([score_kicker(kicker_line(g), rules) for g in past]) for name, rules in RULES.items()}
-        rng = np.random.default_rng(t)
-        for g in games:
-            k = sample_kicker(g["itt"], g["fav_by"], t, n=n, seed=_seed("K", g["game_id"], g["team"]), p=p)
-            for name, rules in RULES.items():
-                y = score_kicker(kicker_line(g), rules)
-                model = np.asarray(score_kicker(k.stat_line(), rules), dtype=float)
-                out[f"model {name} {t}"].append(_row(model, y, rng))
-                out[f"baseline {name} {t}"].append(_row(baseline[name], y, rng))
+    p = bp.kicker_params(ps, schedules, list(range(t - KICKER_WINDOW, t)))
+    games = bp.kicking_games(ps.filter(pl.col("season") == t), bp.team_game_lines(schedules, [t])).to_dicts()
+    past = bp.kicking_games(ps.filter(pl.col("season").is_between(t - BASELINE_SEASONS, t - 1)),
+                            bp.team_game_lines(schedules, list(range(t - BASELINE_SEASONS, t)))).to_dicts()
+    baseline = {name: np.array([score_kicker(kicker_line(g), rules) for g in past]) for name, rules in RULES.items()}
+    rng = np.random.default_rng(t)
+    for g in games:
+        k = sample_kicker(g["itt"], g["fav_by"], t, n=n, seed=_seed("K", g["game_id"], g["team"]), p=p)
+        for name, rules in RULES.items():
+            y = score_kicker(kicker_line(g), rules)
+            model = np.asarray(score_kicker(k.stat_line(), rules), dtype=float)
+            out[f"model {name} {t}"].append(_row(model, y, rng))
+            out[f"baseline {name} {t}"].append(_row(baseline[name], y, rng))
     return out
 
 
@@ -100,21 +103,64 @@ def _table(d: pl.DataFrame) -> AnalogTable:
                         for c in d.columns})
 
 
-def dst_walk_forward(d: pl.DataFrame, seasons: list[int], n: int) -> dict:
+def dst_walk_forward(d: pl.DataFrame, seasons: list[int], n: int, jobs: int = 1) -> dict:
+    return _by_season("dst", seasons, n, jobs, d=d)
+
+
+def _dst_season(t: int, n: int, d: pl.DataFrame) -> dict:
     out = defaultdict(list)
-    for t in seasons:
-        hist, test = _table(d.filter(pl.col("season") < t)), d.filter(pl.col("season") == t).to_dicts()
-        rng = np.random.default_rng(t)
-        flat = np.full(len(hist), 1 / len(hist))
-        for g in test:
-            w = analog_weights(g["opp_itt"], t, hist)
-            draw = np.random.default_rng(_seed("DST", g["season"], g["week"], g["team"]))
-            rows = hist.rows(draw.choice(len(hist), size=n, p=w))
-            base = hist.rows(draw.choice(len(hist), size=n, p=flat))
-            for name, rules in RULES.items():
-                y = score_dst(g, rules)
-                out[f"model {name} {t}"].append(_row(np.asarray(score_dst(rows, rules), dtype=float), y, rng))
-                out[f"baseline {name} {t}"].append(_row(np.asarray(score_dst(base, rules), dtype=float), y, rng))
+    hist, test = _table(d.filter(pl.col("season") < t)), d.filter(pl.col("season") == t).to_dicts()
+    rng = np.random.default_rng(t)
+    flat = np.full(len(hist), 1 / len(hist))
+    for g in test:
+        w = analog_weights(g["opp_itt"], t, hist)
+        draw = np.random.default_rng(_seed("DST", g["season"], g["week"], g["team"]))
+        rows = hist.rows(draw.choice(len(hist), size=n, p=w))
+        base = hist.rows(draw.choice(len(hist), size=n, p=flat))
+        for name, rules in RULES.items():
+            y = score_dst(g, rules)
+            out[f"model {name} {t}"].append(_row(np.asarray(score_dst(rows, rules), dtype=float), y, rng))
+            out[f"baseline {name} {t}"].append(_row(np.asarray(score_dst(base, rules), dtype=float), y, rng))
+    return out
+
+
+# --- seasons in worker processes (S8.3) -------------------------------------------------
+
+_SEASON = {"kicker": _kicker_season, "dst": _dst_season}
+_DATA: dict = {}
+
+
+def _start_worker(data: dict) -> None:
+    _DATA.update(data)
+
+
+def _season_in_worker(task):
+    model, t, n = task
+    return _SEASON[model](t, n, **_DATA)
+
+
+def _by_season(model: str, seasons: list[int], n: int, jobs: int, **data) -> dict:
+    """Each test season's rows, merged in season order. Every season is seeded on its own, so the rows
+    don't depend on `jobs`: with more than one, seasons run in that many worker processes, each sent
+    the data once."""
+    if jobs <= 1 or len(seasons) <= 1:
+        parts = [_SEASON[model](t, n, **data) for t in seasons]
+    else:
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
+        # Workers import this script by name: put its directory where they look (spawned workers
+        # start from this process's sys.path). forkserver: polars' thread pool makes fork unsafe.
+        here = str(Path(__file__).resolve().parent)
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        with ProcessPoolExecutor(min(jobs, len(seasons)), mp_context=multiprocessing.get_context("forkserver"),
+                                 initializer=_start_worker, initargs=(data,)) as pool:
+            parts = list(pool.map(_season_in_worker, [(model, t, n) for t in seasons]))
+    out = defaultdict(list)
+    for part in parts:
+        for key, rows in part.items():
+            out[key] += rows
     return out
 
 
@@ -223,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=Path("data") / "backtest-k-dst")
     ap.add_argument("--kalshi", type=Path, default=Path("data") / "kalshi")
     ap.add_argument("--no-kalshi", action="store_true")
+    ap.add_argument("--jobs", type=int, default=1, help="worker processes for the test seasons (default 1)")
     args = ap.parse_args(argv)
     seasons = bp.parse_seasons(args.seasons)
 
@@ -233,8 +280,8 @@ def main(argv: list[str] | None = None) -> int:
     plays = pl.concat([nfl.load_pbp([s]).select(bp.DST_PLAY_COLUMNS) for s in range(2015, 2027)], how="vertical_relaxed")
     d = bp.dst_games(plays, schedules, list(range(2015, 2027)))
 
-    summary = {"kicker": pooled(kicker_walk_forward(ps, schedules, seasons, args.samples), seasons),
-               "dst": pooled(dst_walk_forward(d, seasons, args.samples), seasons)}
+    summary = {"kicker": pooled(kicker_walk_forward(ps, schedules, seasons, args.samples, args.jobs), seasons),
+               "dst": pooled(dst_walk_forward(d, seasons, args.samples, args.jobs), seasons)}
     if not args.no_kalshi:
         summary["kalshi"] = kalshi_comparison(args.kalshi, ps, schedules, d.filter(pl.col("season") == 2026),
                                               args.samples)

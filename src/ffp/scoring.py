@@ -70,6 +70,14 @@ class ScoringRules:
     dst: dict = field(default_factory=dict)
     assumptions: list = field(default_factory=list)
 
+    def __reduce__(self):
+        # Pickled for prediction workers (Sprint 8): a mappingproxy can't be, so offense goes as a dict.
+        return _rules, (self.name, dict(self.offense), self.kicker, self.dst, self.assumptions)
+
+
+def _rules(name: str, offense: dict, kicker: dict, dst: dict, assumptions: list) -> "ScoringRules":
+    return ScoringRules(name, MappingProxyType(offense), kicker, dst, assumptions)
+
 
 def _offense(points_per_unit: Mapping[str, float], source: str) -> Mapping[str, float]:
     """Validate an offense section and fill missing Scoring Stats with 0 points."""

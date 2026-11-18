@@ -8,7 +8,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 ## Status
 
-Sprints 0–6 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Next, planned in [PLAN.md](PLAN.md): Sprint 8 parallelises prediction, the nflverse download and the kicker/D/ST backtest.
+Sprints 0–8 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Sprint 8 predicts players in parallel processes and downloads nflverse while the odds come in, about 20% faster again, and gives the kicker/D/ST backtest `--jobs`.
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
@@ -84,6 +84,7 @@ Options:
 | `--scoring NAME_OR_FILE` | Scoring Rules. Default is `espn-league` (full PPR, 4-pt pass TD, −2 INT, −2 fumble lost). |
 | `--correlation within\|pooled` | Copula matrix. Default is `within`. |
 | `--chance N` | Also report each player's chance of N or more points. Repeat for several numbers. |
+| `--jobs N` | Worker processes for predicting players. The default is one per player, leaving a fifth of the cores free; `--jobs 1` predicts in one process. The output is identical either way. |
 | `--output-dir DIR` | Where `OUTPUT.md` and `output.json` are written. Default is `.`. |
 | `--snapshots DIR` / `--no-snapshot` | Where a live run saves its raw responses and Fair Probabilities (default `snapshots/`, gitignored), or skip saving them. |
 
@@ -110,7 +111,7 @@ A live run makes a few network calls:
   - A kicker adds four DraftKings kicker subcategories, only when the run saves a snapshot (not with `--no-snapshot`). The model doesn't use them yet; they are kept for a later backtest.
 - nflverse, through `nflreadpy`, for rosters, the schedule and weekly player stats (TD history and recent games). A run of only kickers and D/STs skips the weekly player stats.
 
-DraftKings and FanDuel are fetched at the same time, each with its own Pacing: at most 3 requests in flight, started at least 0.3 s apart. A fresh 9-player lineup across 7 Games fetches its odds in about 9 s, and the whole run takes about 16 s. Before Sprint 7 it took about 4 minutes.
+DraftKings and FanDuel are fetched at the same time, each with its own Pacing: at most 3 requests in flight, started at least 0.3 s apart. A fresh 9-player lineup across 7 Games fetches its odds in about 9 s, and the whole run takes about 16–19 s depending on the machine's load. Before Sprint 7 it took about 4 minutes. The nflverse player stats download while the odds come in; if both books fail, that download is thrown away.
 
 - **Timing:** the run prints one line, such as `Odds in 8.8 s: DraftKings 22 live requests in 7.4 s, FanDuel 30 in 8.8 s`. A book that was slowed, rate-limited or left out is marked on that line. The snapshot's `manifest.json` keeps the same numbers under `timing`.
 - **Pushback:** a book that answers 429 (rate-limited) or 403 (refused) is slowed. It holds all its requests, including those already waiting their turn, and drops to one at a time for the rest of the run. It waits out a 429's `Retry-After` and retries once. If that fails too, the book is left out with one warning, and the other book's odds still count. A 429 asking for more than 10 s fails only that request.
@@ -177,10 +178,10 @@ The metrics are PIT, CRPS and P(≥k) reliability per stat against Kalshi's own 
 ### Kicker and D/ST backtest (Sprint 6)
 
 ```bash
-python scripts/backtest_k_dst.py   # [--seasons 2016-2025] [--samples 2000] [--out data/backtest-k-dst] [--kalshi data/kalshi] [--no-kalshi]
+python scripts/backtest_k_dst.py   # [--seasons 2016-2025] [--samples 2000] [--out data/backtest-k-dst] [--kalshi data/kalshi] [--no-kalshi] [--jobs N]
 ```
 
-It runs a walk-forward backtest on nflverse: each test season's kicker and D/ST models are fitted on earlier seasons only and scored on that season's team-games from their closing lines. Each model is compared with a baseline that ignores the Game Lines. It then checks Kalshi's 2026 kicker and D/ST fantasy-point lines against the model and the outcomes. The pull maps Kalshi's D/ST targets to `DST-<team>`, and lines with spreads over 10¢ are kept as their own group. The run writes `summary.json` and `tables.md` to `--out`; results are in [research/kickers-dst.md](research/kickers-dst.md).
+It runs a walk-forward backtest on nflverse: each test season's kicker and D/ST models are fitted on earlier seasons only and scored on that season's team-games from their closing lines. Each model is compared with a baseline that ignores the Game Lines. `--jobs N` runs the test seasons in N worker processes, with identical results: 8 jobs take about 33 s instead of 61 s. It then checks Kalshi's 2026 kicker and D/ST fantasy-point lines against the model and the outcomes. The pull maps Kalshi's D/ST targets to `DST-<team>`, and lines with spreads over 10¢ are kept as their own group. The run writes `summary.json` and `tables.md` to `--out`; results are in [research/kickers-dst.md](research/kickers-dst.md).
 
 ### Layout
 

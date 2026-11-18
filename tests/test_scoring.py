@@ -266,3 +266,14 @@ def test_a_value_above_a_closed_last_tier_scores_nothing():
         {"min": 0, "max": 0, "points": 5}, {"min": 1, "max": 20, "points": 1}]})
     assert score_dst({"points_allowed_all": 20}, capped) == 1
     assert score_dst({"points_allowed_all": 21}, capped) == 0
+
+
+def test_scoring_rules_pickle_for_worker_processes():
+    # Sprint 8: the rules go to each prediction worker; offense stays read-only.
+    import pickle
+
+    rules = PRESETS["sleeper"]
+    copy = pickle.loads(pickle.dumps(rules))
+    assert copy == rules and copy.offense["receptions"] == 1
+    with pytest.raises(TypeError):
+        copy.offense["receptions"] = 2

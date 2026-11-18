@@ -580,7 +580,10 @@ def _real_http(fake, tmp_path, net=None):
         except FetchError:
             return 500, b"", {}
 
-    return Http(tmp_path, fetch=fetch, use_cache=False, delay=(0, 0))
+    from ffp.sources.http import BOOK_PACING, Pacing
+
+    no_gap = {book: Pacing(p.in_flight, 0.0) for book, p in BOOK_PACING.items()}
+    return Http(tmp_path, fetch=fetch, use_cache=False, delay=(0, 0), book_pacing=no_gap)
 
 
 def test_the_books_fetch_side_by_side(nflverse, tmp_path):
@@ -646,3 +649,54 @@ def test_ctrl_c_stops_both_books_within_a_second(nflverse, tmp_path):
         _live(http, nflverse)
     assert _time.monotonic() - began < 1.5
     assert http._stopped.is_set()  # every wait ends and nothing more starts
+
+
+# --- Sprint 8: players predicted in parallel processes ------------------------------
+
+# A receiver, a QB, a D/ST and a skip: each kind of outcome, enough to finish out of order.
+LINEUP = ["Zay Flowers", "Justin Herbert", "Ravens D/ST", "Nobody Atall"]
+
+
+def _report(results, skipped, tmp_path, name):
+    from ffp.report import write_json
+
+    path = tmp_path / f"{name}.json"
+    write_json(results, skipped, rules_name="x", generated_at=BEFORE_MNF, path=path)
+    return path.read_text()
+
+
+def test_parallel_prediction_matches_one_process(nflverse, books, tmp_path, caplog):
+    # S8.1: whatever order the workers finish in, the report, the Fair Points saved and the warnings
+    # logged are those of a one-process run.
+    import logging
+
+    out = {}
+    for jobs in (1, 2):
+        saved = []
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            results, skipped = run(LINEUP, nflverse, books, jobs=jobs,
+                                   on_fair_points=lambda t, stat, pts: saved.append((t.name, stat, pts)))
+        out[jobs] = (_report(results, skipped, tmp_path, f"jobs{jobs}"), saved,
+                     [(r.name, r.levelno, r.getMessage()) for r in caplog.records])
+    assert out[2][0] == out[1][0] and '"Nobody Atall"' in out[1][0]
+    assert out[2][1] == out[1][1] and out[2][1]
+    assert out[2][2] == out[1][2]
+
+
+def test_one_player_is_predicted_in_process(nflverse, books, monkeypatch):
+    # Starting a worker costs about a second of imports: a lone player never pays it.
+    import ffp.predict
+
+    monkeypatch.setattr(ffp.predict, "_worker_pool", lambda *a, **k: (_ for _ in ()).throw(AssertionError("pool")))
+    results, _ = run(["Zay Flowers"], nflverse, books, jobs=4)
+    assert [r.player for r in results] == ["Zay Flowers"]
+
+
+def test_default_jobs_leave_cores_free_and_never_exceed_the_players():
+    from ffp.predict import default_jobs
+
+    assert default_jobs(9, cpus=20) == 9
+    assert default_jobs(30, cpus=20) == 16
+    assert default_jobs(9, cpus=4) == 3
+    assert default_jobs(1, cpus=20) == 1 and default_jobs(5, cpus=1) == 1
