@@ -320,20 +320,17 @@ def load_live_books(
          lambda view: _fanduel_book(view, games, now, stats, kickers, dst_games, on_response)),
     ]
     results = _side_by_side([lambda book=book, label=label, job=job: _run_book(http, book, label, job)
-                             for book, label, job in jobs], stop=getattr(http, "stop", lambda: None))
+                             for book, label, job in jobs], stop=http.stop)
     return [book for book in results if book is not None]
 
 
 def _run_book(http, book: str, label: str, job) -> "BookOdds | None":
-    """One Book's fetch through its own view of `http` (a plain fake is used as is), or None with one
-    warning when the Book fails outright."""
-    from contextlib import nullcontext
-
+    """One Book's fetch through its own view of `http`, or None with one warning when the Book fails
+    outright."""
     from ffp.sources.http import BOOK_PACING
 
-    view = http.for_book(book, BOOK_PACING.get(book)) if hasattr(http, "for_book") else http
     try:
-        with view if hasattr(view, "__enter__") else nullcontext():
+        with http.for_book(book, BOOK_PACING.get(book)) as view:
             return job(view)
     except _book_failures() as error:
         log.warning("%s left out: %s", label, _describe(error))

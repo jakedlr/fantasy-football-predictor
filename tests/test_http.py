@@ -470,3 +470,57 @@ def test_a_stopped_http_ends_the_slow_pause_early(tmp_path):
     with pytest.raises(Cancelled):
         http.get_json("https://kalshi.example/b")
     assert time.monotonic() - began < 1
+
+
+# --- review of PR #15 ------------------------------------------------------------
+
+def test_batch_requests_run_on_daemon_threads(tmp_path):
+    # Finding 1: pool workers are joined at exit, so Ctrl-C hung up to 30 s on a request in flight.
+    daemons = []
+
+    def fetch(url):
+        daemons.append(threading.current_thread().daemon)
+        return 200, b"{}", {}
+
+    with Http(tmp_path, fetch=fetch, sleep=no_sleep).for_book("fanduel", FAST) as fd:
+        fd.get_many(URLS[:4])
+    assert daemons and all(daemons)
+
+
+def test_requests_already_waiting_their_turn_also_wait_out_a_hold(tmp_path):
+    # Finding 2: B and C had reserved starts before A's 429 and went out during the hold.
+    net = Network(seconds=0.01, status=limits_first(URLS[0], retry_after="0.5"))
+    http = Http(tmp_path, fetch=net, delay=(0.01, 0.01))
+    with http.for_book("draftkings", Pacing(3, 0.1)) as dk:
+        dk.get_many(URLS[:3])
+    first = min(t for t, u in net.starts if u == URLS[0])
+    others = [t for t, u in net.starts if u != URLS[0]]
+    assert all(t >= first + 0.01 + 0.5 - 0.02 for t in others)
+
+
+def test_a_long_retry_after_fails_only_that_request(tmp_path):
+    # Finding 3: one 429 asking 15 s left the whole Book out without a retry.
+    net = Network(seconds=0, status=limits_first(URLS[0], retry_after="15"))
+    http = Http(tmp_path, fetch=net, delay=(0, 0), sleep=no_sleep)
+    with http.for_book("draftkings", FAST) as dk:
+        got = dk.get_many(URLS[:3])
+    assert isinstance(got[0], FetchError) and not isinstance(got[0], PushedBack)
+    assert "asked to wait 15s" in str(got[0]) and got[1:] == [{"url": u} for u in URLS[1:3]]
+    assert http.timing["draftkings"]["rate_limited"] is True and http.timing["draftkings"]["failed"] is False
+
+
+def test_simultaneous_pushbacks_back_the_book_off_once(tmp_path, caplog):
+    # Finding 4: three 403s in flight each held, warned and retried on their own.
+    net = Network(seconds=0.02, status=lambda url, n: (403, {}) if n == 1 and url in URLS[:3] else (200, {}))
+    http = Http(tmp_path, fetch=net, delay=(0.01, 0.01))
+    with http.for_book("fanduel", FAST) as fd:
+        got = fd.get_many(URLS[:3])
+    assert got == [{"url": u} for u in URLS[:3]]
+    assert sum("backing off" in r.getMessage() for r in caplog.records) == 1
+
+
+def test_a_book_slowed_by_a_refusal_is_timed_as_slowed(tmp_path):
+    # Finding 9: a 403 slows the Book for the run; the timing said nothing.
+    http, _, _ = run_book(tmp_path, limits_first(URLS[0], status=403))
+    t = http.timing["draftkings"]
+    assert (t["slowed"], t["rate_limited"]) == (True, False)

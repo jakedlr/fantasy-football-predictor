@@ -86,7 +86,7 @@ def timing_line(books: dict, seconds: float) -> str:
     parts = []
     for i, (book, t) in enumerate(books.items()):
         notes = [f"+{t['cached']} cached"] if t["cached"] else []
-        notes += ["rate-limited"] if t["rate_limited"] else []
+        notes += ["rate-limited"] if t["rate_limited"] else ["slowed"] if t.get("slowed") else []
         notes += ["left out"] if t["failed"] else []
         what = "live requests " if i == 0 else ""
         parts.append(f"{BOOK_LABELS.get(book, book)} {t['requests']} {what}in {t['seconds']:.1f} s"

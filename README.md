@@ -112,8 +112,8 @@ A live run makes a few network calls:
 
 DraftKings and FanDuel are fetched at the same time, each with its own Pacing: at most 3 requests in flight, started at least 0.3 s apart. A fresh 9-player lineup across 7 Games fetches its odds in about 9 s, and the whole run takes about 16 s. Before Sprint 7 it took about 4 minutes.
 
-- **Timing:** the run prints one line, such as `Odds in 8.8 s: DraftKings 22 live requests in 7.4 s, FanDuel 30 in 8.8 s`. The snapshot's `manifest.json` keeps the same numbers under `timing`.
-- **Pushback:** a book that answers 429 (rate-limited) or 403 (refused) holds all its requests and drops to one at a time for the rest of the run. It waits out a 429's `Retry-After` (up to 10 s) and retries once. If that fails too, the book is left out with one warning, and the other book's odds still count.
+- **Timing:** the run prints one line, such as `Odds in 8.8 s: DraftKings 22 live requests in 7.4 s, FanDuel 30 in 8.8 s`. A book that was slowed, rate-limited or left out is marked on that line. The snapshot's `manifest.json` keeps the same numbers under `timing`.
+- **Pushback:** a book that answers 429 (rate-limited) or 403 (refused) is slowed. It holds all its requests, including those already waiting their turn, and drops to one at a time for the rest of the run. It waits out a 429's `Retry-After` and retries once. If that fails too, the book is left out with one warning, and the other book's odds still count. A 429 asking for more than 10 s fails only that request.
 - **Ctrl-C** stops both books at once and exits with status 130, with no traceback.
 
 ## Scoring Rules

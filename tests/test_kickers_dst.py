@@ -258,14 +258,17 @@ class _TeamHttp:
 def test_live_books_fetch_game_lines_team_totals_and_kicker_markets():
     from ffp.predict import load_live_books
 
-    http = _TeamHttp()
+    from conftest import over_http
+
+    fake = _TeamHttp()
+    http = over_http(fake)
     now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
     books = load_live_books(http, [IND_HOU], now, stats=[], kickers=True, dst_games=[IND_HOU], kicker_ladders=True)
     dk, fd = books
     assert GameLine("34118011", "draftkings", -12.5, 44.5) in dk.lines
     assert {m.player for m in dk.team_markets} == {"IND Colts", "HOU Texans"}
     assert {m.player for m in fd.team_markets} == {"Indianapolis Colts", "Houston Texans"}
-    asked = " ".join(http.urls)
+    asked = " ".join(fake.urls)
     for subcategory in ("17131", "17133", "17132", "17062"):  # FG Made, PAT Made, Kicking Pts (+ O/U)
         assert f"/subcategories/{subcategory}" in asked
     assert asked.count("eventId=36305232") == 2  # FanDuel: the popular and TD scorer tabs, this Game only
@@ -281,10 +284,13 @@ def test_only_dst_games_and_snapshot_runs_cost_extra_requests():
     # Ladders (snapshot-only) on every run with a K.
     from ffp.predict import load_live_books
 
-    http = _TeamHttp()
+    from conftest import over_http
+
+    fake = _TeamHttp()
+    http = over_http(fake)
     now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
     dk, fd = load_live_books(http, [IND_HOU], now, stats=[], kickers=True)
-    asked = " ".join(http.urls)
+    asked = " ".join(fake.urls)
     assert "tab=popular" not in asked and not fd.team_markets and not dk.team_markets
     assert "/subcategories/17131" not in asked
     assert GameLine("34118011", "draftkings", -12.5, 44.5) in dk.lines  # a kicker still gets the Game Lines

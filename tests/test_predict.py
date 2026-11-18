@@ -200,7 +200,11 @@ class _FakeHttp:
 
 
 def _live(http, nflverse):
+    from conftest import over_http
     from ffp.predict import load_live_books
+    from ffp.sources.http import Http
+
+    http = http if isinstance(http, Http) else over_http(http)
 
     _, schedule = nflverse
     game = next(g for g in schedule if g.game_id == "2026_10_LAC_BAL")

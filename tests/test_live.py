@@ -338,3 +338,18 @@ def test_a_failed_request_is_not_handed_on(tmp_path):
     with pytest.raises(FetchError):
         live.fetch_fanduel_events(http, ["1"], on_response=lambda *a: seen.append(a))
     assert seen == []
+
+
+def test_a_merged_ladder_keeps_the_part_that_answered_in_the_snapshot(tmp_path):
+    # Review of PR #15, finding 5: one part failing lost the other part's response from the Snapshot.
+    from ffp.sources.http import FetchError
+
+    class Half:
+        def get_many(self, urls):
+            return [{"part": 1}, FetchError("timed out")]
+
+    saved = []
+    got = live.fetch_dk_batch(Half(), [("dk_x_ladder", ["https://dk.example/1", "https://dk.example/2"])],
+                              on_response=lambda *a: saved.append(a))
+    assert isinstance(got["dk_x_ladder"], FetchError)
+    assert saved == [(live.DK_BOOK, "dk_x_ladder", "https://dk.example/1", {"part": 1})]

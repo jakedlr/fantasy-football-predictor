@@ -255,6 +255,19 @@ A live run spends nearly all its time waiting on the Books. Every request goes o
   - cache temp files named by process and thread.
 - Ctrl-C: the Books run on daemon threads and the main thread joins in 0.1 s steps, so an interrupt lands at once. `Http.stop()` ends every Pacing wait, and a request still in flight is abandoned with its thread.
 
+**Review:** done 2026-11-18. `/code-review` (medium) found ten issues. Nine were fixed, test-first where testable; one needed no change:
+- Batch workers are daemon threads, not a pool. Python joins pool workers at exit, so Ctrl-C would have waited out a request in flight, up to Scrapling's 30 s timeout.
+- A hold now stops requests already waiting their turn too. Before, those that had reserved a start went out during it. Each `slow_down` bumps the Pacer's epoch, and a request admitted earlier queues again.
+- Requests pushed back together back the Book off once: one warning, one hold.
+- A 429 asking for more than 10 s fails only that request again, instead of leaving the Book out.
+- A merged DraftKings Ladder keeps the part that answered in the Snapshot, even when another part failed.
+- The timing marks a Book slowed by a 403 (`slowed`). GLOSSARY now says a 403 is a refusal and a 429 a rate limit.
+- `fetch_draftkings` and `fetch_fanduel_events` are built on the batch helpers, and the unused `fetch_dk_subcategory` is gone.
+- Production code has no test-only paths. Test fakes are wrapped in a real `Http` (`tests/conftest.py: over_http`), and a plain `Http` has its own one-at-a-time `get_many`.
+- ADR 0004 records the decision.
+- No change: a DraftKings league whose Games don't parse leaves the Book out with one warning. Its markets can't be matched to players without Games; before, every stat failed the same way, with a warning each.
+- Live again after the fixes, fresh: 16.9 s; odds 8.8 s (DraftKings 22 in 6.7 s, FanDuel 30 in 8.8 s), no warnings.
+
 ## Sprint 8 — Parallel prediction and data (approved 2026-11-17, planned; after Sprint 7)
 
 Three small stories. Same process as Sprint 7.

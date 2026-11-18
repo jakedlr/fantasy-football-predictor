@@ -83,7 +83,7 @@ The saved raw prices from one run, kept so the run can be backtested later.
 _Avoid_: Cache, log
 
 **Pacing**:
-How fast a run may send requests to one Book: how many at once and how far apart their starts are. Each Book is paced on its own. A Book that pushes back is *rate-limited* and falls back to one request at a time for the rest of the run.
+How fast a run may send requests to one Book: how many at once and how far apart their starts are. Each Book is paced on its own. A Book that pushes back is *slowed*: it falls back to one request at a time for the rest of the run. Pushback by HTTP 429 is a rate limit (*rate-limited*); a 403 is a refusal (*refused*).
 _Avoid_: Throttle, rate, politeness
 
 **Backtest**:

@@ -15,7 +15,6 @@ import re
 import threading
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -143,6 +142,7 @@ class Pacer:
         self._cond = threading.Condition()
         self._active = 0
         self._next_start: float | None = None
+        self.epoch = 0  # bumped by each slow_down: a request admitted before it waits its turn again
 
     @classmethod
     def slow(cls, delay, clock, sleep, check=lambda: None) -> "Pacer":
@@ -150,26 +150,34 @@ class Pacer:
         return cls(1, lambda: random.uniform(*delay), clock, sleep, after_end=True, check=check)
 
     def __enter__(self):
-        self.check()
-        with self._cond:
-            while self._active >= self.in_flight:
-                self._cond.wait(0.1)
-                self.check()
-            self._active += 1
-            now = self.clock()
-            start = now if self._next_start is None else max(now, self._next_start)
-            if not self.after_end:
-                self._next_start = start + self.gap()
-        try:
-            if start > now:
-                self.sleep(start - now)
+        while True:
             self.check()
-        except BaseException:
             with self._cond:
-                self._active -= 1
-                self._cond.notify_all()
-            raise
-        return self
+                while self._active >= self.in_flight:
+                    self._cond.wait(0.1)
+                    self.check()
+                self._active += 1
+                epoch = self.epoch
+                now = self.clock()
+                start = now if self._next_start is None else max(now, self._next_start)
+                if not self.after_end:
+                    self._next_start = start + self.gap()
+            try:
+                if start > now:
+                    self.sleep(start - now)
+                self.check()
+            except BaseException:
+                self._release()
+                raise
+            with self._cond:
+                if self.epoch == epoch:
+                    return self
+            self._release()  # the Book pushed back while this one waited: queue again, under the hold
+
+    def _release(self):
+        with self._cond:
+            self._active -= 1
+            self._cond.notify_all()
 
     def __exit__(self, *exc):
         with self._cond:
@@ -179,15 +187,20 @@ class Pacer:
             self._cond.notify_all()
         return False
 
-    def slow_down(self, gap, hold: float):
+    def slow_down(self, gap, hold: float, epoch: int | None = None) -> bool:
         """The Book pushed back: no request starts until `hold` seconds from now, then one at a time, pausing
-        `gap()` seconds after each."""
+        `gap()` seconds after each. With `epoch` (the one the pushed-back request was sent in), only the first
+        pushback since then slows the Book; later ones, sent alongside it, return False and just retry."""
         with self._cond:
+            if epoch is not None and epoch != self.epoch:
+                return False
+            self.epoch += 1
             self.in_flight = 1
             self.gap = gap
             self.after_end = True
             until = self.clock() + hold
             self._next_start = max(self._next_start or until, until)
+            return True
 
 
 class Http:
@@ -279,6 +292,17 @@ class Http:
         """The JSON at `url`, from the cache while it's fresh, else fetched live and cached."""
         return self._get_json(url, "")
 
+    def get_many(self, urls: list[str]) -> list:
+        """Each URL's JSON in order, or the FetchError that request failed with, one at a time (a Book's view
+        fetches them as a batch: BookHttp.get_many). A stopped run (Cancelled) is raised."""
+        out = []
+        for url in urls:
+            try:
+                out.append(self.get_json(url))
+            except FetchError as error:
+                out.append(error)
+        return out
+
     def _get_json(self, url: str, book: str):
         self._check()
         with self._lock:
@@ -312,10 +336,10 @@ class Http:
         """The body of a 200 answer at `url`, fetched live: paced, and backed off once if pushed back."""
         key = book or urlsplit(url).netloc
         pacer = self._pacer(key)
-        status, body, *rest = self._send(url, book, pacer)
+        epoch, (status, body, *rest) = self._send(url, book, pacer)
         if status in PUSHED_BACK:
             try:
-                status, body = self._back_off(url, book, key, pacer, status, rest[0] if rest else {})
+                status, body = self._back_off(url, book, key, pacer, epoch, status, rest[0] if rest else {})
             except PushedBack as error:
                 if book:
                     with self._lock:
@@ -326,10 +350,11 @@ class Http:
             raise FetchError(f"HTTP {status} from {redact(url)}")
         return body if isinstance(body, bytes) else body.encode()
 
-    def _send(self, url: str, book: str, pacer: Pacer) -> tuple:
-        """One live request, in its turn: none once its Book is left out (a retry queued behind the one that
-        failed is not sent)."""
+    def _send(self, url: str, book: str, pacer: Pacer) -> tuple[int, tuple]:
+        """One live request, in its turn, and the Pacer's epoch it was sent in. None once its Book is left
+        out (a retry queued behind the one that failed is not sent)."""
         with pacer:
+            epoch = pacer.epoch
             with self._lock:
                 left_out = self._left_out.get(book) if book else None
                 if left_out is not None:
@@ -343,12 +368,13 @@ class Http:
                 # from None: the original error's message may hold the URL, app key included.
                 raise FetchError(f"request to {redact(url)} failed: {type(e).__name__}: {redact(str(e))}") from None
         log.info("HTTP %s from %s", answer[0], redact(url))
-        return answer
+        return epoch, answer
 
-    def _back_off(self, url, book, key, pacer, status, headers) -> tuple[int, bytes]:
+    def _back_off(self, url, book, key, pacer, epoch, status, headers) -> tuple[int, bytes]:
         """The Book (or host) pushed back: hold all its requests for the wait a 429 asked for (or one pause),
         slow it to one request at a time for the rest of the run, then retry this request once, in turn like
-        any other. Only a 429 is a rate limit."""
+        any other. Requests pushed back alongside it (sent in the same epoch) back the Book off only once.
+        Only a 429 is a rate limit. A 429 asking for more than MAX_RETRY_AFTER fails just this request."""
         shown = redact(url)
         if status == RATE_LIMITED and book:
             with self._lock:
@@ -360,11 +386,12 @@ class Http:
             self._slowed.add(key)
         wait = retry_after(headers) if status == RATE_LIMITED else None
         if wait is not None and wait > MAX_RETRY_AFTER:
-            pacer.slow_down(gap, gap())
-            raise PushedBack(f"rate-limited: HTTP {status} from {shown}, asked to wait {wait:g}s")
-        pacer.slow_down(gap, max(wait or 0.0, random.uniform(*self.delay)))  # the hold: one plain pause at least
-        log.warning("HTTP %s from %s: backing off, then retrying once", status, shown)
-        retry, body, *_ = self._send(url, book, pacer)
+            pacer.slow_down(gap, gap(), epoch)
+            raise FetchError(f"rate-limited: HTTP {status} from {shown}, asked to wait {wait:g}s")
+        # The hold: what a 429 asked for, and one plain pause at least.
+        if pacer.slow_down(gap, max(wait or 0.0, random.uniform(*self.delay)), epoch):
+            log.warning("HTTP %s from %s: backing off, then retrying once", status, shown)
+        _, (retry, body, *_) = self._send(url, book, pacer)
         if retry == RATE_LIMITED:
             raise PushedBack(f"rate-limited: HTTP {retry} from {shown}, again after backing off")
         if retry == REFUSED:
@@ -404,16 +431,39 @@ class BookHttp:
                 abort.set()
                 raise
 
-        with ThreadPoolExecutor(max_workers=self.http._pacer(self.book).in_flight) as pool:
-            futures = [pool.submit(one, url) for url in urls]
-        errors = [f.exception() for f in futures if f.exception() is not None]
+        results: list = [None] * len(urls)
+        errors: list = [None] * len(urls)
+        todo = iter(range(len(urls)))
+        lock = threading.Lock()
+
+        def worker():
+            while True:
+                with lock:
+                    i = next(todo, None)
+                if i is None:
+                    return
+                try:
+                    results[i] = one(urls[i])
+                except BaseException as error:  # noqa: BLE001 - raised below, in the caller's thread
+                    errors[i] = error
+
+        # Daemon threads, not a pool: Python joins pool workers at exit, so Ctrl-C would wait out a request
+        # in flight (up to Scrapling's 30 s timeout). A daemon worker is abandoned with the run instead.
+        workers = [threading.Thread(target=worker, daemon=True)
+                   for _ in range(min(len(urls), self.http._pacer(self.book).in_flight))]
+        for w in workers:
+            w.start()
+        for w in workers:
+            while w.is_alive():
+                w.join(0.1)
+        raised = [e for e in errors if e is not None]
         for kind in (PushedBack, Cancelled):  # the reason the batch stopped, not a request it then skipped
-            first = next((e for e in errors if isinstance(e, kind)), None)
+            first = next((e for e in raised if isinstance(e, kind)), None)
             if first is not None:
                 raise first
-        if errors:
-            raise errors[0]
-        return [f.result() for f in futures]
+        if raised:
+            raise raised[0]
+        return results
 
     def __enter__(self):
         self.started = self.http.clock()
@@ -426,6 +476,7 @@ class BookHttp:
                 "requests": counts["live"], "cached": counts["cached"],
                 "failed": exc_type is not None or self.book in self.http._left_out,
                 "rate_limited": self.book in self.http._rate_limited,
+                "slowed": self.book in self.http._slowed,  # pushed back (429 or 403): one at a time since
                 "seconds": round(self.http.clock() - self.started, 2),
             }
         return False
