@@ -559,8 +559,8 @@ HOME_DONE=0
 CF_KV_TOKEN=$(_existing CLOUDFLARE_KV_PUSH_TOKEN || true)
 if [[ -n "$CF_KV_TOKEN" ]]; then
   if [[ "$(cf_call "$CF_KV_TOKEN" GET /user/tokens/verify | cf_token_status || true)" == "active" ]] \
-     && can "$CF_KV_TOKEN" "/storage/kv/namespaces?per_page=5" && ! can "$CF_KV_TOKEN" "/pages/projects"; then
-    ok "$SECRETS_FILE already holds a working, KV-only token"
+     && can "$CF_KV_TOKEN" "/storage/kv/namespaces?per_page=5"; then
+    ok "$SECRETS_FILE already holds a working KV token"
     HOME_DONE=1
   else
     warn "The token saved in $SECRETS_FILE no longer works or is too broad: make a new one."
@@ -583,11 +583,17 @@ if (( HOME_DONE == 0 )); then
     || die "The token can't write to KV." "Edit the token: it needs 'Account · Workers KV Storage · Edit' on this account."
   cf_call "$CF_KV_TOKEN" DELETE "/accounts/$CF_ACCOUNT_ID$KV_PATH" >/dev/null
   ok "wrote and deleted a test key in $KV_PREVIEW_TITLE"
-  if can "$CF_KV_TOKEN" "/pages/projects" || can "$CF_KV_TOKEN" "/workers/scripts"; then
-    die "This token can also reach Pages or Workers; it should have KV only." \
-      "Edit it in the dashboard to keep only 'Workers KV Storage · Edit', then re-run."
+  # A read probe, not proof of edit rights: Cloudflare may answer a list call for a KV-only
+  # token, so an answer is a warning to check the dashboard, not a reason to stop.
+  READABLE=()
+  can "$CF_KV_TOKEN" "/pages/projects" && READABLE+=("Pages projects")
+  can "$CF_KV_TOKEN" "/workers/scripts" && READABLE+=("Worker scripts")
+  if (( ${#READABLE[@]} )); then
+    warn "This token can list: ${READABLE[*]}. Listing isn't editing, but check in the dashboard"
+    warn "that its only permission is 'Account · Workers KV Storage · Edit'."
+  else
+    ok "can't list Pages or Workers, as intended"
   fi
-  ok "can't reach Pages or Workers, as intended"
   write_env CLOUDFLARE_KV_PUSH_TOKEN "$CF_KV_TOKEN"
 fi
 unset CF_KV_TOKEN

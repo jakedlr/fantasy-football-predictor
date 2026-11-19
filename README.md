@@ -201,7 +201,7 @@ You need Node 22.12 or newer (it runs `npx wrangler@4`), `curl`, and the GitHub 
 3. creates the Pages project `ffp-leaderboard`, Direct Upload with production branch `main` (GitHub Actions deploys it; Cloudflare's Git integration stays off);
 4. creates the KV namespaces `ffp-leaderboard` and `ffp-leaderboard_preview`;
 5. has you create a CI API token (Account: Cloudflare Pages Edit, Workers Scripts Edit, Workers KV Storage Edit), checks it, and sets the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;
-6. has you create a home push token (Workers KV Storage Edit only) for the Expected Points push, checks it can write KV and nothing else;
+6. has you create a home push token (Workers KV Storage Edit only) for the Expected Points push, checks it can write KV, and warns if it can also list Pages or Workers;
 7. optionally sets up an ntfy topic for alerts (GitHub secret `NTFY_TOPIC`);
 8. lists what it made and how to undo each step.
 
