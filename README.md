@@ -10,6 +10,8 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 Sprints 0–8 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Sprint 8 predicts players in parallel processes and downloads nflverse while the odds come in, about 20% faster again, and gives the kicker/D/ST backtest `--jobs`.
 
+Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is in progress.
+
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
 | QB | passing yards, pass TDs, INTs, rushing yards, rush+rec TDs | fumbles lost (flat per game), 2-pt (passing and rush/rec) |
