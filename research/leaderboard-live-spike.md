@@ -58,6 +58,21 @@ Sleeper's `s-maxage` was 4 s, not the 300 s seen for Week 10's stats on 2026-11-
 
 The Worker ran locally once (`wrangler dev --test-scheduled`, which egresses from this machine, not Cloudflare). All three sources answered 200. It has not been deployed: that needs the Cloudflare account (S9.2, or the manual steps in `spike/worker-recorder/README.md`).
 
+## Worker pre-game check (2026-11-19 09:21 UTC, no Game live)
+
+The recorder Worker was deployed to `ffp-live-spike.<account>.workers.dev` and given a short recording window to check it from Cloudflare's network before the Game:
+
+| Source | Status | Latency | Size | Cache headers |
+|---|---|---|---|---|
+| `espn-scoreboard` | 200 | 43 ms | 237 KB | `max-age=8` |
+| `espn-summary` | 200 | 71 ms | 111 KB | `max-age=3` |
+| `sleeper-stats` | 200 | 11 ms | `[]` | `s-maxage=4, stale-while-revalidate=600` |
+
+- **No blocking from Workers' IPs before the Game.** Whether that holds under game-day load is what Thursday's run shows.
+- **CPU: 7 ms of the free plan's 10 ms** for that run, which parses only the 237 KB scoreboard. The Leaderboard Worker will parse the scoreboard plus one summary per Live Game, so Sprint 10 must measure CPU per run and keep parsing lean (or split a refresh across runs); this is the tightest limit found so far.
+- The first window (09:15–09:18 UTC) recorded nothing: a new Worker's cron did not fire for its first few minutes. It fired every minute after that.
+- The check's one record was deleted before the Game window.
+
 ## How to run it on Thursday
 
 Times are UTC. 00:45 UTC Friday is 7:45 PM ET Thursday.
