@@ -26,6 +26,7 @@ import gzip
 import hashlib
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -40,8 +41,10 @@ MAX_BACKOFF_POLLS = 16
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
 SLEEPER_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
 
-Response = tuple  # (status, body bytes, headers dict)
-Fetch = Callable[..., Response]
+Response = tuple[int, bytes, dict]  # (HTTP status, body, headers)
+Fetch = Callable[[str, dict], Response]
+HEADERS = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+ROW_KEYS = ("ts", "vantage", "source", "url", "status", "latency_ms", "bytes")
 
 
 def source_urls(event_id: str, season: int, week: int) -> dict[str, str]:
@@ -101,6 +104,7 @@ def _sleeper(rows, _event_id) -> dict:
 
 EXTRACTORS = {"espn-scoreboard": _scoreboard, "espn-summary": _summary, "sleeper-stats": _sleeper}
 FIELDS = ("state", "period", "clock", "score", "last_play", "plays", "rows", "last_modified", "stats_hash")
+HEADER_KEYS = ("cache_control", "age", "cf_cache_status", "retry_after")  # manifest key = header name, _ for -
 
 
 def extract(source: str, body: bytes, event_id: str) -> dict:
@@ -160,15 +164,14 @@ class Recorder:
     def _request(self, source: str) -> dict:
         url = self.urls[source]
         started = self.now()
-        row = {"ts": iso(started), "vantage": self.vantage, "source": source, "url": url, "status": None,
-               "latency_ms": None, "bytes": None, **dict.fromkeys(FIELDS), "cache_control": None, "age": None,
-               "cf_cache_status": None, "retry_after": None, "file": None, "error": None, "skipped": None}
+        row = {**dict.fromkeys(ROW_KEYS + FIELDS + HEADER_KEYS + ("file", "error", "skipped")),
+               "ts": iso(started), "vantage": self.vantage, "source": source, "url": url}
         if self.skip_left[source]:
             self.skip_left[source] -= 1
             row["skipped"] = "backoff"
             return row
         try:
-            status, body, headers = self.fetch(url, {"User-Agent": USER_AGENT, "Accept": "application/json"})
+            status, body, headers = self.fetch(url, HEADERS)
         except Exception as e:  # network trouble is data here, not a crash
             row["latency_ms"] = round((self.now() - started).total_seconds() * 1000)
             row["error"] = f"{type(e).__name__}: {e}"[:300]
@@ -177,8 +180,7 @@ class Recorder:
         row["latency_ms"] = round((self.now() - started).total_seconds() * 1000)
         row["status"], row["bytes"] = status, len(body)
         h = {k.lower(): v for k, v in (headers or {}).items()}
-        row.update(cache_control=h.get("cache-control"), age=h.get("age"),
-                   cf_cache_status=h.get("cf-cache-status"), retry_after=h.get("retry-after"))
+        row.update({k: h.get(k.replace("_", "-")) for k in HEADER_KEYS})
         path = self.out / source / (started.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".json.gz")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(gzip.compress(body))
@@ -202,11 +204,9 @@ def log(msg: str) -> None:
 
 
 def run(rec: Recorder, start: datetime, now: Callable[[], datetime] = utc_now,
-        sleep: Callable[[float], None] = None, interval: float = 60, after_final_minutes: float = 30,
+        sleep: Callable[[float], None] | None = None, interval: float = 60, after_final_minutes: float = 30,
         max_minutes: float = 330) -> int:
     """Poll from `start` every `interval` s until Final + tail, or max_minutes. Returns the poll count."""
-    import time
-
     sleep = sleep or time.sleep
     if now() < start:
         sleep((start - now()).total_seconds())
@@ -255,8 +255,7 @@ def main(argv=None, fetch: Fetch = urllib_fetch, now=utc_now, sleep=None) -> int
 
     event, season, week = args.event, args.season, args.week
     if not (event and season and week):
-        status, body, _ = fetch(source_urls("", 0, 0)["espn-scoreboard"],
-                                {"User-Agent": USER_AGENT, "Accept": "application/json"})
+        status, body, _ = fetch(source_urls("", 0, 0)["espn-scoreboard"], HEADERS)
         if status != 200:
             log(f"scoreboard answered HTTP {status}; pass --event, --season and --week")
             return 1
