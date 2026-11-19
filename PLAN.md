@@ -358,7 +358,7 @@ A public, one-page Leaderboard of every player's Week Points for the current NFL
 ## Sprint 9 — Leaderboard foundation
 
 - **S9.1 Live test** (Thursday 2026-11-19): record ESPN's scoreboard and summaries, and Sleeper's stats, every minute during the Game, from a throwaway Worker and from the user's machine. Measure staleness against the game clock and any blocking (403/429). Findings in `research/leaderboard-live-spike.md`; trimmed responses become fixtures. If ESPN blocks Workers, the Hosting decision is reopened before Sprint 10.
-- **S9.2 Cloudflare setup wizard** (`scripts/setup_cloudflare.sh`), run by the user.
+- **S9.2 Cloudflare setup wizard** (`scripts/setup_cloudflare.sh`), run by the user. Written; it creates the Pages project and KV namespaces (`ffp-leaderboard`, `ffp-leaderboard_preview`), the CI and home push tokens, the GitHub secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `NTFY_TOPIC`, and the gitignored `site/.cloudflare-ids.env` and `.env.leaderboard`.
 - **S9.3 Contracts:** `site/schema/leaderboard.schema.json`; shared scoring cases generated from `ffp.scoring`; ADR 0005 (TypeScript scoring port) and ADR 0006 (Worker for live stats, home machine for Expected Points).
 - **S9.4 CI:** the PR workflow, red first.
 
