@@ -185,6 +185,28 @@ python scripts/backtest_k_dst.py   # [--seasons 2016-2025] [--samples 2000] [--o
 
 It runs a walk-forward backtest on nflverse: each test season's kicker and D/ST models are fitted on earlier seasons only and scored on that season's team-games from their closing lines. Each model is compared with a baseline that ignores the Game Lines. `--jobs N` runs the test seasons in N worker processes, with identical results: 8 jobs take about 33 s instead of 61 s. It then checks Kalshi's 2026 kicker and D/ST fantasy-point lines against the model and the outcomes. The pull maps Kalshi's D/ST targets to `DST-<team>`, and lines with spreads over 10¢ are kept as their own group. The run writes `summary.json` and `tables.md` to `--out`; results are in [research/kickers-dst.md](research/kickers-dst.md).
 
+### Cloudflare setup (Leaderboard site)
+
+The Leaderboard site needs a one-off setup in Cloudflare and GitHub that only the account owner can do. A wizard walks through it and checks each step:
+
+```bash
+scripts/setup_cloudflare.sh              # interactive; safe to re-run, finished steps are skipped
+scripts/setup_cloudflare.sh --self-test  # offline test of its helpers
+```
+
+You need Node 22.12 or newer (it runs `npx wrangler@4`), `curl`, and the GitHub CLI logged in (`gh auth login`). It:
+
+1. checks those tools and that you have a Cloudflare account (free plan);
+2. logs wrangler in (`wrangler login`) and picks the account;
+3. creates the Pages project `ffp-leaderboard`, Direct Upload with production branch `main` (GitHub Actions deploys it; Cloudflare's Git integration stays off);
+4. creates the KV namespaces `ffp-leaderboard` and `ffp-leaderboard_preview`;
+5. has you create a CI API token (Account: Cloudflare Pages Edit, Workers Scripts Edit, Workers KV Storage Edit), checks it, and sets the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;
+6. has you create a home push token (Workers KV Storage Edit only) for the Expected Points push, checks it can write KV and nothing else;
+7. optionally sets up an ntfy topic for alerts (GitHub secret `NTFY_TOPIC`);
+8. lists what it made and how to undo each step.
+
+It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages domain and KV namespace ids, not secret) and `.env.leaderboard` (the home push token, account id, KV namespace id and ntfy topic; mode 600). Tokens are typed with hidden input and never printed.
+
 ### Layout
 
 ```
@@ -211,6 +233,7 @@ src/ffp/
 scripts/build_params.py   regenerates params/ from nflverse
 scripts/backtest_kalshi.py   runs the Kalshi Backtest (ffp.backtest)
 scripts/backtest_k_dst.py    walk-forward kicker and D/ST Backtest, plus Kalshi's K and D/ST lines
+scripts/setup_cloudflare.sh  interactive Cloudflare and GitHub setup for the Leaderboard site
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
 ```
