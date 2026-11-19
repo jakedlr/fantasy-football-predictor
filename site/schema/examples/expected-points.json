@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-22T17:50:00Z",
+  "season": 2026,
+  "week": 12,
+  "players": [
+    {"gsisId": "00-0039999", "espnId": "4361370", "name": "Example Receiver", "team": "BAL", "position": "WR",
+     "kickoff": "2026-11-22T18:00:00Z",
+     "statMeans": {"receptions": 5.4, "receiving_yards": 68.2, "receiving_tds": 0.41, "rushing_yards": 1.3,
+                   "fumbles_lost": 0.03, "receiving_2pt": 0.02},
+     "expected": {"ppr": 16.2, "half-ppr": 13.5, "standard": 10.8, "espn-league": 16.2}},
+    {"gsisId": null, "espnId": null, "name": "Ravens D/ST", "team": "BAL", "position": "D/ST",
+     "kickoff": "2026-11-22T18:00:00Z",
+     "statMeans": {"sacks": 2.6, "interceptions": 0.9},
+     "expected": {"ppr": 7.4, "half-ppr": 7.4, "standard": 7.4, "espn-league": 7.4}}
+  ]
+}
