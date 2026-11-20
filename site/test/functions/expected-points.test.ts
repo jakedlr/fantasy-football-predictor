@@ -1,0 +1,236 @@
+import { createHmac } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { handlePush, MAX_BODY_BYTES, MAX_SKEW_SECONDS, onRequest, type PushEnv } from "../../functions/api/expected-points.js";
+import { mergeExpected } from "../../src/push/merge.js";
+import type { Push, PushPlayer } from "../../src/push/validate.js";
+import { KEYS, type ExpectedStore, type IdMapStore } from "../../src/worker/kv.js";
+import { FakeKV, readJson } from "../helpers/fakes.js";
+
+const contract = readJson("contracts/push-signature.json");
+const SECRET = "a1".repeat(32);
+const URL_ = "https://ffp-leaderboard.pages.dev/api/expected-points";
+const example = (): Push => readJson("schema/examples/expected-points.json");
+// Ten minutes after the example's generatedAt (17:50Z), before its 18:00Z kickoffs.
+const NOW = new Date("2026-11-22T17:52:00Z");
+
+function signed(body: string, { now = NOW, secret = SECRET, headers = {} as Record<string, string> } = {}) {
+  const timestamp = String(Math.floor(now.getTime() / 1000));
+  const signature = `sha256=${createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
+  return new Request(URL_, {
+    method: "POST",
+    body,
+    headers: { "Content-Type": "application/json", "X-FFP-Timestamp": timestamp, "X-FFP-Signature": signature, ...headers },
+  });
+}
+
+const env = (kv: FakeKV, secret: string | undefined = SECRET): PushEnv => ({ LEADERBOARD: kv, LEADERBOARD_PUSH_SECRET: secret });
+const post = (kv: FakeKV, push: unknown, now = NOW) => handlePush(signed(JSON.stringify(push), { now }), env(kv), now);
+const stored = <T>(kv: FakeKV, key: string): T => JSON.parse(kv.data.get(key)!);
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("POST /api/expected-points", () => {
+  it("uses the contract's skew and body cap", () => {
+    expect(MAX_SKEW_SECONDS).toBe(contract.maxSkewSeconds);
+    expect(MAX_BODY_BYTES).toBe(contract.maxBodyBytes);
+  });
+
+  it("merges a signed push into KV expected and writes idmap, answering 204", async () => {
+    const kv = new FakeKV();
+    const push = example();
+    const res = await post(kv, push);
+    expect(res.status).toBe(204);
+    expect(kv.writes.map((w) => w.key)).toEqual([KEYS.idmap, KEYS.expected]);
+    expect(stored<ExpectedStore>(kv, KEYS.expected)).toEqual(mergeExpected(null, push));
+    expect(stored<IdMapStore>(kv, KEYS.idmap)).toEqual({
+      schemaVersion: 1,
+      generatedAt: push.generatedAt,
+      espnToSleeper: { "4361370": "11635", "4360000": "6789", "4430000": "8150", "4229999": "4227" },
+    });
+  });
+
+  it("writes expected once per push, and idmap only when the map changed", async () => {
+    const kv = new FakeKV();
+    await post(kv, example());
+    const next = { ...example(), generatedAt: "2026-11-22T17:55:00Z" };
+    expect((await post(kv, next, new Date("2026-11-22T17:56:00Z"))).status).toBe(204);
+    expect(kv.writes.map((w) => w.key)).toEqual([KEYS.idmap, KEYS.expected, KEYS.expected]);
+
+    const moved = { ...example(), generatedAt: "2026-11-22T17:58:00Z", idMap: { ...example().idMap, "9999": "1234" } };
+    expect((await post(kv, moved, new Date("2026-11-22T17:59:00Z"))).status).toBe(204);
+    expect(kv.writes.map((w) => w.key).slice(3)).toEqual([KEYS.idmap, KEYS.expected]);
+    expect(stored<IdMapStore>(kv, KEYS.idmap).espnToSleeper["1234"]).toBe("9999");
+  });
+
+  it("merges with the stored week: a player whose Game has kicked off stays frozen", async () => {
+    const kv = new FakeKV();
+    await post(kv, example());
+    const later = example();
+    later.generatedAt = "2026-11-22T18:30:00Z";
+    later.players = [];
+    const now = new Date("2026-11-22T18:31:00Z");
+    expect((await post(kv, later, now)).status).toBe(204);
+    const store = stored<ExpectedStore>(kv, KEYS.expected);
+    expect(store.generatedAt).toBe("2026-11-22T18:30:00Z");
+    expect(Object.keys(store.players).sort()).toEqual(["dst:BAL", "sleeper:11635", "sleeper:6789"]);
+  });
+
+  it("refuses a push older than the stored one with 409, so a delayed retry can't roll back", async () => {
+    const kv = new FakeKV();
+    await post(kv, { ...example(), generatedAt: "2026-11-22T17:51:00Z" });
+    const writes = kv.writes.length;
+    const res = await post(kv, example());
+    expect(res.status).toBe(409);
+    expect(kv.writes.length).toBe(writes);
+  });
+
+  it("answers 204 without writing to a repeat of the push already stored", async () => {
+    const kv = new FakeKV();
+    await post(kv, example());
+    const writes = kv.writes.length;
+    expect((await post(kv, example())).status).toBe(204);
+    expect(kv.writes.length).toBe(writes);
+  });
+
+  it("replaces a stored store it can't read", async () => {
+    const kv = new FakeKV({ [KEYS.expected]: "not json", [KEYS.idmap]: "{" });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await post(kv, example())).status).toBe(204);
+    expect(stored<ExpectedStore>(kv, KEYS.expected)).toEqual(mergeExpected(null, example()));
+  });
+
+  describe("authentication", () => {
+    const body = JSON.stringify(example());
+    const ts = String(Math.floor(NOW.getTime() / 1000));
+
+    it.each<[string, Request]>([
+      ["another secret", signed(body, { secret: "b2".repeat(32) })],
+      ["a timestamp over 5 minutes old", signed(body, { now: new Date(NOW.getTime() - (MAX_SKEW_SECONDS + 1) * 1000) })],
+      ["a timestamp over 5 minutes ahead", signed(body, { now: new Date(NOW.getTime() + (MAX_SKEW_SECONDS + 1) * 1000) })],
+      ["no signature", new Request(URL_, { method: "POST", body, headers: { "X-FFP-Timestamp": ts } })],
+      ["no headers", new Request(URL_, { method: "POST", body })],
+      ["a signature over another body", new Request(URL_, { method: "POST", body: `${body} `, headers: Object.fromEntries(signed(body).headers) })],
+    ])("answers 401, the same each time, to %s", async (_what, request) => {
+      const kv = new FakeKV();
+      const res = await handlePush(request, env(kv), NOW);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+      expect(kv.writes).toEqual([]);
+    });
+
+    it("answers 500 and logs when the secret isn't set, never accepting the push", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      for (const secret of [undefined, ""]) {
+        const kv = new FakeKV();
+        const res = await handlePush(signed(body, { secret: "" }), { LEADERBOARD: kv, LEADERBOARD_PUSH_SECRET: secret }, NOW);
+        expect(res.status).toBe(500);
+        expect(kv.writes).toEqual([]);
+      }
+      expect(error).toHaveBeenCalled();
+      expect(String(error.mock.calls[0])).toMatch(/LEADERBOARD_PUSH_SECRET/);
+    });
+  });
+
+  describe("size", () => {
+    it("answers 413 to a Content-Length over the cap", async () => {
+      const kv = new FakeKV();
+      const request = new Request(URL_, { method: "POST", body: "{}", headers: { "Content-Length": String(MAX_BODY_BYTES + 1) } });
+      expect((await handlePush(request, env(kv), NOW)).status).toBe(413);
+    });
+
+    it("answers 413 to a body over the cap, whatever its headers say", async () => {
+      const kv = new FakeKV();
+      const big = JSON.stringify({ ...example(), pad: "x".repeat(MAX_BODY_BYTES) });
+      const res = await handlePush(signed(big), env(kv), NOW);
+      expect(res.status).toBe(413);
+    });
+  });
+
+  describe("content", () => {
+    it.each<[string, string, RegExp]>([
+      ["invalid JSON", "{not json", /JSON/],
+      ["a push failing the schema", JSON.stringify({ ...example(), week: 0 }), /week/],
+      ["a generatedAt in the future", JSON.stringify({ ...example(), generatedAt: "2026-11-22T18:30:00Z" }), /future/],
+    ])("answers 400 with a short reason to %s", async (_what, body, reason) => {
+      const kv = new FakeKV();
+      const res = await handlePush(signed(body), env(kv), NOW);
+      expect(res.status).toBe(400);
+      const { error } = (await res.json()) as { error: string };
+      expect(error).toMatch(reason);
+      expect(error.length).toBeLessThanOrEqual(240);
+      expect(kv.writes).toEqual([]);
+    });
+
+    it("answers 400 to a body that isn't UTF-8", async () => {
+      const kv = new FakeKV();
+      const bytes = new Uint8Array([0x7b, 0xff, 0x7d]);
+      const timestamp = String(Math.floor(NOW.getTime() / 1000));
+      const signature = `sha256=${createHmac("sha256", SECRET).update(Buffer.concat([Buffer.from(`${timestamp}.`), bytes])).digest("hex")}`;
+      const request = new Request(URL_, { method: "POST", body: bytes, headers: { "X-FFP-Timestamp": timestamp, "X-FFP-Signature": signature } });
+      expect((await handlePush(request, env(kv), NOW)).status).toBe(400);
+    });
+  });
+
+  it.each(["GET", "PUT", "DELETE"])("answers 405 to %s, naming POST", async (method) => {
+    const res = await onRequest({ request: new Request(URL_, { method }), env: env(new FakeKV()) });
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
+  });
+
+  it("uses the real clock through onRequest", async () => {
+    const kv = new FakeKV();
+    const push = { ...example(), generatedAt: new Date(Math.floor(Date.now() / 1000) * 1000).toISOString().replace(".000Z", "Z") };
+    const res = await onRequest({ request: signed(JSON.stringify(push), { now: new Date() }), env: env(kv) });
+    expect(res.status).toBe(204);
+  });
+});
+
+describe("a full-slate push", () => {
+  // Players with 10 stat means each and a 2,000-entry id map. A full week's slate is about
+  // 300-500 (props for 12-15 players a Game, plus every K and D/ST); 1,000 is the bound checked.
+  const stats = ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds", "receptions", "receiving_yards", "receiving_tds", "fumbles_lost", "receiving_2pt"];
+  function bigPush(generatedAt: string, size: number): Push {
+    const players: PushPlayer[] = [];
+    for (let i = 0; i < size; i++) {
+      players.push({
+        sleeperId: String(10000 + i),
+        gsisId: `00-00${String(30000 + i)}`,
+        espnId: String(4000000 + i),
+        name: `Player Number ${i}`,
+        team: ["BAL", "CIN", "KC", "LV", "NYJ", "SF"][i % 6]!,
+        position: (["QB", "RB", "WR", "TE"] as const)[i % 4]!,
+        kickoff: i % 2 ? "2026-11-22T18:00:00Z" : "2026-11-22T21:25:00Z",
+        statMeans: Object.fromEntries(stats.map((s, j) => [s, (i * 7 + j * 13) % 97 / 3])),
+        expected: { ppr: 12.34, "half-ppr": 11.2, standard: 10.05, "espn-league": 12.4 },
+      });
+    }
+    const idMap: Record<string, string> = {};
+    for (let i = 0; i < 2000; i++) idMap[String(10000 + i)] = String(4000000 + i);
+    return { ...example(), generatedAt, players, idMap };
+  }
+
+  it.each([500, 1000])("of %i players stays under the 10 ms CPU limit (wall clock on Node, printed)", async (size) => {
+    const kv = new FakeKV();
+    const first = JSON.stringify(bigPush("2026-11-22T17:30:00Z", size));
+    const later = JSON.stringify(bigPush("2026-11-22T17:51:00Z", size));
+    expect(first.length).toBeLessThan(MAX_BODY_BYTES);
+    expect((await handlePush(signed(first, { now: new Date("2026-11-22T17:31:00Z") }), env(kv), new Date("2026-11-22T17:31:00Z"))).status).toBe(204);
+
+    // Warm runs, as an isolate serving repeat pushes would be; each merges into a full stored week.
+    const times: number[] = [];
+    for (let run = 0; run < 15; run++) {
+      const store = kv.data.get(KEYS.expected)!;
+      const fresh = new FakeKV({ [KEYS.expected]: store, [KEYS.idmap]: kv.data.get(KEYS.idmap)! });
+      const request = signed(later);
+      const start = performance.now();
+      const res = await handlePush(request, env(fresh), NOW);
+      times.push(performance.now() - start);
+      expect(res.status).toBe(204);
+    }
+    times.sort((a, b) => a - b);
+    const median = times[Math.floor(times.length / 2)]!;
+    console.log(`full-slate push of ${size}: ${(first.length / 1024).toFixed(0)} KB, median ${median.toFixed(2)} ms, min ${times[0]!.toFixed(2)} ms (wall clock on Node)`);
+    // Wall clock on a shared CI runner includes noise; the bound only catches a gross regression.
+    expect(median).toBeLessThan(50);
+  });
+});
