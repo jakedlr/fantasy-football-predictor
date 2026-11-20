@@ -251,7 +251,9 @@ export interface JoinCounts {
  * is replaced. Frozen at kickoff: a stored player whose Game has kicked off keeps his entry; one
  * with nothing stored takes the fresh entry (ESPN's projection stays pregame, research B3). A
  * stored player of this group missing from the response before his kickoff is dropped; other
- * groups' players are kept. `fetchedAt` moves only when the players changed.
+ * groups' players are kept. `fetchedAt` is the stored one for the same week, else `now`: the caller
+ * compares the serialized store with the stored text (one stringify, for the CPU budget) and sets
+ * `fetchedAt` to now only when it writes.
  */
 export function buildEspnStore(input: {
   stored: EspnStore | null;
@@ -260,7 +262,7 @@ export function buildEspnStore(input: {
   idmap: IdMapStore | null;
   positions: readonly Position[];
   now: Date;
-}): { store: EspnStore; changed: boolean; counts: JoinCounts } {
+}): { store: EspnStore; counts: JoinCounts } {
   const { scoreboard, projections, idmap, positions, now } = input;
   const week = scoreboard.week;
   const sameWeek = (s: EspnStore | null): s is EspnStore =>
@@ -300,17 +302,15 @@ export function buildEspnStore(input: {
     counts.written++;
   }
 
-  const sorted = sortKeys(players);
-  const changed = stored === null || JSON.stringify(sorted) !== JSON.stringify(sortKeys(stored.players));
   const store: EspnStore = {
     schemaVersion: 1,
     season: week.season,
     seasonType: week.seasonType,
     week: week.number,
-    fetchedAt: changed || stored === null ? instant(now) : stored.fetchedAt,
-    players: sorted,
+    fetchedAt: stored?.fetchedAt ?? instant(now),
+    players: sortKeys(players),
   };
-  return { store, changed, counts };
+  return { store, counts };
 }
 
 function sortKeys<T>(o: Record<string, T>): Record<string, T> {
@@ -325,6 +325,6 @@ function object(value: unknown, at: string): Record<string, unknown> {
 }
 
 /** RFC 3339 in UTC without milliseconds. */
-function instant(d: Date): string {
+export function instant(d: Date): string {
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }

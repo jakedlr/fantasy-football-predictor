@@ -20,7 +20,8 @@
  *   Sprint 11's Expected Points push (every 30 minutes on game days, 48 a day, plus kickoff windows).
  * KV reads: 1 per scoreboard run + 2 per stats run = 864 a day, against 100,000.
  */
-import { KEYS, updatedAtOf, type KV } from "./kv.js";
+import { buildEspnStore, EspnProjectionsError, groupAt, instant as espnInstant, parseProjections, projectionsRequest } from "./espn.js";
+import { KEYS, updatedAtOf, type EspnStore, type IdMapStore, type KV } from "./kv.js";
 import { buildLeaderboard, sameContent, serialize } from "./leaderboard.js";
 import { parseScoreboard, type Scoreboard, type Week } from "./scoreboard.js";
 import { sleeperStatsToPlayers } from "./sleeper.js";
@@ -82,6 +83,68 @@ export async function runStats(deps: RunDeps): Promise<Outcome> {
   });
 }
 
+/**
+ * ESPN projections run (S11.5): one position group per run (espn.ts `groupAt`), so each response
+ * is under 0.9 MB. Joined through KV `idmap` and the scoreboard's Games, frozen at kickoff, and
+ * written to KV `espn` only when the players changed. ESPN's fantasy game has no postseason weeks,
+ * so in the postseason the run does nothing.
+ */
+export async function runEspn(deps: RunDeps): Promise<Outcome> {
+  return guarded("ESPN projections run", deps, async () => {
+    const scoreboardText = await deps.kv.get(KEYS.scoreboard, { type: "text" });
+    if (scoreboardText === null) throw new Error("no scoreboard in KV yet (the scoreboard run writes it)");
+    const scoreboard = JSON.parse(scoreboardText) as Scoreboard;
+    if (scoreboard.week.seasonType !== "regular") return "unchanged";
+
+    const now = deps.now();
+    const group = groupAt(now);
+    const { url, filter } = projectionsRequest(scoreboard.week, group);
+    const projections = parseProjections(await fetchJson(url, deps, { "x-fantasy-filter": filter }), scoreboard.week, group.positions);
+
+    const [idmapText, storedText] = await Promise.all([
+      deps.kv.get(KEYS.idmap, { type: "text" }),
+      deps.kv.get(KEYS.espn, { type: "text" }),
+    ]);
+    const idmap = idmapText === null ? null : readIdMap(idmapText);
+    const stored = storedText === null ? null : readEspnStore(storedText, deps);
+    const { store, counts } = buildEspnStore({ stored, scoreboard, projections, idmap, positions: group.positions, now });
+    deps.log(
+      `ESPN projections run (${group.positions.join(", ")}): ${counts.written} players, ${counts.unmapped} unmapped` +
+        `${idmap === null ? " (no idmap yet)" : ""}, ${counts.noGame} not playing`,
+    );
+
+    if (JSON.stringify(store) === storedText) return "unchanged";
+    store.fetchedAt = espnInstant(now);
+    await deps.kv.put(KEYS.espn, JSON.stringify(store));
+    return "written";
+  });
+}
+
+/** KV `idmap`, written by /api/expected-points after the schema check; anything else is an error. */
+function readIdMap(text: string): IdMapStore {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    value = null;
+  }
+  const map = (value as Partial<IdMapStore> | null)?.espnToSleeper;
+  if (typeof map !== "object" || map === null || Array.isArray(map)) throw new EspnProjectionsError("KV idmap has no espnToSleeper map");
+  return value as IdMapStore;
+}
+
+/** Our own KV `espn`; one we can't read is replaced rather than kept. */
+function readEspnStore(text: string, deps: RunDeps): EspnStore | null {
+  try {
+    const value = JSON.parse(text) as EspnStore | null;
+    if (value?.schemaVersion === 1 && typeof value.players === "object" && value.players !== null) return value;
+  } catch {
+    // replaced below
+  }
+  deps.log("ESPN projections run: replacing a KV espn it can't read");
+  return null;
+}
+
 async function guarded(what: string, deps: RunDeps, run: () => Promise<"written" | "unchanged">): Promise<Outcome> {
   try {
     return { result: await run() };
@@ -92,9 +155,9 @@ async function guarded(what: string, deps: RunDeps, run: () => Promise<"written"
   }
 }
 
-async function fetchJson(url: string, deps: RunDeps): Promise<unknown> {
+async function fetchJson(url: string, deps: RunDeps, headers: Record<string, string> = {}): Promise<unknown> {
   const res = await deps.fetch(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...headers },
     signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);

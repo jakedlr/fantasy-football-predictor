@@ -246,12 +246,11 @@ describe("buildEspnStore", () => {
     const first = build().store;
     const changed = all.map((p) => ({ ...p, expected: { ...p.expected, ppr: p.expected.ppr! + 1 } }));
     const after = new Date("2026-11-20T02:09:00Z"); // Thursday's Game is Live
-    const { store, changed: didChange } = build({ stored: first, projections: changed, now: after });
-    expect(didChange).toBe(true);
+    const { store } = build({ stored: first, projections: changed, now: after });
     expect(store.players["dst:HOU"]).toEqual(first.players["dst:HOU"]);
     expect(store.players["sleeper:6813"]).toEqual(first.players["sleeper:6813"]); // Taylor, IND
     expect(store.players["sleeper:9221"]!.expected.ppr).toBeCloseTo(first.players["sleeper:9221"]!.expected.ppr! + 1, 6);
-    expect(store.fetchedAt).toBe("2026-11-20T02:09:00Z");
+    expect(store.fetchedAt).toBe(first.fetchedAt); // the run sets it when it writes
   });
 
   it("takes a player whose Game has kicked off when nothing is stored for him", () => {
@@ -267,19 +266,19 @@ describe("buildEspnStore", () => {
     expect(store.players["sleeper:4984"]).toBeDefined();
   });
 
-  it("reports unchanged, and keeps fetchedAt, when the players are the same", () => {
+  it("serializes the same as the stored store when the players are the same, fetchedAt included", () => {
     const first = build().store;
-    const later = build({ stored: first, now: new Date("2026-11-19T22:09:00Z") });
-    expect(later.changed).toBe(false);
-    expect(later.store).toEqual(first);
+    const stored = JSON.parse(JSON.stringify(first));
+    const later = build({ stored, now: new Date("2026-11-19T22:09:00Z") });
+    expect(JSON.stringify(later.store)).toBe(JSON.stringify(first));
   });
 
   it("replaces a store for another week", () => {
     const first = build().store;
     const old: EspnStore = { ...first, week: 10, players: { "dst:PIT": first.players["dst:PIT"]!, "sleeper:1": { ...first.players["dst:PIT"]!, kickoff: "2026-11-16T18:00:00Z" } } };
-    const { store, changed } = build({ stored: old });
-    expect(changed).toBe(true);
+    const { store } = build({ stored: old });
     expect(store.week).toBe(11);
+    expect(store.fetchedAt).toBe("2026-11-19T21:09:00Z");
     expect(store.players["sleeper:1"]).toBeUndefined();
   });
 });
