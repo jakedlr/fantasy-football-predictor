@@ -23,7 +23,7 @@ Before finishing any task, check whether the README still describes the code acc
 The user doesn't review PRs on this project. For every PR:
 
 1. Spawn one or more reviewer subagents on the PR's diff (correctness, security, docs vs code, the free-tier limits in PLAN.md). Give them the context they need; they start cold.
-2. Fix what they find, or say in the PR why a finding was left.
-3. Once the review is clean and CI passes, merge it yourself (`gh pr merge <n> --merge`). Post the review summary as a PR comment: GitHub won't let the user's own account approve the PR.
-4. Merging to `main` deploys the Leaderboard site (`.github/workflows/deploy.yml`): watch that run and check the site afterwards.
+2. Fix what they find, or say in the PR why a finding was left. If the fixes change behaviour, run the review again on the new diff.
+3. Post the review summary as a PR comment (GitHub won't let the user's own account approve). Once the review is clean and CI passes, merge it yourself (`gh pr merge <n> --merge`).
+4. If the PR touches `site/**`, merging deploys the Leaderboard (`.github/workflows/deploy.yml`). Watch that run (`gh run watch`), then check that `https://ffp-leaderboard.pages.dev/api/leaderboard` answers.
 5. Tell the user what merged, what the review found and how the deploy went.
