@@ -233,11 +233,23 @@ Merging to `main` with changes under `site/` deploys the site (`.github/workflow
 
 Both use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`) and run the same two scripts. Until the Worker's first runs, `/api/leaderboard` answers 503.
 
+#### Expected Points push
+
+`ffp push FILE` sends an Expected Points push (the JSON that `ffp slate` writes) to the Leaderboard:
+
+```bash
+ffp push expected-points.json                     # to https://ffp-leaderboard.pages.dev/api/expected-points
+ffp push expected-points.json --url http://localhost:8788/api/expected-points
+```
+
+It checks FILE against `site/schema/expected-points.schema.json` first and sends nothing if it fails. It then signs the body as `site/contracts/push-signature.json` says (ADR 0006): `X-FFP-Timestamp` and `X-FFP-Signature`, an HMAC-SHA256 under `LEADERBOARD_PUSH_SECRET`. The secret is read from the environment, else from `.env.leaderboard` in the current directory (written by the setup wizard); it is never printed. A 5xx or a network error is retried once after 10 s, signed afresh; a 400 (schema), 401 (signature or clock), 413 (too large) or other 4xx fails at once with the site's reply. It exits 1 on any failure. The site rejects a timestamp more than 5 minutes off its clock, so the machine's clock must be right.
+
 ### Layout
 
 ```
 src/ffp/
-  cli.py             `ffp predict`
+  cli.py             `ffp predict`, `ffp push`
+  push.py            `ffp push`: schema check, HMAC signature, POST to /api/expected-points
   predict.py         INPUT.md → players and Games → Prop Markets → fits → Score Distributions
   players.py         name → nflverse gsis_id, position, team; next Game
   sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP; kalshi.py: backtest markets

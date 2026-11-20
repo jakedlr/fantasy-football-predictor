@@ -81,6 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="where live runs save their raw responses and Fair Probabilities (default snapshots/)",
     )
     predict.add_argument("--no-snapshot", action="store_true", help="don't save a snapshot of a live run")
+    from ffp import push
+
+    push.add_parser(commands)
     return parser
 
 
@@ -157,6 +160,8 @@ class _Background:
 def _main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    if hasattr(args, "run"):  # commands that bring their own runner (push, schedule)
+        return args.run(args)
     rules = load_rules(args.scoring)
     names = pipeline.read_input(args.input)
     now = args.now or datetime.now(timezone.utc)
