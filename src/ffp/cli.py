@@ -81,9 +81,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="where live runs save their raw responses and Fair Probabilities (default snapshots/)",
     )
     predict.add_argument("--no-snapshot", action="store_true", help="don't save a snapshot of a live run")
-    from ffp import push
+    from ffp import push, schedule
 
     push.add_parser(commands)
+    schedule.add_parser(commands)
     return parser
 
 
