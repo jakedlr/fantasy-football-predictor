@@ -18,7 +18,7 @@ The joins, with fetch, KV and the clock passed in:
   - KV writes: at most 288 + 288 = 576 a day (both keys change every run while a Game is Live), against the free plan's 1,000. The arithmetic is in `refresh.ts`.
 - `index.ts`: the Worker's `scheduled` handler, dispatching on `controller.cron`. A failed run throws after keeping the last good data, so Cloudflare's cron log shows it.
 
-`site/functions/api/leaderboard.ts` serves KV `leaderboard` at `/api/leaderboard`: `Cache-Control: public, max-age=60`, an ETag (the Leaderboard's `updatedAt`), 304 on `If-None-Match`, and 503 with a small JSON error before the Worker's first write.
+`site/functions/api/leaderboard.ts` serves KV `leaderboard` at `/api/leaderboard`: `Cache-Control: public, max-age=60`, an ETag (the Leaderboard's `updatedAt`), 304 on `If-None-Match`, and 503 with a small JSON error before the Worker's first write. `site/functions/api/expected-points.ts` takes the signed Expected Points push and merges it into KV `expected` and `idmap` (root README); its pure parts are in `site/src/push/`.
 
 Tests run in plain Vitest with a Map-backed KV and recorded responses (`site/test/helpers/fakes.ts`). `@cloudflare/vitest-pool-workers` needs vitest 4 and the site pins vitest 5, so it isn't used. Deploying is `npm run deploy:worker` and `npm run deploy:pages` (root README, "Deploy").
 
