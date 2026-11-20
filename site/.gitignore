@@ -1,2 +1,5 @@
 node_modules/
 .wrangler/
+# The Leaderboard page bundle, built by `npm run build` (the deploy job builds it)
+public/app.js
+public/app.js.map

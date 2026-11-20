@@ -138,9 +138,15 @@ pytest -m live         # live smoke tests against the real sportsbooks
 The Leaderboard site lives in `site/` (Node 24):
 
 ```bash
-cd site && npm ci && npm run typecheck && npm test   # JSON schemas and, from Sprint 10, the Worker and page
+cd site && npm ci && npm run typecheck && npm test   # JSON schemas, the Worker and the page
+cd site && npm run build                             # bundle the page's TypeScript into public/app.js (esbuild)
+cd site && npm run dev                               # preview the page at http://localhost:8788 with a stub /api/leaderboard
 python scripts/export_scoring_contract.py            # re-export site/contracts/ after any Scoring Rules or scorer change
 ```
+
+The page (`site/public/`, script from `site/src/page/`) shows the NFL Week and its dates, "Updated 1:05 PM EST · 3 min. ago" in your timezone, a "Data delayed" banner once the data is more than 15 minutes old, a strip of every Game (choose one to see only its players), the Scoring Rules toggle (PPR, Half PPR, Standard, ESPN league), position chips (All, QB, RB, WR, TE, FLEX, K, D/ST), search by name or team, and the table: Rank, Player, Team, Pos, Opponent, Game Status, Week Points with a bar of how much is already scored, and Points So Far, 50 rows at a time. Light and dark follow your system setting. It fetches `/api/leaderboard` every 5 minutes while the tab is visible and a Game is Live or about to kick off, otherwise once 10 minutes before the next kickoff, and never while the tab is hidden. It makes no other requests: its fonts are self-hosted, with no analytics or CDN.
+
+`npm run dev` serves a generated week of about 700 players. Name a scenario to see the other states: `node scripts/serve.mjs expected` (with Expected Points), `example` (the schema example), `delayed`, `empty`, `error` or `slow` (the skeleton); `curl localhost:8788/__scenario/<name>` switches while it runs. `public/app.js` is gitignored; the deploy job builds it.
 
 `site/contracts/` holds the Leaderboard's Scoring Rules and scored cases from `ffp.scoring`, which the TypeScript scorer must match (ADR 0005); `pytest` fails while they're stale. GitHub Actions runs `ci-python.yml` (pytest) and `ci-site.yml` (type-check, Vitest and the setup wizard's self-test) on every PR, each only when its files change.
 
@@ -220,7 +226,7 @@ It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages do
 
 #### Deploy
 
-Merging to `main` with changes under `site/` deploys the site (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It runs the site's type-check and Vitest suite, then:
+Merging to `main` with changes under `site/` deploys the site (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It runs the site's type-check and Vitest suite, builds the page (`npm run build`), then:
 
 1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats into the Leaderboard JSON in KV;
 2. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` from `site/functions/`.
@@ -258,12 +264,15 @@ scripts/export_scoring_contract.py   site/contracts/ from ffp.scoring (ADR 0005)
 scripts/record_live.py, analyze_live_spike.py   the S9.1 live test recorder and analysis
 site/
   src/worker/      the cron Worker: ESPN scoreboard, Sleeper stats, scoring port → KV (README inside)
+  src/page/        the page's TypeScript: filters, ranking, time, poll schedule (pure) and main.ts (DOM)
+  public/          the static page: index.html, styles.css, self-hosted fonts; app.js is built
+  scripts/serve.mjs  local preview with a stub /api/leaderboard
   worker/          the Worker's wrangler.toml (two cron triggers, KV binding)
   functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV
   wrangler.toml    the Pages project (public/ and functions/, KV binding)
   schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples
   contracts/       Scoring Rules and scored cases for the TypeScript scorer (generated)
-  test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses
+  test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses; page/fixture.ts generates a week
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
 ```

@@ -370,13 +370,15 @@ First: measure the Worker's CPU on a full-Sunday Sleeper response and scoreboard
 
 Parallel pieces: the Worker's ESPN scoreboard client (Game Status, NFL Week); Sleeper stats to QB/RB/WR/TE stat lines plus the TypeScript scoring port; the page (design direction chosen, then the table, week header, chips, search, last updated). Joined: timer → KV → `/api/leaderboard` → page; deploy on merge, handing `LEADERBOARD_PUSH_SECRET` to the site with `wrangler pages secret put`.
 
+**S10.5 the page, built 2026-11-20:** direction B with C's banked bar and a light theme of its own (the score strip stays a dark ticker band; the yellow selection line becomes a highlighter on white). Static `site/public/` with self-hosted fonts; the script is TypeScript in `site/src/page/`, bundled by esbuild (`npm run build`, run by the deploy job; `public/app.js` is gitignored). Pure, tested modules for filters, ranking, sorts, time, the delayed threshold, the poll schedule and the banked bar. It also took Sprint 12's sorting, "Show more", phone layout, delayed banner and credit line, so Sprint 12 reviews them rather than builds them. Page decisions: ties share a rank (1, 1, 3); an Upcoming player with no Expected Points shows "—" for rank and Week Points (Out shows 0.0); "ESPN projection" shows only while the Game isn't Final; search matches the start of any word of the name, team abbreviation, city or nickname; the chosen Scoring Rules are remembered in the browser; a Game still Upcoming 3 hours after kickoff (postponed) stops the polling; the longest wait is 6 hours.
+
 ## Sprint 11 — Complete Week Points
 
 Parallel pieces: K stats (Sleeper's distance buckets) and D/ST stats; `ffp --slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the signed push to `/api/expected-points`; ESPN projections as the fallback, with the Sleeper↔ESPN id map sent in the push (Sleeper's rows carry no ESPN id); the Projected Total per Scoring Stat.
 
 ## Sprint 12 — Finish
 
-Design review (Emil's skills, Laws of UX), sorting and "Show more", phone layout, the delayed banner, ntfy alerts, credit line and disclaimer, a Playwright smoke test, README.
+Design review (Emil's skills, Laws of UX) of the page built in S10.5 (sorting, "Show more", phone layout, the delayed banner, credit line and disclaimer are in), ntfy alerts, a Playwright smoke test, README.
 
 ## Backlog
 
