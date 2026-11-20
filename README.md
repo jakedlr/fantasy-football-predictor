@@ -138,15 +138,18 @@ pytest -m live         # live smoke tests against the real sportsbooks
 The Leaderboard site lives in `site/` (Node 24):
 
 ```bash
-cd site && npm ci && npm run typecheck && npm test   # JSON schemas, the Worker and the page
+cd site && npm ci && npm run typecheck && npm test   # JSON schemas, the Worker, the Functions and the page
 cd site && npm run build                             # bundle the page's TypeScript into public/app.js (esbuild)
 cd site && npm run dev                               # preview the page at http://localhost:8788 with a stub /api/leaderboard
+cd site && npm run build:validator                   # re-precompile the Expected Points push schema after changing it
 python scripts/export_scoring_contract.py            # re-export site/contracts/ after any Scoring Rules or scorer change
 ```
 
 The page (`site/public/`, script from `site/src/page/`) shows the NFL Week and its dates, "Updated 1:05 PM EST · 3 min. ago" in your timezone, a "Data delayed" banner once the data is more than 15 minutes old, a strip of every Game (choose one to see only its players), the Scoring Rules toggle (PPR, Half PPR, Standard, ESPN league), position chips (All, QB, RB, WR, TE, FLEX, K, D/ST), search by name or team, and the table: Rank, Player, Team, Pos, Opponent, Game Status, Week Points with a bar of how much is already scored, and Points So Far, 50 rows at a time. Light and dark follow your system setting. It fetches `/api/leaderboard` every 5 minutes while the tab is visible and a Game is Live or about to kick off, otherwise once 10 minutes before the next kickoff, and never while the tab is hidden. It makes no other requests: its fonts are self-hosted, with no analytics or CDN.
 
 `npm run dev` serves a generated week of about 700 players. Name a scenario to see the other states: `node scripts/serve.mjs expected` (with Expected Points), `example` (the schema example), `delayed`, `empty`, `error` or `slow` (the skeleton); `curl localhost:8788/__scenario/<name>` switches while it runs. `public/app.js` is gitignored; the deploy job builds it.
+
+`POST /api/expected-points` (`site/functions/api/expected-points.ts`) takes `ffp`'s signed Expected Points push (ADR 0006). It answers 413 to a body over 1 MiB, 401 to a bad signature or a timestamp more than 5 minutes off (`site/contracts/push-signature.json`), 400 with a short reason to invalid JSON or a push failing `site/schema/expected-points.schema.json`, 409 to a push older than the stored one, 429 to one under 5 minutes after it, and 405 to anything but POST. Otherwise it merges the push into KV `expected` (a player whose Game has kicked off keeps his stored entry; a new NFL Week replaces the store), writes the ESPN-to-Sleeper id map to KV `idmap` when it changed (at most hourly), and answers 204. The schema is precompiled with Ajv's standalone code (`npm run build:validator`, into `site/src/push/expected-points.validate.js`), because Workers can't compile it at run time; a test fails while that file is stale. A 1,000-player push takes about 8 ms on Node, inside the free plan's 10 ms of CPU.
 
 `site/contracts/` holds the Leaderboard's Scoring Rules and scored cases from `ffp.scoring`, which the TypeScript scorer must match (ADR 0005); `pytest` fails while they're stale. GitHub Actions runs `ci-python.yml` (pytest) and `ci-site.yml` (type-check, Vitest and the setup wizard's self-test) on every PR, each only when its files change.
 
@@ -229,9 +232,10 @@ It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages do
 Merging to `main` with changes under `site/` deploys the site (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It runs the site's type-check and Vitest suite, builds the page (`npm run build`), then:
 
 1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats into the Leaderboard JSON in KV;
-2. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` from `site/functions/`.
+2. `wrangler pages secret put LEADERBOARD_PUSH_SECRET --project-name ffp-leaderboard`, with the GitHub secret of that name on stdin, so `/api/expected-points` can check pushes. It goes before the Pages deploy because Pages applies secrets to new deployments. The job checks that the GitHub secret is set before deploying anything, and fails with a pointer to the setup wizard if it isn't;
+3. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` and `/api/expected-points` from `site/functions/`. Only those two paths run a Function; the rest of `public/` is served as static files.
 
-Both use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`) and run the same two scripts. Until the Worker's first runs, `/api/leaderboard` answers 503.
+They use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`), pipe the push secret from `.env.leaderboard` into the same `wrangler pages secret put`, and run the two deploy scripts. Until the Worker's first runs, `/api/leaderboard` answers 503. Without the Pages secret, `/api/expected-points` answers 500 and accepts nothing.
 
 ### Layout
 
@@ -268,7 +272,8 @@ site/
   public/          the static page: index.html, styles.css, self-hosted fonts; app.js is built
   scripts/serve.mjs  local preview with a stub /api/leaderboard
   worker/          the Worker's wrangler.toml (two cron triggers, KV binding)
-  functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV
+  functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV; /api/expected-points takes the signed push
+  src/push/        the push's signature check, schema validator (generated by scripts/build_validator.mjs) and KV merge
   wrangler.toml    the Pages project (public/ and functions/, KV binding)
   schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples
   contracts/       Scoring Rules and scored cases for the TypeScript scorer (generated)
