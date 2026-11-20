@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import worker, { runCron, SCOREBOARD_CRON, STATS_CRON } from "../../src/worker/index.js";
+import { ESPN_PROJECTIONS_HOST } from "../../src/worker/espn.js";
+import worker, { ESPN_CRON, runCron, SCOREBOARD_CRON, STATS_CRON } from "../../src/worker/index.js";
 import { KEYS, SCOREBOARD_URL, type RunDeps } from "../../src/worker/refresh.js";
 import { parseScoreboard } from "../../src/worker/scoreboard.js";
 import { fakeClock, fakeFetch, FakeKV, readJson } from "../helpers/fakes.js";
 
 const espnLive = readJson("test/fixtures/espn/scoreboard-live.json");
 const sleeperLive = readJson("test/fixtures/sleeper/stats-live.json");
+const espnWr = readJson("test/fixtures/espn/projections-wr.json");
 const toml = readFileSync(new URL("../../worker/wrangler.toml", import.meta.url), "utf8");
 const ids = (() => {
   try {
@@ -17,7 +19,7 @@ const ids = (() => {
 })();
 
 function deps(kv = new FakeKV()): RunDeps & { kv: FakeKV; calls: string[] } {
-  const net = fakeFetch({ [SCOREBOARD_URL]: espnLive, "https://api.sleeper.com/": sleeperLive });
+  const net = fakeFetch({ [SCOREBOARD_URL]: espnLive, "https://api.sleeper.com/": sleeperLive, [ESPN_PROJECTIONS_HOST]: espnWr });
   return {
     fetch: net.fetch,
     kv,
@@ -45,6 +47,29 @@ describe("runCron", () => {
     expect(d.kv.writes.map((w) => w.key)).toEqual([KEYS.leaderboard]);
   });
 
+  it(`runs the ESPN projections on ${ESPN_CRON}`, async () => {
+    const d = deps(new FakeKV({ [KEYS.scoreboard]: JSON.stringify(parseScoreboard(espnLive)) }));
+    expect(await runCron(ESPN_CRON, d)).toEqual({ result: "written" });
+    expect(d.calls).toHaveLength(1);
+    expect(d.calls[0]!.startsWith(ESPN_PROJECTIONS_HOST)).toBe(true);
+    expect(d.kv.writes.map((w) => w.key)).toEqual([KEYS.espn]);
+  });
+
+  it("runs the ESPN projections at minutes the other two runs don't use", () => {
+    const minutes = (cron: string) => {
+      const m = cron.split(" ")[0]!;
+      const step = /^(\*|\d+-\d+)\/(\d+)$/.exec(m);
+      if (step) {
+        const from = step[1] === "*" ? 0 : Number(step[1]!.split("-")[0]);
+        return Array.from({ length: 60 }, (_, i) => i).filter((i) => i >= from && (i - from) % Number(step[2]) === 0);
+      }
+      return m.split(",").map(Number);
+    };
+    expect(minutes(ESPN_CRON)).toEqual([9, 29, 49]);
+    const taken = new Set([...minutes(SCOREBOARD_CRON), ...minutes(STATS_CRON)]);
+    expect(minutes(ESPN_CRON).filter((m) => taken.has(m))).toEqual([]);
+  });
+
   it("refuses a cron it doesn't know", async () => {
     await expect(runCron("0 * * * *", deps())).rejects.toThrow(/unknown cron/);
   });
@@ -62,9 +87,9 @@ describe("scheduled", () => {
 });
 
 describe("worker/wrangler.toml", () => {
-  it("schedules exactly the two runs runCron knows", () => {
+  it("schedules exactly the three runs runCron knows", () => {
     const crons = /^crons\s*=\s*\[(.*)\]/m.exec(toml)?.[1];
-    expect(crons && [...crons.matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([SCOREBOARD_CRON, STATS_CRON]);
+    expect(crons && [...crons.matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([SCOREBOARD_CRON, STATS_CRON, ESPN_CRON]);
   });
 
   it("points at this entry and binds KV as LEADERBOARD", () => {

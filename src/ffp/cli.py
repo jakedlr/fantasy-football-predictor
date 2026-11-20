@@ -83,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     predict.add_argument("--no-snapshot", action="store_true", help="don't save a snapshot of a live run")
     slate.add_parser(commands)
+    from ffp import push, schedule
+
+    push.add_parser(commands)
+    schedule.add_parser(commands)
     return parser
 
 
@@ -161,6 +165,8 @@ def _main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     if args.command == "slate":
         return slate.run(args)
+    if hasattr(args, "run"):  # commands that bring their own runner (push, schedule)
+        return args.run(args)
     rules = load_rules(args.scoring)
     names = pipeline.read_input(args.input)
     now = args.now or datetime.now(timezone.utc)

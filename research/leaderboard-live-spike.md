@@ -184,3 +184,98 @@ Measured with `wrangler tail --config site/worker/wrangler.toml` over 10:22–10
 | Scoreboard (`2-59/5`) | 2 (both "unchanged") | 3, 4 | 183–205 |
 
 A full Sunday has about 15 times as many rows. The S10.1 probe put a full week's Sleeper parse at 4–5 ms, so the stats run should land around 7–9 ms or more: scoring under four Scoring Rules and building the Leaderboard JSON also grow with rows. That is close to the 10 ms limit. Check it with `wrangler tail` during Sunday's Games.
+
+## K and D/ST from Sleeper (S11.1, 2026-11-20)
+
+Sleeper's completed 2026 Week 10 for K and DEF (63 rows: 35 K, 28 DEF; trimmed to `site/test/fixtures/sleeper/stats-week10-k-dst.json`) and its season-to-date totals were checked against Sleeper's own `pts_std` and against nflverse play-by-play as ffp builds D/ST lines (`scripts/build_params.py dst_games`, saved beside the fixture as `nflverse-week10-dst.json`). The scripts were throwaway; the checks that matter are tests in `site/test/worker/sleeper-k-dst.test.ts`.
+
+**Kicker** (`sleeper.ts` `SLEEPER_KICKER_KEYS`):
+
+| Sleeper | ffp | Evidence |
+|---|---|---|
+| `fgm_0_19`, `fgm_20_29`, `fgm_30_39`, `fgm_40_49`, `fgm_50_59`, `fgm_60p` | the same bucket keys (`scoreKicker` scores each at its bucket's min) | they sum to `fgm` on every row; nflverse FG distances agree for 28 of 28 teams |
+| `xpm` | `pat_made` | nflverse 28 of 28 |
+| `xpmiss` | `pat_missed` | equals `xpa − xpm` on every row; nflverse 28 of 28 |
+| `fgmiss` | `fg_missed` | equals `fga − fgm` on every row (a blocked FG is a miss) |
+
+Not read: `fgm`, `fgm_yds`, `fgm_lng`, `fgm_50p`, `fgmiss_*`, `fga`, `xpa`. Sleeper's own `pts_std` (ppr's kicker tiers, 3/4/5, plus −1 per PAT missed) matches 27 of 28 Week 10 kickers; the other was given 1 point for a forced fumble on a return (`st_ff`), which ffp has no kicker stat for. Over the season, the 4 kickers with a 60+ FG score 1 point less in Sleeper's `pts_std` than under ffp's `sleeper` preset, which gives 60+ yards 6 points: Sleeper's stats endpoint scores 50+ as 5.
+
+**D/ST** (`SLEEPER_DST_KEYS` and `dstStatLine`):
+
+| Sleeper | ffp | Evidence |
+|---|---|---|
+| `sack` | `sacks` | nflverse 28 of 28 |
+| `int` | `interceptions` | 28 of 28 |
+| `fum_rec` + `def_st_fum_rec` | `fumble_recoveries` | `fum_rec` leaves out special-teams recoveries; with them 27 of 28 (alone 26) |
+| `ff` + `def_st_ff` | `forced_fumbles` | likewise; with them 25 of 28 (alone 21) |
+| `safe` | `safeties` | 28 of 28; season 30 of 30 |
+| `blk_kick` | `blocked_kicks` | 28 of 28; season 30 of 30 |
+| `def_td` | `interception_return_tds` (both kinds) | equals nflverse INT + fumble return TDs, 28 of 28; season 30 of 30 |
+| `def_st_td` | `kickoff_return_tds` (all three kinds) | equals kickoff + punt + blocked-kick return TDs, 28 of 28; season 30 of 30 |
+| `yds_allow` | `yards_allowed` | net of sack yards, as ffp's: 28 of 28; season 30 of 30 |
+| `pts_allow` + 6 × the opponent's `def_td` | `points_allowed_all` | see below: 28 of 28 |
+| 6 × the opponent's `def_td` | `opponent_defensive_tds_points` | nflverse also counts the try |
+| 6 × the opponent's `def_st_td` | `opponent_return_tds_points` | likewise |
+
+- **`pts_allow` is the opponent's points less 6 per INT or fumble return TD it scored.** The try after the TD stays in (Miami's pick-six with its PAT: 24 scored, `pts_allow` 18). That matched 28 of 28 Week 10 teams and 27 of 29 season totals (two teams 2 points off, not traced). Return TDs stay in. So `points_allowed_all` adds back 6 per defensive TD from the opponent's own DEF row (`opponent`), and every Leaderboard option, which leaves defensive TDs out, gets exactly Sleeper's Points Allowed.
+- **Gaps.** Sleeper doesn't split INT from fumble return TDs, or kickoff from punt and blocked-kick return TDs. All four Leaderboard options score every kind 6, so the points are exact; a test fails if a rules change breaks that. The try after an opponent's defensive or return TD can't be separated, so a rule leaving those TDs out leaves out 6 per TD where ffp's nflverse lines leave out 7 or 8. Three forced fumbles and one recovery in Week 10 are credited differently by Sleeper's data provider and nflverse (LV, NYJ, SF).
+- **Sleeper's own `pts_std`** (ffp's `sleeper` D/ST preset, with Points Allowed tiered on `pts_allow`) matches 27 of 27 Week 10 D/STs that have one, and 32 of 32 season totals, once a special-teams recovery is scored 1 (Sleeper's rule) instead of ffp's 2. `misc_td`, `def_2pt`, `fum_rec_ez_tds` and `td` are not in it and aren't read.
+- **Under the four Leaderboard options,** the 25 Week 10 D/STs without a credit dispute score the same from Sleeper's lines as from nflverse's.
+- **CPU.** On Node (warm, this laptop), converting a 707-row, 635 KB response (14 copies of the live Game's 46 offense rows plus the 63 real K and DEF rows) takes 0.14 ms, of which the K and DEF rows are about 0.02 ms; `JSON.parse` of the same text takes 1.5 ms.
+
+## ESPN projections (S11.5, 2026-11-20)
+
+The fallback for players without `ffp` Expected Points: ESPN's weekly fantasy projections (research/leaderboard-projections.md B3), measured on Friday of Week 11 (13 Games, 6 teams on bye, Thursday's Game Final).
+
+**Request.** `GET https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leaguedefaults/3?view=kona_player_info&scoringPeriodId=11`, no cookie, with an `x-fantasy-filter` header: `filterSlotIds` (QB 0, RB 2, WR 4, TE 6, D/ST 16, K 17), `filterStatsForTopScoringPeriodIds` `{value: 1, additionalValue: ["11202611"]}` (so each player carries only this week's projected line and his last actual line), `sortAppliedStatTotal` on `11202611` descending, and `limit`. `leaguedefaults/3` is "FFL PPR Scoring", so each line's `appliedTotal` is ESPN's PPR points.
+
+**Size.** Every player in the response carries prose and ranks the Worker doesn't use: `outlooks` (every week's write-up so far, so it grows through the season), `seasonOutlook`, `draftRanksByRankType` and `rankings`. The `filterRanksFor*` options cut `rankings` from 15 KB a player to 10 bytes; nothing found drops `outlooks`. The views `players_wl` and the `/players` route have no stats; `kona_playercard` is bigger; other view names returned only league settings.
+
+| Request | Bytes | Players | Projected > 0 | Projected ≥ 1 |
+|---|---|---|---|---|
+| All six positions, limit 600, ranks unfiltered | 7.3 MB | 600 | | |
+| All six positions, limit 600 | 2.9 MB | 600 | 300 | 300 |
+| QB + TE, limit 140 | 703 KB | 140 | 95 | 86 |
+| RB + K + D/ST, limit 170 | 867 KB | 170 | 118 | 111 |
+| WR, limit 160 | 886 KB | 160 | 108 | 103 |
+
+About 6.5 KB per projected player, against Sleeper's 0.9 KB. A week with no byes has 32 teams, about 23% more players than Week 11's 26; the limits leave room for that.
+
+**CPU** (Node 24 on this laptop, warm, median of 60–200 runs; `JSON.parse` of the text, then the Worker's own conversion, merge and serialization, as `runEspn` does them):
+
+| Run | JSON.parse | + convert | Whole run |
+|---|---|---|---|
+| All six positions in one response (2.9 MB) | 4.7–10 ms | | |
+| QB + TE (703 KB) | 1.0–1.1 ms | 1.3 ms | 1.8–2.1 ms |
+| RB + K + D/ST (867 KB) | 1.2–1.3 ms | 1.9 ms | 2.7 ms |
+| WR (886 KB, store then 321 players, 110 KB) | 1.2–1.4 ms | 1.6 ms | 2.8–2.9 ms |
+
+Sleeper's 46 KB fixture parses at 2.3 ms/MB on the same machine; ESPN's prose-heavy text at 1.2–1.6 ms/MB. On Cloudflare the deployed runs used 3–4 ms on about 44 KB of Sleeper data, and the S10.1 probe 4–5 ms on 693 KB, so Cloudflare costs roughly 2–3 times this laptop's warm Node plus a fixed 1–2 ms. That puts the one-response design at 10–25 ms (doesn't fit) and each group at roughly 4–7 ms.
+
+**Chosen:** three groups balanced by bytes, one request per run, on the cron `9,29,49 * * * *` (minutes free of the other two runs): QB + TE at :09, RB + K + D/ST at :29, WR at :49, so each group refreshes hourly. Projections change slowly and freeze at kickoff, so hourly is enough. WR is the largest group and can't be split further by position; if `wrangler tail` shows it near 10 ms, lower its limit (about 130 covers a no-bye week's WRs projected for 1 point or more) or page WRs by offset.
+
+**Stat ids.** From espn-api's `PLAYER_STATS_MAP` (B3), checked against `appliedTotal` for all 600 players of the 2.9 MB response:
+
+| Leaderboard stat | ESPN id | Note |
+|---|---|---|
+| passing_yards, passing_tds, passing_interceptions, passing_2pt | 3, 4, 20, 19 | |
+| rushing_yards, rushing_tds, rushing_2pt | 24, 25, 26 | 40 is sometimes 2 × 24 or 0 |
+| receptions, receiving_yards, receiving_tds, receiving_2pt | 53, 42, 43, 44 | 41 is absent; 61 is sometimes 2 × 42 or 0 |
+| fumbles_lost | 72 | |
+| pat_made, pat_missed, fg_missed | 86, 88, 85 | ESPN's default doesn't score a missed PAT; ours doesn't either |
+| fgm_30_39 | 80 (FG made under 40) | spans Sleeper's 0–19, 20–29 and 30–39; every Scoring Rules option scores 0–39 as one tier (a test checks) |
+| fgm_40_49 | 77 | |
+| fgm_50_59, fgm_60p | 74 − 201, 201 | 74 is 50+ including 60+ (83 = 80 + 77 + 74); 201 (60+) wasn't given in Week 11, so 60+ FGs count as 50–59, which `espn-league` scores 1 point lower |
+| sacks, interceptions, fumble_recoveries, forced_fumbles, safeties, blocked_kicks | 99, 95, 96, 106, 98, 97 | |
+| interception_return_tds, fumble_return_tds, kickoff_return_tds, punt_return_tds, blocked_kick_return_tds | 103, 104, 101, 102, 93 | 94 = 103 + 104; 105 = all D/ST TDs |
+| points_allowed_all, yards_allowed | 120, 127 | |
+
+- **Offense:** ESPN's PPR rules equal our `ppr` on these stats. Our score matches `appliedTotal` for 458 of 530 players within 0.01; the other 72 differ by exactly 6 × (101 + 102 + 63), offensive return and fumble-recovery TDs, which aren't `ffp` Scoring Stats (largest left over: 0.08, Travis Hunter's defensive stats).
+- **K and D/ST:** exact for every player once D/ST tiers are scored as below.
+- **D/ST tiers.** ESPN gives the probability of each Points Allowed band (89–92, 121–125: 0, 1–6, 7–13, 14–17, 18–21, 22–27, 28–34, 35–45, 46+) and Yards Allowed band (128–136), and `appliedTotal` is Σ P(band) × the band's points. Every band lies inside one of our tiers in all four options, so Expected Points use the same sum. Scoring the tier of the mean instead (what `scoreLine` does with `statMeans`) overstates a D/ST: the Steelers' mean of 12.5 points allowed is in the 3-point tier, but the expected tier points are 0.9; with yards allowed the gap is 4.5 points. `statMeans` still carry the means, for the Projected Total.
+
+**Joins and freezing.** Thursday's teams (IND, HOU) kept their pregame projections the day after their Game, as B3 found. Players projected for 0 (Out, injured reserve, bye) are left out. The run keeps a stored entry whose Game has kicked off, and takes the fresh one only when nothing is stored.
+
+**Postseason.** ESPN's fantasy game ends with the regular season, so the run does nothing in the postseason; players without a push have no Expected Points then.
+
+**Fixtures:** `site/test/fixtures/espn/projections-{qb-te,rb-k-dst,wr}.json`, the three group responses trimmed to 8–19 players each (the top 4 per position, the Thursday Game's teams, an Out player, a bye), with `outlooks`, `seasonOutlook`, `rankings` and `draftRanksByRankType` removed.

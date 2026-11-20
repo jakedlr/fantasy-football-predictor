@@ -10,7 +10,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 Sprints 0–8 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Sprint 8 predicts players in parallel processes and downloads nflverse while the odds come in, about 20% faster again, and gives the kicker/D/ST backtest `--jobs`.
 
-Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 is done: the Leaderboard is live at https://ffp-leaderboard.pages.dev with Points So Far, refreshed every 5 minutes. Players appear once their Game has stats. Sprint 11 is in progress: Expected Points from `ffp` (for players whose Games haven't started), kickers and D/ST, ESPN projections as the fallback, and the Projected Total for Live players. Its first `ffp` piece is in: `ffp slate` writes the Expected Points push (see below).
+Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 is done: the Leaderboard is live at https://ffp-leaderboard.pages.dev with Points So Far, refreshed every 5 minutes. Players appear once their Game has stats. Sprint 11 is in progress: kickers and D/ST are scored from Sleeper's stats too (FGs by distance bucket; D/ST counts, Points Allowed and Yards Allowed). Written: `ffp push` (the signed push) and `ffp schedule` with its Docker setup (see "Expected Points push" below). `ffp slate` writes the Expected Points push (see "Expected Points for the Leaderboard" below): a live run on week 11 put 371 players in about 55 s. Still to come: ESPN projections as the fallback, and the Projected Total for Live players.
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
@@ -169,15 +169,18 @@ pytest -m live         # live smoke tests against the real sportsbooks
 The Leaderboard site lives in `site/` (Node 24):
 
 ```bash
-cd site && npm ci && npm run typecheck && npm test   # JSON schemas, the Worker and the page
+cd site && npm ci && npm run typecheck && npm test   # JSON schemas, the Worker, the Functions and the page
 cd site && npm run build                             # bundle the page's TypeScript into public/app.js (esbuild)
 cd site && npm run dev                               # preview the page at http://localhost:8788 with a stub /api/leaderboard
+cd site && npm run build:validator                   # re-precompile the Expected Points push schema after changing it
 python scripts/export_scoring_contract.py            # re-export site/contracts/ after any Scoring Rules or scorer change
 ```
 
-The page (`site/public/`, script from `site/src/page/`) shows the NFL Week and its dates, "Updated 1:05 PM EST · 3 min. ago" in your timezone, a "Data delayed" banner once the data is more than 15 minutes old, a strip of every Game (choose one to see only its players), the Scoring Rules toggle (PPR, Half PPR, Standard, ESPN league), position chips (All, QB, RB, WR, TE, FLEX, K, D/ST), search by name or team, and the table: Rank, Player, Team, Pos, Opponent, Game Status, Week Points with a bar of how much is already scored, and Points So Far, 50 rows at a time. Light and dark follow your system setting. It fetches `/api/leaderboard` every 5 minutes while the tab is visible and a Game is Live or about to kick off, otherwise once 10 minutes before the next kickoff, and never while the tab is hidden. It makes no other requests: its fonts are self-hosted, with no analytics or CDN.
+The page (`site/public/`, script from `site/src/page/`) shows the NFL Week and its dates, "Updated 1:05 PM EST · 3 min. ago" in your timezone, a "Data delayed" banner once the data is more than 15 minutes old, a strip of every Game (choose one to see only its players), the Scoring Rules toggle (PPR, Half PPR, Standard, ESPN league), position chips (All, QB, RB, WR, TE, FLEX, K, D/ST), search by name or team, and the table: Rank, Player, Team, Pos, Opponent, Game Status, Week Points with a bar of how much is already scored, and Points So Far, 50 rows at a time. Week Points are Expected Points before kickoff, the Projected Total while Live (each Scoring Stat so far plus its pregame mean times the share of the Game left, from the quarter and clock, then scored; overtime counts as nothing left; a D/ST's Points and Yards Allowed tier points move from their expected value at kickoff to the tier actually reached, so a Live D/ST starts at its Expected Points) and Points So Far once Final. Expected Points come from `ffp`, or from ESPN's projection rescored (marked "ESPN projection") for a player `ffp` doesn't price. A player is listed once he has recorded a stat or has Expected Points of 1 or more under PPR. Light and dark follow your system setting. It fetches `/api/leaderboard` every 5 minutes while the tab is visible and a Game is Live or about to kick off, otherwise once 10 minutes before the next kickoff, and never while the tab is hidden. It makes no other requests: its fonts are self-hosted, with no analytics or CDN.
 
 `npm run dev` serves a generated week of about 700 players. Name a scenario to see the other states: `node scripts/serve.mjs expected` (with Expected Points), `example` (the schema example), `delayed`, `empty`, `error` or `slow` (the skeleton); `curl localhost:8788/__scenario/<name>` switches while it runs. `public/app.js` is gitignored; the deploy job builds it.
+
+`POST /api/expected-points` (`site/functions/api/expected-points.ts`) takes `ffp`'s signed Expected Points push (ADR 0006). It answers 413 to a body over 1 MiB, 401 to a bad signature or a timestamp more than 5 minutes off (`site/contracts/push-signature.json`), 400 with a short reason to invalid JSON or a push failing `site/schema/expected-points.schema.json`, 409 to a push older than the stored one, 429 to one under 5 minutes after it, and 405 to anything but POST. Otherwise it merges the push into KV `expected` (a player whose Game has kicked off keeps his stored entry; a new NFL Week replaces the store), writes the ESPN-to-Sleeper id map to KV `idmap` when it changed (at most hourly), and answers 204. The schema is precompiled with Ajv's standalone code (`npm run build:validator`, into `site/src/push/expected-points.validate.js`), because Workers can't compile it at run time; a test fails while that file is stale. A 1,000-player push takes about 8 ms on Node, inside the free plan's 10 ms of CPU.
 
 `site/contracts/` holds the Leaderboard's Scoring Rules and scored cases from `ffp.scoring`, which the TypeScript scorer must match (ADR 0005); `pytest` fails while they're stale. GitHub Actions runs `ci-python.yml` (pytest) and `ci-site.yml` (type-check, Vitest and the setup wizard's self-test) on every PR, each only when its files change.
 
@@ -259,17 +262,76 @@ It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages do
 
 Merging to `main` with changes under `site/` deploys the site (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It runs the site's type-check and Vitest suite, builds the page (`npm run build`), then:
 
-1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats into the Leaderboard JSON in KV;
-2. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` from `site/functions/`.
+1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats, with the Expected Points and ESPN projections in KV, into the Leaderboard JSON in KV. A third run, at minutes 9, 29 and 49, reads one position group of ESPN's weekly fantasy projections (QB+TE, RB+K+D/ST, WR, so each group hourly), rescores them under every Scoring Rules option and stores them in KV `espn` as the fallback for players without `ffp` Expected Points;
+2. `wrangler pages secret put LEADERBOARD_PUSH_SECRET --project-name ffp-leaderboard`, with the GitHub secret of that name on stdin, so `/api/expected-points` can check pushes. It goes before the Pages deploy because Pages applies secrets to new deployments. The job checks that the GitHub secret is set before deploying anything, and fails with a pointer to the setup wizard if it isn't;
+3. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` and `/api/expected-points` from `site/functions/`. Only those two paths run a Function; the rest of `public/` is served as static files.
 
-Both use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`) and run the same two scripts. Until the Worker's first runs, `/api/leaderboard` answers 503.
+They use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`), pipe the push secret from `.env.leaderboard` into the same `wrangler pages secret put`, and run the two deploy scripts. Until the Worker's first runs, `/api/leaderboard` answers 503. Without the Pages secret, `/api/expected-points` answers 500 and accepts nothing.
+
+#### Expected Points push
+
+`ffp push FILE` sends an Expected Points push (the JSON that `ffp slate` writes) to the Leaderboard:
+
+```bash
+ffp push expected-points.json                     # to https://ffp-leaderboard.pages.dev/api/expected-points
+ffp push expected-points.json --url http://localhost:8788/api/expected-points
+```
+
+It checks FILE against `site/schema/expected-points.schema.json` first and sends nothing if it fails. It then signs the body as `site/contracts/push-signature.json` says (ADR 0006): `X-FFP-Timestamp` and `X-FFP-Signature`, an HMAC-SHA256 under `LEADERBOARD_PUSH_SECRET`. The secret is read from the environment, else from `.env.leaderboard` in the current directory (written by the setup wizard); it is never printed. How it treats `/api/expected-points`'s answers:
+
+| Answer | Meaning | `ffp push` |
+|---|---|---|
+| 204 | accepted (also a repeat of the push the site holds, same `generatedAt`) | exits 0 |
+| 429 | under 5 minutes after the last accepted push | prints "Skipped", exits 0, no retry |
+| 409 | older than the push the site holds | exits 1, no retry |
+| 400 | invalid; the reason is in the reply | exits 1, no retry |
+| 401 | bad signature or timestamp (no detail given) | exits 1, no retry |
+| 413 | over 1 MiB (also refused before sending) | exits 1, no retry |
+| 5xx, network error | 500 means the site has no `LEADERBOARD_PUSH_SECRET` | one retry after 10 s, of the same body signed afresh; then exits 1 |
+
+The retry resends the same bytes, so if the first attempt was accepted but its answer lost, the site answers 204 again. The site rejects a timestamp more than 5 minutes off its clock, and a `generatedAt` more than 5 minutes in the future, so the machine's clock must be right.
+
+`ffp schedule` runs `ffp slate --output-dir DIR` and then `ffp push DIR/expected-points.json`, each in its own process, on game days, until stopped:
+
+```bash
+ffp schedule --show 30                      # print the next 30 run times and exit
+ffp schedule --once --output-dir out/       # one slate and push now
+ffp schedule --output-dir out/              # run forever
+ffp schedule --slate-arg=--jobs=4           # pass an argument on to ffp slate (repeatable)
+```
+
+The run times, in US Eastern time:
+
+- A game day is a date with a kickoff still ahead, from the nflverse schedule `ffp` already loads (it holds the whole season, so the scheduler knows next week's game days; it is reloaded at least every 6 hours to pick up flexed Games).
+- On a game day: a run every 30 minutes on :00 and :30 from 08:00 until the day's last kickoff, plus one 10 minutes before each kickoff window. Kickoffs within 30 minutes of a window's first share it, so Sunday's 16:05 and 16:25 Games share one at 15:55. A :00/:30 run 10 minutes or less before or after a window's run is dropped, so runs stay more than 10 minutes apart (the site answers 429 to a push under 5 minutes after the last). The scheduler also waits at least 5 minutes after a run that succeeded before starting the next.
+- After the day's last kickoff nothing runs until the next game day (`ffp slate` leaves out Games that have kicked off).
+
+A typical Sunday (13:00, 16:05/16:25, 20:20): 08:00, 08:30, … 12:30, **12:50**, 13:30, … 15:30, **15:55**, 16:30, … 19:30, **20:10**. A run that fails (slate or push; slate gets 45 minutes, push 3) is logged and the scheduler waits for the next run time; it never retries at once. A run that takes longer than 30 minutes skips the run times it covered. Before each run the last `expected-points.json` is deleted, so a failed slate never pushes old numbers.
+
+##### In Docker
+
+The scheduler runs in Docker on your machine (DraftKings and FanDuel refuse datacenter IPs). It needs Docker and `.env.leaderboard` from the setup wizard in the repo root:
+
+```bash
+docker compose up -d --build     # start (or make up); restarts with Docker unless you stop it
+docker compose logs -f           # watch it (or make logs)
+docker compose down              # stop (or make down)
+docker compose run --rm ffp ffp schedule --once --output-dir /data/out   # one run now (make once)
+docker compose run --rm ffp ffp schedule --show 30                       # the next run times (make show)
+```
+
+- **Environment:** `docker-compose.yml` reads `.env.leaderboard` as its `env_file`, so the container gets `LEADERBOARD_PUSH_SECRET` (and `NTFY_TOPIC`, for Sprint 12's alerts). `docker compose config` prints these values: don't paste its output anywhere. The image sets `NFLREADPY_CACHE=filesystem`, `NFLREADPY_CACHE_DIR=/data/nflreadpy` and `FFP_SCHEMA` (the schema `ffp push` checks against).
+- **Data:** the named volume `ffp_ffp-data` at `/data` keeps the nflverse and HTTP caches, the snapshots of each run's odds, and the latest push in `/data/out/expected-points.json`. `docker compose down -v` deletes it.
+- **Your PC must be on and awake** for pushes to happen. When it's off, the Leaderboard keeps its live Points So Far, and players without a fresh push show ESPN's projections, marked "ESPN projection".
 
 ### Layout
 
 ```
 src/ffp/
-  cli.py             `ffp predict`, `ffp slate`
+  cli.py             `ffp predict`, `ffp slate`, `ffp push`, `ffp schedule`
   slate.py           `ffp slate`: the NFL Week's priced players, K and D/ST → the Expected Points push JSON
+  push.py            `ffp push`: schema check, HMAC signature, POST to /api/expected-points
+  schedule.py        `ffp schedule`: game-day run times (next_run), the slate + push loop
   predict.py         INPUT.md → players and Games → Prop Markets → fits → Score Distributions
   players.py         name → nflverse gsis_id, position, team; next Game
   sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP; kalshi.py: backtest markets;
@@ -296,18 +358,20 @@ scripts/setup_cloudflare.sh  interactive Cloudflare and GitHub setup for the Lea
 scripts/export_scoring_contract.py   site/contracts/ from ffp.scoring (ADR 0005)
 scripts/record_live.py, analyze_live_spike.py   the S9.1 live test recorder and analysis
 site/
-  src/worker/      the cron Worker: ESPN scoreboard, Sleeper stats, scoring port → KV (README inside)
+  src/worker/      the cron Worker: ESPN scoreboard, Sleeper stats, ESPN projections, scoring port → KV (README inside)
   src/page/        the page's TypeScript: filters, ranking, time, poll schedule (pure) and main.ts (DOM)
   public/          the static page: index.html, styles.css, self-hosted fonts; app.js is built
   scripts/serve.mjs  local preview with a stub /api/leaderboard
-  worker/          the Worker's wrangler.toml (two cron triggers, KV binding)
-  functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV
+  worker/          the Worker's wrangler.toml (three cron triggers, KV binding)
+  functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV; /api/expected-points takes the signed push
+  src/push/        the push's signature check, schema validator (generated by scripts/build_validator.mjs) and KV merge
   wrangler.toml    the Pages project (public/ and functions/, KV binding)
   schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples
   contracts/       Scoring Rules and scored cases for the TypeScript scorer (generated)
   test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses; page/fixture.ts generates a week
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
+Dockerfile, docker-compose.yml, Makefile   the Expected Points scheduler in Docker
 ```
 
 ### Docs

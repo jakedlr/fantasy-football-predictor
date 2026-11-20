@@ -1,7 +1,7 @@
 name: Deploy site
 
-# On merge to main: test the site, then deploy the cron Worker and the Pages project (page and
-# /api/leaderboard). Cloudflare's Git integration stays off (PLAN.md, CI/CD).
+# On merge to main: test the site, then deploy the cron Worker and the Pages project (page,
+# /api/leaderboard and /api/expected-points, with the push secret). Cloudflare's Git integration stays off (PLAN.md, CI/CD).
 on:
   push:
     branches: [main]
@@ -39,14 +39,27 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
+      # Checked before anything deploys, so a missing secret can't leave a half-done deploy.
+      - name: Check LEADERBOARD_PUSH_SECRET is set
+        env:
+          LEADERBOARD_PUSH_SECRET: ${{ secrets.LEADERBOARD_PUSH_SECRET }}
+        run: |
+          if [ -z "$LEADERBOARD_PUSH_SECRET" ]; then
+            echo "::error::The GitHub secret LEADERBOARD_PUSH_SECRET is not set. Run scripts/setup_cloudflare.sh (stage 6, home push secret), then re-run this job."
+            exit 1
+          fi
       - run: npm run typecheck
       - run: npm test
       - name: Deploy the cron Worker
         run: npm run deploy:worker
       # The page's build step, once it has one.
       - run: npm run build --if-present
-      - name: Deploy Pages (public/ and functions/)
+      # /api/expected-points checks pushes against it (ADR 0006). Pages binds secrets when it
+      # deploys, so it goes in first. Re-putting the same value every deploy is harmless; it is
+      # piped on stdin (printf is a shell builtin), never put on a command line or printed.
+      - name: Hand LEADERBOARD_PUSH_SECRET to Pages
+        env:
+          LEADERBOARD_PUSH_SECRET: ${{ secrets.LEADERBOARD_PUSH_SECRET }}
+        run: printf '%s' "$LEADERBOARD_PUSH_SECRET" | npx wrangler pages secret put LEADERBOARD_PUSH_SECRET --project-name ffp-leaderboard
+      - name: Deploy Pages (public/, /api/leaderboard and /api/expected-points)
         run: npm run deploy:pages
-      # TODO(Sprint 11): hand LEADERBOARD_PUSH_SECRET to the site for /api/expected-points, e.g.
-      #   echo "$LEADERBOARD_PUSH_SECRET" | npx wrangler pages secret put LEADERBOARD_PUSH_SECRET --project-name ffp-leaderboard
-      # with LEADERBOARD_PUSH_SECRET: ${{ secrets.LEADERBOARD_PUSH_SECRET }} in this step's env only.
