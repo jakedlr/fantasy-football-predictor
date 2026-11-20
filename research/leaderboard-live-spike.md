@@ -30,7 +30,7 @@ Both send the User-Agent `ffp-live-spike/0.1 (non-commercial fantasy research; o
   - It saves every body gzipped at `snapshots/live-spike/<source>/<UTC time>.json.gz`.
   - It writes one line per request to `snapshots/live-spike/manifest-home.jsonl`: time, URL, status, latency, bytes, game state/period/clock, score, last play id, play count, Sleeper rows and `last_modified`, cache headers (`cache-control`, `age`, `cf-cache-status`, `retry-after`), and a hash of the player stats.
   - The player-stats hash covers: the scoreboard's `leaders` for the Game; the summary's `boxscore.players`; Sleeper's `(player_id, stats)` pairs.
-- **Worker** (vantage `worker`): `spike/worker-recorder/`, a throwaway Cloudflare Worker on a one-minute cron.
+- **Worker** (vantage `worker`): `spike/worker-recorder/`, a throwaway Cloudflare Worker on a one-minute cron. Removed after the Game; it is in the history at 3a1071f.
   - It writes the same manifest lines to KV, without bodies. To stay under the 10 ms CPU limit it hashes the raw box-score text and Sleeper's raw text, so its hashes are not comparable with home's.
   - `/dump` returns its lines as JSONL.
 
@@ -100,22 +100,57 @@ Times are UTC. 00:45 UTC Friday is 7:45 PM ET Thursday.
 
 ## Results
 
-### Blocking (status codes per source and vantage)
+Thursday Night Football, Week 11, IND @ HOU (ESPN event 401873066), recorded 2026-11-20 00:45–05:45 UTC: 233 polls from the home machine (it stopped 30 minutes after Final), 300 from the Worker (every minute of its window). Final first seen 04:06:59 UTC.
 
-_To fill in: the analyzer's statuses column for home and worker, any Retry-After seen, when blocks started._
+| Source | Vantage | Requests | Statuses | Median latency | Lag median / p90 / max | Settle after Final |
+|---|---|---|---|---|---|---|
+| ESPN scoreboard | home | 233 | 200 ×233 | 186 ms | 1.2 / 7.2 / 19.2 min | 0 min |
+| ESPN scoreboard | Worker | 300 | 200 ×298, 403 ×2 | 62 ms | 1.0 / 7.0 / 19.0 min | 0 min |
+| ESPN summary | home | 233 | 200 ×233 | 193 ms | 0.2 / 0.2 / 2.2 min | 24.0 min |
+| ESPN summary | Worker | 300 | 200 ×298, 403 ×2 | 42 ms | 0.0 / 0.0 / 2.0 min | 23.8 min |
+| Sleeper stats | home | 233 | 200 ×233 | 102 ms | 0.2 / 1.0 / 3.2 min | 6.0 min |
+| Sleeper stats | Worker | 300 | 200 ×300 | 10 ms | 0.0 / 0.0 / 1.0 min | 94.8 min* |
 
-### Staleness (lag behind the game clock)
+Lag: minutes from game progress (a new clock or play count) to the stream's next stats change. The scoreboard's "stats" are only its leaders, so its lag doesn't matter; the summary and Sleeper are the stats sources.
 
-_To fill in: lag median / p90 / max and "no change" per source and vantage; settle after Final._
+\* The Worker hashed Sleeper's whole body, which kept changing after Final without the stats changing (home hashed the parsed rows: 6 min).
+
+### Blocking
+
+- **From the home machine: none.**
+- **From the Worker: two single minutes** (02:06:46 and 04:08:46 UTC) when both ESPN endpoints answered 403 (a ~440-byte body, no `Retry-After`) and Sleeper answered 200. The next minute was 200 both times. It looks like ESPN's bot protection briefly refusing one Cloudflare egress IP, not a block. Sleeper was never refused.
+
+### Staleness
+
+- **ESPN's summary is live:** its box score changed within the same minute as the game clock (median 0.0–0.2 min, max about 2 min).
+- **Sleeper is live too:** median 0–0.2 min, p90 1 min. The research's 5–15 minute CDN lag did not show; its cache header was `s-maxage=4, stale-while-revalidate=600` throughout.
+- **ESPN kept correcting stats for about 24 minutes after Final;** Sleeper for about 6. Final Games must keep refreshing for at least 30 minutes, and once more the next day.
 
 ### Live behaviour notes
 
-_To fill in: `drives.current` `statYardage`; summary header status while Live; Sleeper rows or schedule while Live; cache headers seen while Live._
+- The summary's `header.competitions[0].status` is `in` with `displayClock` and `period` while Live; `drives.current` holds the drive in progress, with `statYardage` per play.
+- FGs: plays type 59 (good) and 60 (missed) carry the distance in `statYardage`. **A blocked FG is type 18 ("Blocked Field Goal") with `statYardage` 0;** its distance is only in the text ("62 yard field goal is BLOCKED").
+- The box score has no 2-pt conversions; safeties and blocked kicks are play types ("Safety", "Blocked Field Goal").
+- Sleeper's rows carry the player (name, position, team), and K and D/ST stats ready-made: `fgm_20_29`-style 10-yard buckets, `xpm`, `fga`; `sack`, `int`, `safe`, `blk_kick`, `yds_allow`, `pts_allow`. Its buckets break at 40, 50 and 60, the same edges as every Leaderboard Scoring Rules option.
+- **Sizes:** the scoreboard is about 230 KB; one Game's summary grows from 120 KB before kickoff to **559 KB** at Final; Sleeper is about 0.9 KB per player row (51 rows for this Game).
+
+### CPU
+
+- The Worker's run parsed only the 230 KB scoreboard (plus hashing) and used **7 ms of the free plan's 10 ms** (pre-game check). It never failed a minute during the Game.
+- `JSON.parse` on this laptop (Node, warm): 559 KB summary 1.4 ms, 222 KB scoreboard 0.6 ms, 44 KB Sleeper 0.1 ms. A Sunday afternoon has up to 9 Live Games at once, so ESPN summaries alone would be about 5 MB per run, several times the free CPU limit once a Worker's slower, colder parse is counted.
 
 ### Fixtures
 
-_To fill in: which saved bodies were trimmed into test fixtures for Sprint 10, and where they live._
+Trimmed (news, odds, images and the like removed) into `site/test/fixtures/` for Sprint 10:
+
+- `espn/scoreboard-upcoming.json`, `espn/scoreboard-live.json` (Q3 14:12), `espn/scoreboard-final.json`
+- `espn/summary-live.json` (Q3 14:12), `espn/summary-final.json` (with the made, missed and blocked FGs and the safety)
+- `sleeper/stats-live.json` (Q3 14:12)
+
+The full recordings stay in `snapshots/live-spike/` (gitignored).
 
 ## Conclusion
 
-_To fill in: does the Hosting decision (Worker polls ESPN, Sleeper as fallback) stand?_
+- **Workers can reach both sources.** ESPN refused the Worker twice for one minute each, so the Leaderboard Worker must keep the last good data through a refused minute and alert only after 3 failures in a row, as planned.
+- **Both sources are fresh enough for a 5-minute refresh.**
+- **The Hosting decision doesn't stand as written:** a free Worker can't parse every Live Game's ESPN summary within 10 ms of CPU. It needs either the Workers Paid plan, or Sleeper's single response as the live stats source. That choice is put to the user before Sprint 10.
