@@ -10,7 +10,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 Sprints 0–8 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Sprint 8 predicts players in parallel processes and downloads nflverse while the odds come in, about 20% faster again, and gives the kicker/D/ST backtest `--jobs`.
 
-Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 is done: the Leaderboard is live at https://ffp-leaderboard.pages.dev with Points So Far, refreshed every 5 minutes. Players appear once their Game has stats. Sprint 11 is in progress: Expected Points from `ffp` (for players whose Games haven't started), kickers and D/ST, ESPN projections as the fallback, and the Projected Total for Live players.
+Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 is done: the Leaderboard is live at https://ffp-leaderboard.pages.dev with Points So Far, refreshed every 5 minutes. Players appear once their Game has stats. Sprint 11 is in progress: Expected Points from `ffp` (for players whose Games haven't started), kickers and D/ST, ESPN projections as the fallback, and the Projected Total for Live players. Written so far: `ffp push` (the signed push) and `ffp schedule` with its Docker setup (see "Expected Points push" below).
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
@@ -244,12 +244,46 @@ ffp push expected-points.json --url http://localhost:8788/api/expected-points
 
 It checks FILE against `site/schema/expected-points.schema.json` first and sends nothing if it fails. It then signs the body as `site/contracts/push-signature.json` says (ADR 0006): `X-FFP-Timestamp` and `X-FFP-Signature`, an HMAC-SHA256 under `LEADERBOARD_PUSH_SECRET`. The secret is read from the environment, else from `.env.leaderboard` in the current directory (written by the setup wizard); it is never printed. A 5xx or a network error is retried once after 10 s, signed afresh; a 400 (schema), 401 (signature or clock), 413 (too large) or other 4xx fails at once with the site's reply. It exits 1 on any failure. The site rejects a timestamp more than 5 minutes off its clock, so the machine's clock must be right.
 
+`ffp schedule` runs `ffp slate --output-dir DIR` and then `ffp push DIR/expected-points.json`, each in its own process, on game days, until stopped:
+
+```bash
+ffp schedule --show 30                      # print the next 30 run times and exit
+ffp schedule --once --output-dir out/       # one slate and push now
+ffp schedule --output-dir out/              # run forever
+ffp schedule --slate-arg=--jobs=4           # pass an argument on to ffp slate (repeatable)
+```
+
+The run times, in US Eastern time:
+
+- A game day is a date with a kickoff still ahead, from the nflverse schedule `ffp` already loads (it holds the whole season, so the scheduler knows next week's game days; it is reloaded at least every 6 hours to pick up flexed Games).
+- On a game day: a run every 30 minutes on :00 and :30 from 08:00 until the day's last kickoff, plus one 10 minutes before each kickoff window. Kickoffs within 30 minutes of a window's first share it, so Sunday's 16:05 and 16:25 Games share one at 15:55. A :00/:30 run 10 minutes or less before a window's run is dropped.
+- After the day's last kickoff nothing runs until the next game day (`ffp slate` leaves out Games that have kicked off).
+
+A typical Sunday (13:00, 16:05/16:25, 20:20): 08:00, 08:30, … 12:30, **12:50**, 13:00, … 15:30, **15:55**, 16:00, 16:30, … 19:30, **20:10**. A run that fails (slate or push; slate gets 45 minutes, push 3) is logged and the scheduler waits for the next run time; it never retries at once. A run that takes longer than 30 minutes skips the run times it covered. Before each run the last `expected-points.json` is deleted, so a failed slate never pushes old numbers.
+
+##### In Docker
+
+The scheduler runs in Docker on your machine (DraftKings and FanDuel refuse datacenter IPs). It needs Docker and `.env.leaderboard` from the setup wizard in the repo root:
+
+```bash
+docker compose up -d --build     # start (or make up); restarts with Docker unless you stop it
+docker compose logs -f           # watch it (or make logs)
+docker compose down              # stop (or make down)
+docker compose run --rm ffp ffp schedule --once --output-dir /data/out   # one run now (make once)
+docker compose run --rm ffp ffp schedule --show 30                       # the next run times (make show)
+```
+
+- **Environment:** `docker-compose.yml` reads `.env.leaderboard` as its `env_file`, so the container gets `LEADERBOARD_PUSH_SECRET` (and `NTFY_TOPIC`, for Sprint 12's alerts). `docker compose config` prints these values: don't paste its output anywhere. The image sets `NFLREADPY_CACHE=filesystem`, `NFLREADPY_CACHE_DIR=/data/nflreadpy` and `FFP_SCHEMA` (the schema `ffp push` checks against).
+- **Data:** the named volume `ffp_ffp-data` at `/data` keeps the nflverse and HTTP caches, the snapshots of each run's odds, and the latest push in `/data/out/expected-points.json`. `docker compose down -v` deletes it.
+- **Your PC must be on and awake** for pushes to happen. When it's off, the Leaderboard keeps its live Points So Far, and players without a fresh push show ESPN's projections, marked "ESPN projection".
+
 ### Layout
 
 ```
 src/ffp/
-  cli.py             `ffp predict`, `ffp push`
+  cli.py             `ffp predict`, `ffp push`, `ffp schedule`
   push.py            `ffp push`: schema check, HMAC signature, POST to /api/expected-points
+  schedule.py        `ffp schedule`: game-day run times (next_run), the slate + push loop
   predict.py         INPUT.md → players and Games → Prop Markets → fits → Score Distributions
   players.py         name → nflverse gsis_id, position, team; next Game
   sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP; kalshi.py: backtest markets
@@ -287,6 +321,7 @@ site/
   test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses; page/fixture.ts generates a week
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
+Dockerfile, docker-compose.yml, Makefile   the Expected Points scheduler in Docker
 ```
 
 ### Docs
