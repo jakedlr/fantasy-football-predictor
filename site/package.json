@@ -6,7 +6,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "build": "esbuild src/page/main.ts --bundle --format=esm --target=es2022 --minify --sourcemap --outfile=public/app.js",
-    "dev": "npm run build && node scripts/serve.mjs"
+    "dev": "npm run build && node scripts/serve.mjs",
+    "deploy:worker": "wrangler deploy --config worker/wrangler.toml",
+    "deploy:pages": "wrangler pages deploy public --project-name ffp-leaderboard --branch main"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
@@ -14,6 +16,7 @@
     "ajv-formats": "3.0.1",
     "esbuild": "0.28.2",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "wrangler": "4.158.0"
   }
 }

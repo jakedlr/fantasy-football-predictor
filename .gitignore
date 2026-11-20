@@ -14,7 +14,3 @@ output.json
 # Cloudflare ids and the home push token (scripts/setup_cloudflare.sh)
 .env.leaderboard
 site/.cloudflare-ids.env
-
-# The Leaderboard page bundle, built by `npm run build` in site/ (the deploy job builds it)
-site/public/app.js
-site/public/app.js.map
