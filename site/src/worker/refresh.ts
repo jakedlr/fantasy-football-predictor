@@ -24,9 +24,14 @@
  * - Worst case with ffp's schedule 576 + ~60 ≈ 640, leaving about 360 a day for the ESPN projections
  *   run's `espn` (S11.5). A leaked push secret used at full rate could reach 576 + 312 = 888 before
  *   `espn`; rotating the secret (scripts/setup_cloudflare.sh, then a deploy) stops it.
- * KV reads: 1 per scoreboard run + 2 per stats run = 864 a day, plus 2 per push, against 100,000.
+ * KV reads: 1 per scoreboard run + 4 per stats run (`scoreboard`, `expected`, `espn`, `leaderboard`)
+ * = 1,440 a day, plus 2 per push, against 100,000.
+ *
+ * The stats run reads KV `expected` and `espn` defensively: a store that isn't the shape kv.ts
+ * describes is ignored with a log (the Leaderboard is built without it), and a malformed player
+ * entry is dropped with a log; neither fails the run.
  */
-import { KEYS, updatedAtOf, type KV } from "./kv.js";
+import { KEYS, updatedAtOf, type EspnStore, type ExpectedStore, type KV } from "./kv.js";
 import { buildLeaderboard, sameContent, serialize } from "./leaderboard.js";
 import { parseScoreboard, type Scoreboard, type Week } from "./scoreboard.js";
 import { sleeperStatsToPlayers } from "./sleeper.js";
@@ -72,12 +77,18 @@ export async function runStats(deps: RunDeps): Promise<Outcome> {
     const stored = await deps.kv.get(KEYS.scoreboard, { type: "text" });
     if (stored === null) throw new Error("no scoreboard in KV yet (the scoreboard run writes it)");
     const scoreboard = JSON.parse(stored) as Scoreboard;
-    const rows = await fetchJson(sleeperStatsUrl(scoreboard.week), deps);
+    const [rows, expectedText, espnText] = await Promise.all([
+      fetchJson(sleeperStatsUrl(scoreboard.week), deps),
+      deps.kv.get(KEYS.expected, { type: "text" }),
+      deps.kv.get(KEYS.espn, { type: "text" }),
+    ]);
     if (!Array.isArray(rows)) throw new Error("Sleeper stats: expected a list of rows");
     const { players } = sleeperStatsToPlayers(rows);
+    const expected = readStore<ExpectedStore>(KEYS.expected, expectedText, "generatedAt", deps.log);
+    const espn = readStore<EspnStore>(KEYS.espn, espnText, "fetchedAt", deps.log);
 
     const now = deps.now();
-    const text = serialize(buildLeaderboard(scoreboard, players, instant(now)));
+    const text = serialize(buildLeaderboard(scoreboard, players, instant(now), { expected, espn }));
     const previous = await deps.kv.get(KEYS.leaderboard, { type: "text" });
     if (previous !== null && sameContent(previous, text)) {
       const last = Date.parse(updatedAtOf(previous) ?? "");
@@ -86,6 +97,77 @@ export async function runStats(deps: RunDeps): Promise<Outcome> {
     await deps.kv.put(KEYS.leaderboard, text);
     return "written";
   });
+}
+
+const POSITIONS: ReadonlySet<string> = new Set(["QB", "RB", "WR", "TE", "K", "D/ST"]);
+const PLAYER_ID = /^(sleeper:\d+|dst:[A-Z]{2,3})$/;
+const TEAM = /^[A-Z]{2,3}$/;
+
+const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
+
+function numbersOnly(x: unknown): boolean {
+  if (!isObject(x)) return false;
+  for (const k in x) if (typeof x[k] !== "number" || !Number.isFinite(x[k])) return false;
+  return true;
+}
+
+/** Whether one `players` entry is an `Expectation` the Leaderboard can use. */
+function usableEntry(id: string, e: unknown): boolean {
+  return PLAYER_ID.test(id) && isObject(e)
+    && typeof e.name === "string" && e.name !== ""
+    && typeof e.team === "string" && TEAM.test(e.team)
+    && typeof e.position === "string" && POSITIONS.has(e.position)
+    && numbersOnly(e.statMeans) && numbersOnly(e.expected);
+}
+
+/**
+ * The last store read per KV key, kept for as long as Cloudflare keeps this isolate. The stores
+ * change every 30 minutes at most, the stats run every 5, and parsing both is a quarter or more of
+ * the run's CPU on a full Sunday (test/worker/cpu.bench.test.ts); comparing the text is far cheaper.
+ * Never mutated after it is cached (buildLeaderboard only reads).
+ */
+const storeCache = new Map<string, { text: string; store: unknown; logs: string[] }>();
+
+/**
+ * KV `expected` or `espn` → the store, or null when it's missing or not the shape kv.ts describes
+ * (logged). Malformed player entries are dropped (one log line). Never throws. An unchanged text
+ * returns the store parsed before, and logs what it logged then.
+ */
+export function readStore<S extends ExpectedStore | EspnStore>(key: string, text: string | null, stamp: "generatedAt" | "fetchedAt", log: (m: string) => void): S | null {
+  if (text === null) return null;
+  let hit = storeCache.get(key);
+  if (hit?.text !== text) {
+    const logs: string[] = [];
+    hit = { text, store: parseStore(key, text, stamp, logs), logs };
+    storeCache.set(key, hit);
+  }
+  for (const m of hit.logs) log(m);
+  return hit.store as S | null;
+}
+
+function parseStore(key: string, text: string, stamp: "generatedAt" | "fetchedAt", logs: string[]): unknown {
+  let store: unknown;
+  try {
+    store = JSON.parse(text);
+  } catch {
+    logs.push(`KV ${key} isn't JSON; ignored`);
+    return null;
+  }
+  if (!isObject(store) || store.schemaVersion !== 1 || !Number.isInteger(store.season) || !Number.isInteger(store.week)
+    || (store.seasonType !== "regular" && store.seasonType !== "postseason") || typeof store[stamp] !== "string" || !isObject(store.players)) {
+    logs.push(`KV ${key} isn't the store kv.ts describes; ignored`);
+    return null;
+  }
+  const players = store.players;
+  let bad = 0;
+  for (const id in players) {
+    if (!usableEntry(id, players[id])) {
+      delete players[id];
+      bad++;
+    }
+  }
+  if (bad > 0) logs.push(`KV ${key}: ${bad} malformed player entr${bad === 1 ? "y" : "ies"} ignored`);
+  return store;
 }
 
 async function guarded(what: string, deps: RunDeps, run: () => Promise<"written" | "unchanged">): Promise<Outcome> {
