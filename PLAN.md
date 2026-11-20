@@ -342,7 +342,8 @@ A public, one-page Leaderboard of every player's Week Points for the current NFL
 | Search | Name and team (abbreviation or nickname), as you type, combined with the position filter. |
 | Table | Rank, Player, Team, Pos, Opponent, Game Status, Week Points, Points So Far. Sorted by Week Points; any header sorts. First 50 rows, then "Show more". Works at phone width. |
 | Time | "Updated 1:05 PM EST · 3 min ago" in the browser's timezone (`Intl.DateTimeFormat`, `Intl.RelativeTimeFormat`); no picker. A "data delayed" banner when data is more than 15 minutes old. |
-| Live stats | ESPN's keyless site API: one scoreboard call per refresh, plus one summary call per Live Game. Kicker distances from the drives' plays; D/ST assembled from the box score. Sleeper's stats endpoint is the fallback. Response shapes are checked on every poll. |
+| Live stats | Sleeper's weekly stats endpoint: one call per refresh for every player, with K distance buckets and D/ST stats ready-made. ESPN's scoreboard gives the NFL Week, its dates and each Game Status. ESPN's per-Game summary is the fallback. Response shapes are checked on every poll; a refused minute keeps the last good data. Final Games keep refreshing 30 minutes after Final and once the next day (ESPN corrected stats for 24 minutes after Final in the live test). Changed 2026-11-20 after S9.1 (ADR 0006). |
+| Cost | Free only: no paid plan, not even as a fallback. |
 | Expected Points | `ffp` on the user's machine in Docker (the prizepicks scheduler pattern): every 30 minutes on game days plus about 10 minutes before each kickoff window, pushed to KV with a narrowly scoped token. Frozen at kickoff. Players without props, or when the machine is off, use ESPN's projections rescored under our Scoring Rules, marked "ESPN projection". |
 | Projected Total | Per Scoring Stat: current value + pregame mean × fraction of the Game left (from quarter and clock; overtime counts as nothing left), then scored, so D/ST tiers and kick distances stay right. A player injured mid-game gets no remainder only once ESPN marks him out (a known limitation). |
 | Hosting | A free Cloudflare Worker on a 5-minute timer writes one small JSON to KV only when it changes and serves it at `/api/leaderboard` through a Pages Function; the page polls every 60 s while visible. Redeploying Pages and GitHub Actions timers can't meet 5 minutes (500 builds a month; timers run 3–16 minutes late). |
@@ -364,11 +365,13 @@ A public, one-page Leaderboard of every player's Week Points for the current NFL
 
 ## Sprint 10 — Walking skeleton: Points So Far on the live site
 
-Parallel pieces: the Worker's ESPN client, Game Status and NFL Week; box scores to QB/RB/WR/TE stats plus the TypeScript scoring port; the page (design direction chosen, then the table, week header, chips, search, last updated). Joined: timer → KV → `/api/leaderboard` → page; deploy on merge.
+First: measure the Worker's CPU on a full-Sunday Sleeper response and scoreboard (recorded 2026-11-22, `snapshots/live-sunday/`). If it doesn't fit 10 ms, apply the free answers in ADR 0006 before building on it.
+
+Parallel pieces: the Worker's ESPN scoreboard client (Game Status, NFL Week); Sleeper stats to QB/RB/WR/TE stat lines plus the TypeScript scoring port; the page (design direction chosen, then the table, week header, chips, search, last updated). Joined: timer → KV → `/api/leaderboard` → page; deploy on merge.
 
 ## Sprint 11 — Complete Week Points
 
-Parallel pieces: K stats (distances) and D/ST stats; `ffp --slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the push to KV; ESPN projections as the fallback and the gsis↔ESPN ID mapping; the Projected Total per Scoring Stat.
+Parallel pieces: K stats (Sleeper's distance buckets) and D/ST stats; `ffp --slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the push to KV; ESPN projections as the fallback and the gsis↔ESPN ID mapping; the Projected Total per Scoring Stat.
 
 ## Sprint 12 — Finish
 

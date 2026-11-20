@@ -153,4 +153,4 @@ The full recordings stay in `snapshots/live-spike/` (gitignored).
 
 - **Workers can reach both sources.** ESPN refused the Worker twice for one minute each, so the Leaderboard Worker must keep the last good data through a refused minute and alert only after 3 failures in a row, as planned.
 - **Both sources are fresh enough for a 5-minute refresh.**
-- **The Hosting decision doesn't stand as written:** a free Worker can't parse every Live Game's ESPN summary within 10 ms of CPU. It needs either the Workers Paid plan, or Sleeper's single response as the live stats source. That choice is put to the user before Sprint 10.
+- **The Hosting decision doesn't stand as written:** a free Worker can't parse every Live Game's ESPN summary within 10 ms of CPU. It needs either the Workers Paid plan, or Sleeper's single response as the live stats source. The user chose Sleeper on the free plan (2026-11-20; no money is spent on this project): see ADR 0006. A full Sunday is recorded on 2026-11-22 to measure its size and CPU.
