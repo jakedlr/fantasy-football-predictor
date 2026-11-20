@@ -1,0 +1,755 @@
+{
+ "_fixture": {
+  "recorded": "2026-11-20T09:31:19Z",
+  "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=10&seasontype=2&dates=2026",
+  "note": "Regular-season Week 10, all Final, CHI DEN PHI TB on bye; trimmed to the fields scoreboard.ts reads"
+ },
+ "leagues": [
+  {
+   "calendar": [
+    {
+     "label": "Preseason",
+     "value": "1",
+     "startDate": "2026-08-06T07:00Z",
+     "endDate": "2026-09-06T06:59Z",
+     "entries": [
+      {
+       "label": "Hall of Fame Weekend",
+       "value": "1",
+       "startDate": "2026-08-06T07:00Z",
+       "endDate": "2026-08-13T06:59Z"
+      },
+      {
+       "label": "Preseason Week 1",
+       "value": "2",
+       "startDate": "2026-08-13T07:00Z",
+       "endDate": "2026-08-20T06:59Z"
+      },
+      {
+       "label": "Preseason Week 2",
+       "value": "3",
+       "startDate": "2026-08-20T07:00Z",
+       "endDate": "2026-08-27T06:59Z"
+      },
+      {
+       "label": "Preseason Week 3",
+       "value": "4",
+       "startDate": "2026-08-27T07:00Z",
+       "endDate": "2026-09-06T06:59Z"
+      }
+     ]
+    },
+    {
+     "label": "Regular Season",
+     "value": "2",
+     "startDate": "2026-09-06T07:00Z",
+     "endDate": "2027-01-13T07:59Z",
+     "entries": [
+      {
+       "label": "Week 1",
+       "value": "1",
+       "startDate": "2026-09-06T07:00Z",
+       "endDate": "2026-09-16T06:59Z"
+      },
+      {
+       "label": "Week 2",
+       "value": "2",
+       "startDate": "2026-09-16T07:00Z",
+       "endDate": "2026-09-23T06:59Z"
+      },
+      {
+       "label": "Week 3",
+       "value": "3",
+       "startDate": "2026-09-23T07:00Z",
+       "endDate": "2026-09-30T06:59Z"
+      },
+      {
+       "label": "Week 4",
+       "value": "4",
+       "startDate": "2026-09-30T07:00Z",
+       "endDate": "2026-10-07T06:59Z"
+      },
+      {
+       "label": "Week 5",
+       "value": "5",
+       "startDate": "2026-10-07T07:00Z",
+       "endDate": "2026-10-14T06:59Z"
+      },
+      {
+       "label": "Week 6",
+       "value": "6",
+       "startDate": "2026-10-14T07:00Z",
+       "endDate": "2026-10-21T06:59Z"
+      },
+      {
+       "label": "Week 7",
+       "value": "7",
+       "startDate": "2026-10-21T07:00Z",
+       "endDate": "2026-10-28T06:59Z"
+      },
+      {
+       "label": "Week 8",
+       "value": "8",
+       "startDate": "2026-10-28T07:00Z",
+       "endDate": "2026-11-04T07:59Z"
+      },
+      {
+       "label": "Week 9",
+       "value": "9",
+       "startDate": "2026-11-04T08:00Z",
+       "endDate": "2026-11-11T07:59Z"
+      },
+      {
+       "label": "Week 10",
+       "value": "10",
+       "startDate": "2026-11-11T08:00Z",
+       "endDate": "2026-11-18T07:59Z"
+      },
+      {
+       "label": "Week 11",
+       "value": "11",
+       "startDate": "2026-11-18T08:00Z",
+       "endDate": "2026-11-25T07:59Z"
+      },
+      {
+       "label": "Week 12",
+       "value": "12",
+       "startDate": "2026-11-25T08:00Z",
+       "endDate": "2026-12-02T07:59Z"
+      },
+      {
+       "label": "Week 13",
+       "value": "13",
+       "startDate": "2026-12-02T08:00Z",
+       "endDate": "2026-12-09T07:59Z"
+      },
+      {
+       "label": "Week 14",
+       "value": "14",
+       "startDate": "2026-12-09T08:00Z",
+       "endDate": "2026-12-16T07:59Z"
+      },
+      {
+       "label": "Week 15",
+       "value": "15",
+       "startDate": "2026-12-16T08:00Z",
+       "endDate": "2026-12-23T07:59Z"
+      },
+      {
+       "label": "Week 16",
+       "value": "16",
+       "startDate": "2026-12-23T08:00Z",
+       "endDate": "2026-12-30T07:59Z"
+      },
+      {
+       "label": "Week 17",
+       "value": "17",
+       "startDate": "2026-12-30T08:00Z",
+       "endDate": "2027-01-06T07:59Z"
+      },
+      {
+       "label": "Week 18",
+       "value": "18",
+       "startDate": "2027-01-06T08:00Z",
+       "endDate": "2027-01-13T07:59Z"
+      }
+     ]
+    },
+    {
+     "label": "Postseason",
+     "value": "3",
+     "startDate": "2027-01-13T08:00Z",
+     "endDate": "2027-02-16T07:59Z",
+     "entries": [
+      {
+       "label": "Wild Card",
+       "value": "1",
+       "startDate": "2027-01-13T08:00Z",
+       "endDate": "2027-01-20T07:59Z"
+      },
+      {
+       "label": "Divisional Round",
+       "value": "2",
+       "startDate": "2027-01-20T08:00Z",
+       "endDate": "2027-01-27T07:59Z"
+      },
+      {
+       "label": "Conference Championships",
+       "value": "3",
+       "startDate": "2027-01-27T08:00Z",
+       "endDate": "2027-02-03T07:59Z"
+      },
+      {
+       "label": "Super Bowl",
+       "value": "4",
+       "startDate": "2027-02-03T08:00Z",
+       "endDate": "2027-02-16T07:59Z"
+      }
+     ]
+    },
+    {
+     "label": "Off Season",
+     "value": "4",
+     "startDate": "2027-02-16T08:00Z",
+     "endDate": "2027-08-01T06:59Z",
+     "entries": []
+    }
+   ]
+  }
+ ],
+ "season": {
+  "type": 2,
+  "year": 2026
+ },
+ "week": {
+  "number": 10,
+  "teamsOnBye": [
+   {
+    "abbreviation": "CHI"
+   },
+   {
+    "abbreviation": "DEN"
+   },
+   {
+    "abbreviation": "PHI"
+   },
+   {
+    "abbreviation": "TB"
+   }
+  ]
+ },
+ "events": [
+  {
+   "id": "401873052",
+   "date": "2026-11-13T01:15Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "21",
+       "team": {
+        "abbreviation": "NYG"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "24",
+       "team": {
+        "abbreviation": "WSH"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873053",
+   "date": "2026-11-15T14:30Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "35",
+       "team": {
+        "abbreviation": "DET"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "10",
+       "team": {
+        "abbreviation": "NE"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873058",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "13",
+       "team": {
+        "abbreviation": "ATL"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "35",
+       "team": {
+        "abbreviation": "KC"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873056",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "27",
+       "team": {
+        "abbreviation": "CLE"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "24",
+       "team": {
+        "abbreviation": "HOU"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873060",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "10",
+       "team": {
+        "abbreviation": "GB"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "30",
+       "team": {
+        "abbreviation": "MIN"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873057",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "23",
+       "team": {
+        "abbreviation": "TEN"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "40",
+       "team": {
+        "abbreviation": "JAX"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873059",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "24",
+       "team": {
+        "abbreviation": "IND"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "22",
+       "team": {
+        "abbreviation": "MIA"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873055",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "17",
+       "team": {
+        "abbreviation": "NO"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "20",
+       "team": {
+        "abbreviation": "CAR"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873054",
+   "date": "2026-11-15T18:00Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "12",
+       "team": {
+        "abbreviation": "NYJ"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "31",
+       "team": {
+        "abbreviation": "BUF"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873062",
+   "date": "2026-11-15T21:05Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "13",
+       "team": {
+        "abbreviation": "LV"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "21",
+       "team": {
+        "abbreviation": "SEA"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873061",
+   "date": "2026-11-15T21:05Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "6",
+       "team": {
+        "abbreviation": "ARI"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "34",
+       "team": {
+        "abbreviation": "LAR"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873063",
+   "date": "2026-11-15T21:25Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "40",
+       "team": {
+        "abbreviation": "DAL"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "46",
+       "team": {
+        "abbreviation": "SF"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873064",
+   "date": "2026-11-16T01:20Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "38",
+       "team": {
+        "abbreviation": "CIN"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "18",
+       "team": {
+        "abbreviation": "PIT"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401873065",
+   "date": "2026-11-17T01:15Z",
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "20",
+       "team": {
+        "abbreviation": "BAL"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "23",
+       "team": {
+        "abbreviation": "LAC"
+       }
+      }
+     ]
+    }
+   ],
+   "status": {
+    "clock": 0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  }
+ ]
+}
