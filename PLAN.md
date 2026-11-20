@@ -366,7 +366,7 @@ A public, one-page Leaderboard of every player's Week Points for the current NFL
 
 ## Sprint 10 — Walking skeleton: Points So Far on the live site
 
-First: measure the Worker's CPU on a full-Sunday Sleeper response and scoreboard (recorded 2026-11-22, `snapshots/live-sunday/`). If it doesn't fit 10 ms, apply the free answers in ADR 0006 before building on it.
+First: measure the Worker's CPU on a full-Sunday Sleeper response and scoreboard (recorded 2026-11-22, `snapshots/live-sunday/`). If it doesn't fit 10 ms, apply the free answers in ADR 0006 before building on it. **S10.1 done 2026-11-20** on a completed full week (research/leaderboard-live-spike.md): Sleeper alone 4–5 ms, the scoreboard alone 2–3 ms, both in one run 6–20 ms. So the scoreboard gets its own cron trigger and KV key, and the stats run reads that key. Sunday's recording re-checks it live.
 
 Parallel pieces: the Worker's ESPN scoreboard client (Game Status, NFL Week); Sleeper stats to QB/RB/WR/TE stat lines plus the TypeScript scoring port; the page (design direction chosen, then the table, week header, chips, search, last updated). Joined: timer → KV → `/api/leaderboard` → page; deploy on merge, handing `LEADERBOARD_PUSH_SECRET` to the site with `wrangler pages secret put`.
 
