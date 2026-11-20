@@ -10,7 +10,7 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 Sprints 0–8 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Sprint 8 predicts players in parallel processes and downloads nflverse while the odds come in, about 20% faster again, and gives the kicker/D/ST backtest `--jobs`.
 
-Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 is done: the Leaderboard is live at https://ffp-leaderboard.pages.dev with Points So Far, refreshed every 5 minutes. Players appear once their Game has stats. Sprint 11 is in progress: Expected Points from `ffp` (for players whose Games haven't started), kickers and D/ST, ESPN projections as the fallback, and the Projected Total for Live players.
+Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 is done: the Leaderboard is live at https://ffp-leaderboard.pages.dev with Points So Far, refreshed every 5 minutes. Players appear once their Game has stats. Sprint 11 is in progress: Expected Points from `ffp` (for players whose Games haven't started), kickers and D/ST, ESPN projections as the fallback, and the Projected Total for Live players. Its first `ffp` piece is in: `ffp slate` writes the Expected Points push (see below).
 
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
@@ -119,6 +119,37 @@ DraftKings and FanDuel are fetched at the same time, each with its own Pacing: a
 - **Pushback:** a book that answers 429 (rate-limited) or 403 (refused) is slowed. It holds all its requests, including those already waiting their turn, and drops to one at a time for the rest of the run. It waits out a 429's `Retry-After` and retries once. If that fails too, the book is left out with one warning, and the other book's odds still count. A 429 asking for more than 10 s fails only that request.
 - **Ctrl-C** stops both books at once and exits with status 130, with no traceback.
 
+### Expected Points for the Leaderboard: `ffp slate`
+
+`ffp slate` writes the Expected Points push for the Leaderboard site: every player the Books price in the current NFL Week's Games that haven't kicked off, plus each of those teams' kicker and D/ST. It needs no INPUT.md.
+
+```bash
+ffp slate                                    # live odds; writes expected-points.json
+ffp slate --output-dir out/ --no-snapshot    # writes out/expected-points.json
+ffp slate --fixtures research/fixtures --now 2026-11-16T12:00:00Z   # offline, on the recorded responses
+```
+
+| Option | Meaning |
+|---|---|
+| `--fixtures DIR` | Replay recorded sportsbook responses, nflverse CSVs and Sleeper's player list (`sleeper_players_nfl.json`) instead of fetching anything. |
+| `--now TIME` | As if it were this time (ISO 8601, UTC unless an offset is given). It picks the NFL Week and its Games, and is the push's `generatedAt`; without it, `generatedAt` is the real run time. |
+| `--jobs N` | Worker processes for predicting players, as for `ffp predict`. |
+| `--output-dir DIR` | Where `expected-points.json` (gitignored) is written. Default is `.`. It is written whole or not at all. |
+| `--output FILE` | Write the push JSON to this file instead. |
+| `--snapshots DIR` / `--no-snapshot` | As for `ffp predict`. |
+
+What it does:
+
+- **The NFL Week** is ESPN's, as the Leaderboard's is: a week starts on the first Wednesday, 3 AM Eastern, after the previous week's last kickoff. Postseason weeks are numbered as ESPN and Sleeper number them (Wild Card is week 1, the Super Bowl week 4), with `seasonType` `postseason`.
+- **The players:** both Books' Prop Markets for every Game of the week that hasn't kicked off. Each Book name is matched to the roster by name and the Book's team, among the QB/RB/WR/TE of the Game's two teams. A name that matches nobody, or two players, is logged and left out. Each team adds its active kicker on the nflverse roster and its D/ST. The fit, the simulation, the workers (`--jobs`) and the Pacing are `ffp predict`'s.
+- **Expected Points** is the Score Distribution's mean. The same 20,000 draws are scored under each Leaderboard Scoring Rules option (`ppr`, `half-ppr`, `standard`, `espn-league`), so a player is fitted and simulated once. Kickers and D/ST are scored on their draws, not their means, since their tiers aren't linear.
+- **`statMeans`**, each Scoring Stat's mean in the draws, let the Leaderboard project a Live player's total stat by stat. A QB, RB, WR or TE has `ffp.scoring`'s offensive stats, including the Base Rate stats (fumbles lost, 2-pt). A kicker has `pat_made`, `pat_missed`, `fg_missed` and FGs made by Sleeper's distance buckets (`fgm_0_19` … `fgm_60p`). A D/ST has its counts plus `points_allowed_all`, `opponent_defensive_tds_points`, `opponent_return_tds_points` and `yards_allowed`. A stat that is missing counts as 0. A mean below 0 is sent as 0, the schema's minimum.
+- **Ids:** players are keyed by Sleeper id. A D/ST's id is its team as Sleeper spells it (`LAR` for nflverse's `LA`; every other code is the same). Sleeper's player list (about 15 MB) is downloaded at most once a day, and kept trimmed in `.cache/sleeper/players-<date>.json`. If a download fails, the newest saved list is used. Sleeper's list had a gsis_id for only about a fifth of the rostered players and an ESPN id for about a quarter (November 2026). So a player's Sleeper id comes from the list's gsis_id, else from nflverse's roster `sleeper_id`, else from the one list entry with his name and team. His ESPN id is the list's, else nflverse's. A player with no Sleeper id is left out and logged. `idMap` maps the Sleeper id to the ESPN id for every QB, RB, WR, TE and K that Sleeper lists on a team playing this week, priced or not.
+
+The file follows [site/schema/expected-points.schema.json](site/schema/expected-points.schema.json), and `pytest` checks it against the schema. It prints one summary line: the number of players, Games, ids and bytes, and the run time. A second line counts the skipped players by reason.
+
+Exit status: 0 once the file is written. If no Game of the week is left, the file still has an empty `players` list. 1 when neither Book answered, Sleeper's list can't be had, or the file can't be written: then nothing is written, so an older file stays as it was. 130 on Ctrl-C.
+
 ## Scoring Rules
 
 The bundled default is `src/ffp/rules/espn-league.json`. Presets `standard`, `half-ppr`, `ppr` and `sleeper` are built in:
@@ -131,7 +162,7 @@ A rules file's `kicker` section scores FGs by distance tiers, plus PATs and miss
 ## Development
 
 ```bash
-pytest                 # full offline suite (tests never touch the network)
+pytest                 # full offline suite (tests never touch the network; jsonschema checks the push)
 pytest -m live         # live smoke tests against the real sportsbooks
 ```
 
@@ -237,10 +268,12 @@ Both use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; 
 
 ```
 src/ffp/
-  cli.py             `ffp predict`
+  cli.py             `ffp predict`, `ffp slate`
+  slate.py           `ffp slate`: the NFL Week's priced players, K and D/ST → the Expected Points push JSON
   predict.py         INPUT.md → players and Games → Prop Markets → fits → Score Distributions
   players.py         name → nflverse gsis_id, position, team; next Game
-  sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP; kalshi.py: backtest markets
+  sources/           DraftKings / FanDuel parsers, live fetch, paced HTTP; kalshi.py: backtest markets;
+                     sleeper.py: Sleeper's player list → Sleeper and ESPN ids
   markets.py, odds.py, fair.py   Prop Market types, devig, Fair Probabilities
   distributions.py   Stat Distribution families and their fits
   base_rates.py      fumbles lost and 2-pt from nflverse Base Rates

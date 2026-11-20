@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ffp import predict as pipeline
+from ffp import slate
 from ffp.markets import parse_utc
 from ffp.params import CORRELATION_KINDS
 from ffp import weekly
@@ -81,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="where live runs save their raw responses and Fair Probabilities (default snapshots/)",
     )
     predict.add_argument("--no-snapshot", action="store_true", help="don't save a snapshot of a live run")
+    slate.add_parser(commands)
     return parser
 
 
@@ -157,6 +159,8 @@ class _Background:
 def _main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    if args.command == "slate":
+        return slate.run(args)
     rules = load_rules(args.scoring)
     names = pipeline.read_input(args.input)
     now = args.now or datetime.now(timezone.utc)
