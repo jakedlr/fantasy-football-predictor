@@ -31,7 +31,7 @@ export { KEYS };
 /** An unchanged Leaderboard is still rewritten, with a new updatedAt, once it is this old. */
 export const HEARTBEAT_MINUTES = 10;
 const DEFAULT_TIMEOUT_MS = 10_000;
-/** As in the S9.1 recorder (scripts/record_live.py). K and DEF rows are skipped until Sprint 11. */
+/** As in the S9.1 recorder (scripts/record_live.py). K and DEF rows become kicker and D/ST lines (S11.1). */
 const SLEEPER_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"] as const;
 
 export interface RunDeps {

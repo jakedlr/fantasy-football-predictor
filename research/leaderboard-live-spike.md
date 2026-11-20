@@ -184,3 +184,41 @@ Measured with `wrangler tail --config site/worker/wrangler.toml` over 10:22–10
 | Scoreboard (`2-59/5`) | 2 (both "unchanged") | 3, 4 | 183–205 |
 
 A full Sunday has about 15 times as many rows. The S10.1 probe put a full week's Sleeper parse at 4–5 ms, so the stats run should land around 7–9 ms or more: scoring under four Scoring Rules and building the Leaderboard JSON also grow with rows. That is close to the 10 ms limit. Check it with `wrangler tail` during Sunday's Games.
+
+## K and D/ST from Sleeper (S11.1, 2026-11-20)
+
+Sleeper's completed 2026 Week 10 for K and DEF (63 rows: 35 K, 28 DEF; trimmed to `site/test/fixtures/sleeper/stats-week10-k-dst.json`) and its season-to-date totals were checked against Sleeper's own `pts_std` and against nflverse play-by-play as ffp builds D/ST lines (`scripts/build_params.py dst_games`, saved beside the fixture as `nflverse-week10-dst.json`). The scripts were throwaway; the checks that matter are tests in `site/test/worker/sleeper-k-dst.test.ts`.
+
+**Kicker** (`sleeper.ts` `SLEEPER_KICKER_KEYS`):
+
+| Sleeper | ffp | Evidence |
+|---|---|---|
+| `fgm_0_19`, `fgm_20_29`, `fgm_30_39`, `fgm_40_49`, `fgm_50_59`, `fgm_60p` | the same bucket keys (`scoreKicker` scores each at its bucket's min) | they sum to `fgm` on every row; nflverse FG distances agree for 28 of 28 teams |
+| `xpm` | `pat_made` | nflverse 28 of 28 |
+| `xpmiss` | `pat_missed` | equals `xpa − xpm` on every row; nflverse 28 of 28 |
+| `fgmiss` | `fg_missed` | equals `fga − fgm` on every row (a blocked FG is a miss) |
+
+Not read: `fgm`, `fgm_yds`, `fgm_lng`, `fgm_50p`, `fgmiss_*`, `fga`, `xpa`. Sleeper's own `pts_std` (ppr's kicker tiers, 3/4/5, plus −1 per PAT missed) matches 27 of 28 Week 10 kickers; the other was given 1 point for a forced fumble on a return (`st_ff`), which ffp has no kicker stat for. Over the season, the 4 kickers with a 60+ FG score 1 point less in Sleeper's `pts_std` than under ffp's `sleeper` preset, which gives 60+ yards 6 points: Sleeper's stats endpoint scores 50+ as 5.
+
+**D/ST** (`SLEEPER_DST_KEYS` and `dstStatLine`):
+
+| Sleeper | ffp | Evidence |
+|---|---|---|
+| `sack` | `sacks` | nflverse 28 of 28 |
+| `int` | `interceptions` | 28 of 28 |
+| `fum_rec` + `def_st_fum_rec` | `fumble_recoveries` | `fum_rec` leaves out special-teams recoveries; with them 27 of 28 (alone 26) |
+| `ff` + `def_st_ff` | `forced_fumbles` | likewise; with them 25 of 28 (alone 21) |
+| `safe` | `safeties` | 28 of 28; season 30 of 30 |
+| `blk_kick` | `blocked_kicks` | 28 of 28; season 30 of 30 |
+| `def_td` | `interception_return_tds` (both kinds) | equals nflverse INT + fumble return TDs, 28 of 28; season 30 of 30 |
+| `def_st_td` | `kickoff_return_tds` (all three kinds) | equals kickoff + punt + blocked-kick return TDs, 28 of 28; season 30 of 30 |
+| `yds_allow` | `yards_allowed` | net of sack yards, as ffp's: 28 of 28; season 30 of 30 |
+| `pts_allow` + 6 × the opponent's `def_td` | `points_allowed_all` | see below: 28 of 28 |
+| 6 × the opponent's `def_td` | `opponent_defensive_tds_points` | nflverse also counts the try |
+| 6 × the opponent's `def_st_td` | `opponent_return_tds_points` | likewise |
+
+- **`pts_allow` is the opponent's points less 6 per INT or fumble return TD it scored.** The try after the TD stays in (Miami's pick-six with its PAT: 24 scored, `pts_allow` 18). That matched 28 of 28 Week 10 teams and 27 of 29 season totals (two teams 2 points off, not traced). Return TDs stay in. So `points_allowed_all` adds back 6 per defensive TD from the opponent's own DEF row (`opponent`), and every Leaderboard option, which leaves defensive TDs out, gets exactly Sleeper's Points Allowed.
+- **Gaps.** Sleeper doesn't split INT from fumble return TDs, or kickoff from punt and blocked-kick return TDs. All four Leaderboard options score every kind 6, so the points are exact; a test fails if a rules change breaks that. The try after an opponent's defensive or return TD can't be separated, so a rule leaving those TDs out leaves out 6 per TD where ffp's nflverse lines leave out 7 or 8. Three forced fumbles and one recovery in Week 10 are credited differently by Sleeper's data provider and nflverse (LV, NYJ, SF).
+- **Sleeper's own `pts_std`** (ffp's `sleeper` D/ST preset, with Points Allowed tiered on `pts_allow`) matches 27 of 27 Week 10 D/STs that have one, and 32 of 32 season totals, once a special-teams recovery is scored 1 (Sleeper's rule) instead of ffp's 2. `misc_td`, `def_2pt`, `fum_rec_ez_tds` and `td` are not in it and aren't read.
+- **Under the four Leaderboard options,** the 25 Week 10 D/STs without a credit dispute score the same from Sleeper's lines as from nflverse's.
+- **CPU.** On Node (warm, this laptop), converting a 707-row, 635 KB response (14 copies of the live Game's 46 offense rows plus the 63 real K and DEF rows) takes 0.14 ms, of which the K and DEF rows are about 0.02 ms; `JSON.parse` of the same text takes 1.5 ms.
