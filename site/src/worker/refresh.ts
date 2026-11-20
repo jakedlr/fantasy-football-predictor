@@ -1,24 +1,32 @@
 /**
- * The Worker's two cron runs (PLAN.md S10.1, research/leaderboard-live-spike.md "Full-week CPU"):
+ * The Worker's three cron runs (PLAN.md S10.1 and S11.5, research/leaderboard-live-spike.md
+ * "Full-week CPU" and "ESPN projections"):
  *
  * - Scoreboard run: ESPN's scoreboard → KV `scoreboard` (the NFL Week and its Games).
  * - Stats run: KV `scoreboard` + Sleeper's weekly stats → KV `leaderboard`, which
  *   /api/leaderboard serves.
+ * - ESPN projections run: KV `scoreboard` + `idmap` + one position group of ESPN's weekly
+ *   projections → KV `espn` (espn.ts), the fallback for players without `ffp` Expected Points.
  *
- * ESPN's scoreboard and Sleeper's stats together don't fit the free plan's 10 ms of CPU, so each
- * run parses one response. fetch, KV and the clock are passed in, so tests use fakes.
+ * No two sources fit the free plan's 10 ms of CPU together, so each run parses one response; ESPN's
+ * projections for all six positions (2.9 MB) don't fit either, so each run takes one group of
+ * 0.7–0.9 MB. fetch, KV and the clock are passed in, so tests use fakes.
  *
  * A failed run logs, returns `failed` and writes nothing: the last good data stays in KV.
  *
- * KV write budget (free plan: 1,000 writes a day). Each cron fires every 5 minutes, 288 times a day:
+ * KV write budget (free plan: 1,000 writes a day). The scoreboard and stats crons fire every
+ * 5 minutes, 288 times a day; the ESPN cron 3 times an hour, 72 times a day:
  * - `scoreboard` is written only when it changes. While a Game is Live its clock moves, so at worst
  *   288 a day; otherwise only at kickoffs and Finals.
  * - `leaderboard` is written when anything but updatedAt changes (so every run while a Game is Live),
  *   and otherwise once updatedAt is HEARTBEAT_MINUTES old, so "Updated … ago" on the page means
  *   the last successful refresh within that bound: 1,440 / 10 = 144 a day. At worst 288 a day.
- * - Worst case 288 + 288 = 576 a day; a quiet day 144 + a handful. That leaves over 400 a day for
- *   Sprint 11's Expected Points push (every 30 minutes on game days, 48 a day, plus kickoff windows).
- * KV reads: 1 per scoreboard run + 2 per stats run = 864 a day, against 100,000.
+ * - `espn` is written only when a group's players changed: at worst 72 a day, never in the
+ *   postseason.
+ * - The Worker's worst case is 288 + 288 + 72 = 648 a day; a quiet day 144 + 72 + a handful.
+ *   /api/expected-points adds about 48–100 a day (`expected` per push, `idmap` only when it
+ *   changes), so at worst about 750 a day, 250 under the limit.
+ * KV reads: 1 per scoreboard run + 2 per stats run + 3 per ESPN run = 1,080 a day, against 100,000.
  */
 import { buildEspnStore, EspnProjectionsError, groupAt, instant as espnInstant, parseProjections, projectionsRequest } from "./espn.js";
 import { KEYS, updatedAtOf, type EspnStore, type IdMapStore, type KV } from "./kv.js";

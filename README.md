@@ -228,7 +228,7 @@ It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages do
 
 Merging to `main` with changes under `site/` deploys the site (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It runs the site's type-check and Vitest suite, builds the page (`npm run build`), then:
 
-1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats into the Leaderboard JSON in KV;
+1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats into the Leaderboard JSON in KV. A third run, at minutes 9, 29 and 49, reads one position group of ESPN's weekly fantasy projections (QB+TE, RB+K+D/ST, WR, so each group hourly), rescores them under every Scoring Rules option and stores them in KV `espn` as the fallback for players without `ffp` Expected Points;
 2. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` from `site/functions/`.
 
 Both use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`) and run the same two scripts. Until the Worker's first runs, `/api/leaderboard` answers 503.
@@ -263,11 +263,11 @@ scripts/setup_cloudflare.sh  interactive Cloudflare and GitHub setup for the Lea
 scripts/export_scoring_contract.py   site/contracts/ from ffp.scoring (ADR 0005)
 scripts/record_live.py, analyze_live_spike.py   the S9.1 live test recorder and analysis
 site/
-  src/worker/      the cron Worker: ESPN scoreboard, Sleeper stats, scoring port → KV (README inside)
+  src/worker/      the cron Worker: ESPN scoreboard, Sleeper stats, ESPN projections, scoring port → KV (README inside)
   src/page/        the page's TypeScript: filters, ranking, time, poll schedule (pure) and main.ts (DOM)
   public/          the static page: index.html, styles.css, self-hosted fonts; app.js is built
   scripts/serve.mjs  local preview with a stub /api/leaderboard
-  worker/          the Worker's wrangler.toml (two cron triggers, KV binding)
+  worker/          the Worker's wrangler.toml (three cron triggers, KV binding)
   functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV
   wrangler.toml    the Pages project (public/ and functions/, KV binding)
   schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples

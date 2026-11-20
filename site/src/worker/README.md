@@ -1,4 +1,4 @@
-# Worker (Sprint 10)
+# Worker (Sprints 10–11)
 
 The Leaderboard's cron Worker (ADR 0006), `ffp-leaderboard-cron`, configured in `site/worker/wrangler.toml`. Each module has a Vitest suite in `site/test/worker/`.
 
@@ -7,19 +7,21 @@ Pure modules, no fetch, KV or clock:
 - `scoreboard.ts`: ESPN scoreboard → NFL Week, its dates, and each Game with its Game Status.
 - `sleeper.ts`: Sleeper weekly stats rows → `ffp.scoring` stat lines (QB/RB/WR/TE in Sprint 10; K and D/ST in Sprint 11).
 - `scoring.ts`: the TypeScript port of `ffp.scoring`, held to `site/contracts/` (ADR 0005).
+- `espn.ts`: ESPN's weekly fantasy projections (`kona_player_info`, `leaguedefaults/3`) → `statMeans` in the Leaderboard's stat keys and Expected Points under every Scoring Rules option, and the merge into KV `espn` (players through `idmap` to `sleeper:<id>`, D/STs as `dst:<TEAM>`, team and kickoff from the scoreboard's Game, frozen at kickoff). The stat-id map is checked against ESPN's own PPR points for every recorded player. Kickers: ESPN's under-40 band goes to `fgm_30_39` (0–39 is one tier in every option), 50+ less 60+ to `fgm_50_59`. D/ST Points and Yards Allowed tiers are scored from ESPN's tier probabilities, not the tier of the mean, which would overstate a D/ST by about 4 points.
 - `leaderboard.ts`: scoreboard + Sleeper players → the Leaderboard JSON (`site/schema/leaderboard.schema.json`). Players join their Game by team; a team with no Game (bye) is left out. Points So Far under every Scoring Rules option, to 2 decimals. Until Sprint 11 adds Expected Points, Week Points are Points So Far for Live and Final Games, and 0 (Points So Far null) for Upcoming Games; `expected` and `expectedSource` are null.
 
 The joins, with fetch, KV and the clock passed in:
 
 - `kv.ts`: the KV slice, the binding (`LEADERBOARD`), the keys, and how the stored Leaderboard text begins. The Pages Function uses it too.
-- `refresh.ts`: the two runs. Each fetches one source (S10.1: both in one run don't fit 10 ms of CPU), with the User-Agent `ffp-leaderboard/0.1 (non-commercial; …)` and a 10 s timeout. A failed run logs and writes nothing, so the last good data stays.
+- `refresh.ts`: the three runs. Each fetches one source (S10.1: two in one run don't fit 10 ms of CPU), with the User-Agent `ffp-leaderboard/0.1 (non-commercial; …)` and a 10 s timeout. A failed run logs and writes nothing, so the last good data stays.
   - **Scoreboard run** (`2-59/5 * * * *`): ESPN's scoreboard → KV `scoreboard`, written only when it changed.
   - **Stats run** (`*/5 * * * *`): KV `scoreboard` + Sleeper's weekly stats (`season_type=post` in the postseason) → KV `leaderboard`. Written when anything but `updatedAt` changed, with a new `updatedAt`; an unchanged Leaderboard is rewritten once its `updatedAt` is 10 minutes old, so the page's "Updated … ago" means the last successful refresh.
-  - KV writes: at most 288 + 288 = 576 a day (both keys change every run while a Game is Live), against the free plan's 1,000. The arithmetic is in `refresh.ts`.
+  - **ESPN projections run** (`9,29,49 * * * *`): KV `scoreboard` + `idmap` + one position group of ESPN's projections (QB+TE at :09, RB+K+D/ST at :29, WR at :49; all six at once are 2.9 MB, too much for 10 ms of CPU) → KV `espn`, written only when the players changed. Unmapped ESPN players and teams without a Game are left out and counted in the log; without `idmap` it still writes the D/STs. Nothing in the postseason (ESPN's fantasy game has no playoff weeks).
+  - KV writes: at most 288 + 288 + 72 = 648 a day (the first two change every run while a Game is Live; `espn` at most once a run), plus /api/expected-points' 48–100, against the free plan's 1,000. The arithmetic is in `refresh.ts`.
 - `index.ts`: the Worker's `scheduled` handler, dispatching on `controller.cron`. A failed run throws after keeping the last good data, so Cloudflare's cron log shows it.
 
 `site/functions/api/leaderboard.ts` serves KV `leaderboard` at `/api/leaderboard`: `Cache-Control: public, max-age=60`, an ETag (the Leaderboard's `updatedAt`), 304 on `If-None-Match`, and 503 with a small JSON error before the Worker's first write.
 
 Tests run in plain Vitest with a Map-backed KV and recorded responses (`site/test/helpers/fakes.ts`). `@cloudflare/vitest-pool-workers` needs vitest 4 and the site pins vitest 5, so it isn't used. Deploying is `npm run deploy:worker` and `npm run deploy:pages` (root README, "Deploy").
 
-CPU: on Node, the stats run on a full week of Sleeper rows (693 KB, about 500 listed players) takes about 6–8 ms, of which parsing Sleeper's JSON is 4–5 ms; converting, scoring four rule sets, serializing and comparing add about 2.5 ms. Sunday's live recording re-checks it on Cloudflare.
+CPU: on Node, the stats run on a full week of Sleeper rows (693 KB, about 500 listed players) takes about 6–8 ms, of which parsing Sleeper's JSON is 4–5 ms; converting, scoring four rule sets, serializing and comparing add about 2.5 ms. Sunday's live recording re-checks it on Cloudflare. The ESPN projections run on Node (warm, median): 1.8–2.9 ms per group of 0.7–0.9 MB (research/leaderboard-live-spike.md, "ESPN projections"); check it on Cloudflare with `wrangler tail` after the deploy.
