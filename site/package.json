@@ -4,12 +4,15 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/page/main.ts --bundle --format=esm --target=es2022 --minify --sourcemap --outfile=public/app.js",
+    "dev": "npm run build && node scripts/serve.mjs"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   }

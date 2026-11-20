@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-state="loading">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ffp Leaderboard</title>
+<meta name="description" content="Every NFL player's fantasy points this week, live, under PPR, Half PPR, Standard or an ESPN league's Scoring Rules.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ececea">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e0f11">
+<link rel="preload" href="/fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%230e0f11'/%3E%3Crect x='6' y='22' width='20' height='3' fill='%23f5d33c'/%3E%3C/svg%3E">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1><span class="mark">ffp</span><span id="week-title">Leaderboard</span><span class="dates" id="week-dates"></span></h1>
+    <p class="updated" id="updated" hidden><span class="pulse" aria-hidden="true"></span>Updated <time id="updated-time"></time> · <span id="updated-ago"></span></p>
+  </header>
+
+  <nav class="strip" id="strip" aria-label="Games this NFL Week; choose one to show only its players"><span class="bug sk-bug" aria-hidden="true"></span><span class="bug sk-bug" aria-hidden="true"></span><span class="bug sk-bug" aria-hidden="true"></span><span class="bug sk-bug" aria-hidden="true"></span><span class="bug sk-bug" aria-hidden="true"></span><span class="bug sk-bug" aria-hidden="true"></span><span class="bug sk-bug" aria-hidden="true"></span></nav>
+
+  <div class="banner" id="banner" role="status" hidden>Data delayed: last updated <span id="banner-ago"></span>. Live points may be behind.</div>
+
+  <div class="controls">
+    <div class="chips" id="positions" role="group" aria-label="Position"></div>
+    <fieldset class="rules">
+      <legend>Scoring</legend>
+      <div class="seg" id="rules"><label><input type="radio" name="rule" value="ppr" checked>PPR</label><label><input type="radio" name="rule" value="half-ppr">Half PPR</label><label><input type="radio" name="rule" value="standard">Standard</label><label><input type="radio" name="rule" value="espn-league">ESPN league</label></div>
+    </fieldset>
+    <div class="find">
+      <input id="q" type="search" placeholder="Search player or team" aria-label="Search player or team"
+        autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search">
+      <label class="sort-m">Sort <select id="sort-select">
+        <option value="week:desc">Week Points</option>
+        <option value="soFar:desc">Points So Far</option>
+        <option value="status:asc">Game Status</option>
+        <option value="name:asc">Player</option>
+        <option value="team:asc">Team</option>
+        <option value="pos:asc">Position</option>
+        <option value="opp:asc">Opponent</option>
+      </select></label>
+      <span class="shown" id="shown" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <caption class="vh" id="caption">Leaderboard</caption>
+      <thead><tr>
+        <th class="c-rank" scope="col"><button type="button" data-sort="rank">Rank</button></th>
+        <th class="c-player" scope="col"><button type="button" data-sort="name">Player</button></th>
+        <th class="c-team" scope="col"><button type="button" data-sort="team">Team</button></th>
+        <th class="c-pos" scope="col"><button type="button" data-sort="pos">Pos</button></th>
+        <th class="c-opp" scope="col"><button type="button" data-sort="opp">Opponent</button></th>
+        <th class="c-status" scope="col"><button type="button" data-sort="status">Game Status</button></th>
+        <th class="c-week num" scope="col" aria-sort="descending"><button type="button" data-sort="week" data-dir="desc">Week Points</button></th>
+        <th class="c-sofar num" scope="col"><button type="button" data-sort="soFar">Points So Far</button></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <button type="button" class="more" id="more" hidden>Show more</button>
+
+  <footer>
+    <p>Week Points are Points So Far once a Game is Final, the Projected Total while it is Live, and Expected Points before kickoff. The bar shows how much is already scored: full when Final, filling while Live, empty before kickoff.</p>
+    <p>ffp Leaderboard is a free, non-commercial fan project. Stats from Sleeper; Game Status and fallback projections from ESPN. Not affiliated with or endorsed by the NFL, ESPN or Sleeper.</p>
+  </footer>
+</div>
+<noscript><p class="wrap">The Leaderboard needs JavaScript to load this week’s points.</p></noscript>
+</body>
+</html>
