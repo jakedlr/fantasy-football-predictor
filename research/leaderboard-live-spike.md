@@ -154,3 +154,22 @@ The full recordings stay in `snapshots/live-spike/` (gitignored).
 - **Workers can reach both sources.** ESPN refused the Worker twice for one minute each, so the Leaderboard Worker must keep the last good data through a refused minute and alert only after 3 failures in a row, as planned.
 - **Both sources are fresh enough for a 5-minute refresh.**
 - **The Hosting decision doesn't stand as written:** a free Worker can't parse every Live Game's ESPN summary within 10 ms of CPU. It needs either the Workers Paid plan, or Sleeper's single response as the live stats source. The user chose Sleeper on the free plan (2026-11-20; no money is spent on this project): see ADR 0006. A full Sunday is recorded on 2026-11-22 to measure its size and CPU.
+
+## Full-week CPU on Cloudflare (S10.1, 2026-11-20)
+
+A throwaway Worker (`ffp-cpu-probe`, deleted afterwards) fetched Sleeper's completed Week 10 (all six positions: 693 KB, 694 rows, the size of a full Sunday), ESPN's current scoreboard (236 KB, 13 Games), or both. It parsed them and summed a rough PPR line per row. CPU time per request, from `wrangler tail`:
+
+| Run | CPU (ms) | Wall (ms) |
+|---|---|---|
+| Sleeper only (3 runs) | 4, 5, 5 | 11–13 |
+| Scoreboard only (3 runs) | 2, 2, 3 | 30–37 |
+| Both in one run (10 runs) | 6, 6, 10, 10, 12, 12, 13, 13, 18, 20 | 30–137 |
+
+- **Both sources in one run don't fit 10 ms reliably:** the median is 12 ms and the worst is 20 ms. Every run succeeded, because Cloudflare doesn't cut a Worker off exactly at 10 ms, but that slack isn't promised.
+- **Each source on its own fits,** with room for scoring: Sleeper 4–5 ms, the scoreboard 2–3 ms.
+- **So, applying ADR 0006's free answer:**
+  - The scoreboard gets its own cron trigger and KV key, written only when Game Statuses, scores or the clock change.
+  - The stats run reads that small key instead of ESPN's 236 KB.
+- **Still to do:**
+  - Sunday's recording (`snapshots/live-sunday/`) re-checks this with a live mid-slate response.
+  - The joined Worker's own CPU (scoring under four rule sets, building the Leaderboard JSON) is measured when it's built.
