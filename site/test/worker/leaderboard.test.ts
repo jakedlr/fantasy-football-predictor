@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { buildLeaderboard, round2, sameContent, serialize, updatedAtOf } from "../../src/worker/leaderboard.js";
 import type { Game, Scoreboard } from "../../src/worker/scoreboard.js";
 import { RULES, RULES_NAMES, score } from "../../src/worker/scoring.js";
-import type { SleeperPlayer } from "../../src/worker/sleeper.js";
+import type { SleeperOffensePlayer } from "../../src/worker/sleeper.js";
 import { readJson } from "../helpers/fakes.js";
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -41,7 +41,7 @@ const scoreboard: Scoreboard = {
   ],
 };
 
-const player = (over: Partial<SleeperPlayer>): SleeperPlayer => ({
+const player = (over: Partial<SleeperOffensePlayer>): SleeperOffensePlayer => ({
   kind: "offense",
   id: "sleeper:1",
   name: "Pat Doe",

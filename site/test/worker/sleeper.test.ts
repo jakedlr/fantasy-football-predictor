@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { RULES, RULES_NAMES, score, type ScoringRules } from "../../src/worker/scoring.js";
-import { SLEEPER_OFFENSE_KEYS, SleeperShapeError, sleeperStatsToPlayers, type SleeperPlayer } from "../../src/worker/sleeper.js";
+import { SLEEPER_OFFENSE_KEYS, SleeperShapeError, sleeperStatsToPlayers, type SleeperOffensePlayer } from "../../src/worker/sleeper.js";
 
 const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 // One Game, live in Q3 (S9.1), straight from Sleeper.
@@ -15,7 +15,13 @@ const ppr = RULES.ppr!;
 // Everything else on an offensive line matches, so this is the rule Sleeper's number is checked against.
 const sleeperPpr: ScoringRules = { ...ppr, offense: { ...ppr.offense, passing_interceptions: -1 } };
 
-const byId = (players: SleeperPlayer[], id: string) => {
+/** Sleeper's offensive players only (QB/RB/WR/TE); K and D/ST rows have their own tests. */
+const offenseOf = (rows: readonly unknown[]) => {
+  const week = sleeperStatsToPlayers(rows);
+  return { ...week, players: week.players.filter((p): p is SleeperOffensePlayer => p.kind === "offense") };
+};
+
+const byId = (players: SleeperOffensePlayer[], id: string) => {
   const p = players.find((x) => x.id === id);
   if (!p) throw new Error(`no ${id}`);
   return p;
@@ -31,7 +37,7 @@ const row = (over: Record<string, unknown> = {}) => ({
 
 describe("sleeperStatsToPlayers: one row", () => {
   it("keys the player by Sleeper id, with name, team, position and Sleeper's game id", () => {
-    const { players } = sleeperStatsToPlayers([row({ player_id: "9758", team: "HOU" })]);
+    const { players } = offenseOf([row({ player_id: "9758", team: "HOU" })]);
     expect(players).toEqual([
       { kind: "offense", id: "sleeper:9758", name: "Pat Doe", team: "HOU", position: "QB", sleeperGameId: "202611113", stats: {} },
     ]);
@@ -44,7 +50,7 @@ describe("sleeperStatsToPlayers: one row", () => {
       stats[sleeperKey] = i + 1;
       expected[stat] = i + 1;
     });
-    expect(sleeperStatsToPlayers([row({ stats })]).players[0]!.stats).toEqual(expected);
+    expect(offenseOf([row({ stats })]).players[0]!.stats).toEqual(expected);
   });
 
   it("covers every offensive Scoring Stat with Sleeper's key names", () => {
@@ -71,7 +77,7 @@ describe("sleeperStatsToPlayers: one row", () => {
       row({ player_id: "3", stats: null }),
       row({ player_id: "4", stats: undefined }),
     ];
-    const { players } = sleeperStatsToPlayers(rows);
+    const { players } = offenseOf(rows);
     expect(players.map((p) => [p.id, p.stats])).toEqual([
       ["sleeper:1", {}],
       ["sleeper:2", {}],
@@ -82,12 +88,12 @@ describe("sleeperStatsToPlayers: one row", () => {
   });
 
   it("keeps negative yards and leaves out non-numbers", () => {
-    const { players } = sleeperStatsToPlayers([row({ stats: { rec_yd: -1, rush_yd: 0, pass_yd: null, rec: "2" } })]);
+    const { players } = offenseOf([row({ stats: { rec_yd: -1, rush_yd: 0, pass_yd: null, rec: "2" } })]);
     expect(players[0]!.stats).toEqual({ receiving_yards: -1, rushing_yards: 0 });
   });
 
   it("lists a FB as RB, and a non-offense player at his first offense fantasy position", () => {
-    const { players } = sleeperStatsToPlayers([
+    const { players } = offenseOf([
       row({ player_id: "1", player: { first_name: "A", last_name: "B", position: "FB", fantasy_positions: ["RB"] } }),
       row({ player_id: "2", player: { first_name: "C", last_name: "D", position: "DB", fantasy_positions: ["DB", "WR"] } }),
     ]);
@@ -95,7 +101,7 @@ describe("sleeperStatsToPlayers: one row", () => {
   });
 
   it("skips K and DEF rows (Sprint 11) and players with no offense position, counting each", () => {
-    const { players, skipped } = sleeperStatsToPlayers([
+    const { players, skipped } = offenseOf([
       row({ player_id: "1", player: { first_name: "K", last_name: "K", position: "K", fantasy_positions: ["K"] } }),
       row({ player_id: "HOU", player: { first_name: "Houston", last_name: "Texans", position: "DEF", fantasy_positions: ["DEF"] } }),
       row({ player_id: "3", player: { first_name: "L", last_name: "B", position: "LB", fantasy_positions: ["LB"] } }),
@@ -106,7 +112,7 @@ describe("sleeperStatsToPlayers: one row", () => {
   });
 
   it("gives a null Sleeper game id when the row has none", () => {
-    expect(sleeperStatsToPlayers([row({ game_id: undefined })]).players[0]!.sleeperGameId).toBeNull();
+    expect(offenseOf([row({ game_id: undefined })]).players[0]!.sleeperGameId).toBeNull();
   });
 
   it("rejects a response that isn't a list of player rows", () => {
@@ -118,7 +124,7 @@ describe("sleeperStatsToPlayers: one row", () => {
 });
 
 describe("sleeperStatsToPlayers: the live fixture end to end (Sleeper → stat lines → ppr points)", () => {
-  const { players, skipped } = sleeperStatsToPlayers(live);
+  const { players, skipped } = offenseOf(live);
 
   it("lists every QB/RB/WR/TE row once and skips the Ks and DEFs", () => {
     expect(live).toHaveLength(50);
@@ -163,7 +169,7 @@ describe("Sleeper's own pts_ppr agrees with our scorer", () => {
     ["completed Week 10", week10],
   ] as const) {
     it(`for every scored player in the ${label}`, () => {
-      const { players } = sleeperStatsToPlayers(rows);
+      const { players } = offenseOf(rows);
       let checked = 0;
       for (const p of players) {
         const raw = rows.find((r: { player_id: string }) => `sleeper:${r.player_id}` === p.id).stats;
@@ -177,7 +183,7 @@ describe("Sleeper's own pts_ppr agrees with our scorer", () => {
   }
 
   it("including 2-pt conversions and lost fumbles (Week 10)", () => {
-    const { players } = sleeperStatsToPlayers(week10);
+    const { players } = offenseOf(week10);
     // Christian McCaffrey: a receiving 2-pt; Dak Prescott: a rushing 2-pt and an INT; Drew Lock: 2 lost fumbles.
     expect(byId(players, "sleeper:4034").stats.receiving_2pt).toBe(1);
     expect(byId(players, "sleeper:3294").stats).toMatchObject({ rushing_2pt: 1, passing_interceptions: 1 });
@@ -188,7 +194,7 @@ describe("Sleeper's own pts_ppr agrees with our scorer", () => {
   });
 
   it("keeps Week 10's gms_active-only players with 0 points", () => {
-    const { players } = sleeperStatsToPlayers(week10);
+    const { players } = offenseOf(week10);
     for (const id of ["sleeper:14071", "sleeper:11655"]) {
       expect(byId(players, id).stats).toEqual({});
     }

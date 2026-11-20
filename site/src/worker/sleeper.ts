@@ -9,7 +9,7 @@
  * It runs on every 5-minute refresh inside a free Worker's 10 ms of CPU, for about 2,000 rows:
  * one pass, and only the keys the Leaderboard needs are copied out of each row.
  */
-import type { OffenseStat, OffenseStatLine } from "./scoring.js";
+import type { DstStatLine, KickerStatLine, OffenseStat, OffenseStatLine } from "./scoring.js";
 
 /** Sleeper's stats keys for each offensive Scoring Stat. Checked against Sleeper's `pts_ppr`. */
 export const SLEEPER_OFFENSE_KEYS = {
@@ -46,7 +46,29 @@ export interface SleeperOffensePlayer {
   /** Only the stats Sleeper reported; missing ones count as 0 (`score`). Empty when none. */
   stats: OffenseStatLine;
 }
-export type SleeperPlayer = SleeperOffensePlayer;
+/** A kicker from one Sleeper row (S11.1): FGs made by Sleeper's `fgm_*` buckets, PATs and misses. */
+export interface SleeperKickerPlayer {
+  kind: "kicker";
+  id: string;
+  name: string;
+  team: string;
+  position: "K";
+  sleeperGameId: string | null;
+  stats: KickerStatLine;
+}
+
+/** A D/ST from one Sleeper DEF row (S11.1). `id` is `dst:<TEAM>`; `name` as "Ravens D/ST". */
+export interface SleeperDstPlayer {
+  kind: "dst";
+  id: string;
+  name: string;
+  team: string;
+  position: "D/ST";
+  sleeperGameId: string | null;
+  stats: DstStatLine;
+}
+
+export type SleeperPlayer = SleeperOffensePlayer | SleeperKickerPlayer | SleeperDstPlayer;
 
 /** Rows not turned into players: K and DEF until Sprint 11, and anything else (IDP-only players). */
 export interface SkippedRows {

@@ -164,6 +164,23 @@ export function scoreDst(line: DstStatLine, rules: ScoringRules): number {
   return total;
 }
 
+/** A stat line of any kind, scored with its kind's scorer. */
+export type AnyStatLine =
+  | { kind: "offense"; stats: OffenseStatLine }
+  | { kind: "kicker"; stats: KickerStatLine }
+  | { kind: "dst"; stats: DstStatLine };
+
+export function scoreLine(line: AnyStatLine, rules: ScoringRules): number {
+  switch (line.kind) {
+    case "offense":
+      return score(line.stats, rules);
+    case "kicker":
+      return scoreKicker(line.stats, rules);
+    case "dst":
+      return scoreDst(line.stats, rules);
+  }
+}
+
 const FG_BUCKETS = Object.entries(CONTRACT.sleeperFgBuckets);
 const FG_BUCKET_MINS = FG_BUCKET_KEYS.map((key) => {
   const bucket = CONTRACT.sleeperFgBuckets[key];

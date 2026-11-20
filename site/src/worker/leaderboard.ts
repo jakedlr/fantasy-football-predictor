@@ -8,7 +8,7 @@
  */
 import { LEADERBOARD_HEAD, updatedAtOf } from "./kv.js";
 import type { Game, Scoreboard, Week } from "./scoreboard.js";
-import { RULES, RULES_NAMES, score } from "./scoring.js";
+import { RULES, RULES_NAMES, scoreLine } from "./scoring.js";
 import type { SleeperPlayer } from "./sleeper.js";
 
 export interface PointsEntry {
@@ -72,7 +72,7 @@ export function buildLeaderboard(scoreboard: Scoreboard, sleeperPlayers: readonl
       if (game.status === "upcoming") {
         points[name] = { ...UPCOMING };
       } else {
-        const soFar = round2(score(p.stats, r));
+        const soFar = round2(scoreLine(p, r));
         points[name] = { week: soFar, soFar, expected: null };
       }
     }
