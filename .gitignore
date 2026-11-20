@@ -15,4 +15,6 @@ output.json
 .env.leaderboard
 site/.cloudflare-ids.env
 .playwright-mcp/
+
+# ffp slate's push file (S11.2)
 expected-points.json
