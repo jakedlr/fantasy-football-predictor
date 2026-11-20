@@ -218,6 +218,15 @@ You need Node 22.12 or newer (it runs `npx wrangler@4`), `curl`, and the GitHub 
 
 It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages domain and KV namespace ids, not secret) and `.env.leaderboard` (the home push secret and ntfy topic; mode 600). Tokens are typed with hidden input and never printed.
 
+#### Deploy
+
+Merging to `main` with changes under `site/` deploys the site (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It runs the site's type-check and Vitest suite, then:
+
+1. `npm run deploy:worker`: `wrangler deploy` of the cron Worker `ffp-leaderboard-cron` (`site/worker/wrangler.toml`). Every 5 minutes one run refreshes ESPN's scoreboard into KV, and another scores Sleeper's live stats into the Leaderboard JSON in KV;
+2. `npm run deploy:pages`: `wrangler pages deploy public` to the Pages project `ffp-leaderboard` (`site/wrangler.toml`), with `/api/leaderboard` from `site/functions/`.
+
+Both use the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; wrangler is a pinned devDependency of `site/`. The KV namespace ids are committed in the two `wrangler.toml` files; the account id is not. To deploy by hand from `site/`, export both variables (the account id is in `site/.cloudflare-ids.env`) and run the same two scripts. Until the Worker's first runs, `/api/leaderboard` answers 503.
+
 ### Layout
 
 ```
@@ -248,6 +257,10 @@ scripts/setup_cloudflare.sh  interactive Cloudflare and GitHub setup for the Lea
 scripts/export_scoring_contract.py   site/contracts/ from ffp.scoring (ADR 0005)
 scripts/record_live.py, analyze_live_spike.py   the S9.1 live test recorder and analysis
 site/
+  src/worker/      the cron Worker: ESPN scoreboard, Sleeper stats, scoring port → KV (README inside)
+  worker/          the Worker's wrangler.toml (two cron triggers, KV binding)
+  functions/       Pages Functions: /api/leaderboard serves the Leaderboard from KV
+  wrangler.toml    the Pages project (public/ and functions/, KV binding)
   schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples
   contracts/       Scoring Rules and scored cases for the TypeScript scorer (generated)
   test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses
