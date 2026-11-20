@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
@@ -45,6 +46,18 @@ describe("validatePush", () => {
     const ajvSays = ajvValidate(instance);
     const ours = validatePush(instance);
     expect(ours.ok, JSON.stringify(ours)).toBe(ajvSays);
+  });
+
+  it("runs the schema's current precompiled validator (npm run build:validator after a schema change)", async () => {
+    const script = "../../scripts/build_validator.mjs";
+    const { generate } = (await import(/* @vite-ignore */ script)) as { generate(): string };
+    const committed = readFileSync(new URL("../../src/push/expected-points.validate.js", import.meta.url), "utf8");
+    expect(committed === generate(), "src/push/expected-points.validate.js is stale: run npm run build:validator").toBe(true);
+  });
+
+  it("uses no code generation at run time (Workers forbid it)", () => {
+    const committed = readFileSync(new URL("../../src/push/expected-points.validate.js", import.meta.url), "utf8");
+    expect(committed).not.toMatch(/new Function|\beval\(|\brequire\(/);
   });
 
   it("accepts the example and returns it", () => {

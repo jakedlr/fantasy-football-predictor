@@ -2,12 +2,13 @@
  * The Expected Points push checked against site/schema/expected-points.schema.json, plus the rules
  * a schema can't state (one entry per Leaderboard id; a D/ST's Sleeper id is its team).
  *
- * Workers forbid code generation (`new Function`), so Ajv's compiled validators can't run there.
- * @cfworker/json-schema interprets the schema instead; test/push/validate.test.ts holds it to the
- * test suite's Ajv on the example and on invalid pushes.
+ * Workers forbid code generation (`new Function`), so Ajv can't compile the schema there. The
+ * schema is compiled ahead of time instead (scripts/build_validator.mjs → expected-points.validate.js,
+ * Ajv's standalone code), which also keeps a 1,000-player push well inside the 10 ms CPU limit; an
+ * interpreting validator (@cfworker/json-schema 4.1.6) took about 40 ms on Node. test/push/validate.test.ts
+ * holds it to the test suite's Ajv and fails while the generated file is stale.
  */
-import { Validator } from "@cfworker/json-schema";
-import schema from "../../schema/expected-points.schema.json";
+import schemaValidate from "./expected-points.validate.js";
 import type { Position } from "../worker/kv.js";
 
 /** One player as pushed (schema `players.items`). */
@@ -37,20 +38,16 @@ export interface Push {
 
 export type Checked = { ok: true; push: Push } | { ok: false; reason: string };
 
-// shortCircuit: stop at the first error; a rejected push only needs one reason.
-const validator = new Validator(schema as object, "2020-12", true);
-
 /** The Leaderboard id a pushed player is stored under (kv.ts ExpectedStore). */
 export function leaderboardId(p: Pick<PushPlayer, "position" | "team" | "sleeperId">): string {
   return p.position === "D/ST" ? `dst:${p.team}` : `sleeper:${p.sleeperId}`;
 }
 
 export function validatePush(value: unknown): Checked {
-  const result = validator.validate(value);
-  if (!result.valid) {
-    // The last unit is the innermost failure, e.g. `/players/1/statMeans: Property name "fgm_50p" …`.
-    const unit = result.errors[result.errors.length - 1];
-    return { ok: false, reason: short(unit ? `${unit.instanceLocation || "/"}: ${unit.error}` : "does not match the schema") };
+  if (!schemaValidate(value)) {
+    // Only the first error is kept, e.g. `/players/1/statMeans: must match propertyNames`.
+    const error = schemaValidate.errors?.[0];
+    return { ok: false, reason: short(error ? `${error.instancePath || "/"}: ${error.message ?? error.keyword}` : "does not match the schema") };
   }
   const push = value as Push;
   const seen = new Set<string>();
