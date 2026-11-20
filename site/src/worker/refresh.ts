@@ -116,21 +116,41 @@ function usableEntry(id: string, e: unknown): boolean {
 }
 
 /**
- * KV `expected` or `espn` → the store, or null when it's missing or not the shape kv.ts describes
- * (logged). Malformed player entries are dropped (one log line). Never throws.
+ * The last store read per KV key, kept for as long as Cloudflare keeps this isolate. The stores
+ * change every 30 minutes at most, the stats run every 5, and parsing both is a quarter or more of
+ * the run's CPU on a full Sunday (test/worker/cpu.bench.test.ts); comparing the text is far cheaper.
+ * Never mutated after it is cached (buildLeaderboard only reads).
  */
-function readStore<S extends ExpectedStore | EspnStore>(key: string, text: string | null, stamp: "generatedAt" | "fetchedAt", log: (m: string) => void): S | null {
+const storeCache = new Map<string, { text: string; store: unknown; logs: string[] }>();
+
+/**
+ * KV `expected` or `espn` → the store, or null when it's missing or not the shape kv.ts describes
+ * (logged). Malformed player entries are dropped (one log line). Never throws. An unchanged text
+ * returns the store parsed before, and logs what it logged then.
+ */
+export function readStore<S extends ExpectedStore | EspnStore>(key: string, text: string | null, stamp: "generatedAt" | "fetchedAt", log: (m: string) => void): S | null {
   if (text === null) return null;
+  let hit = storeCache.get(key);
+  if (hit?.text !== text) {
+    const logs: string[] = [];
+    hit = { text, store: parseStore(key, text, stamp, logs), logs };
+    storeCache.set(key, hit);
+  }
+  for (const m of hit.logs) log(m);
+  return hit.store as S | null;
+}
+
+function parseStore(key: string, text: string, stamp: "generatedAt" | "fetchedAt", logs: string[]): unknown {
   let store: unknown;
   try {
     store = JSON.parse(text);
   } catch {
-    log(`KV ${key} isn't JSON; ignored`);
+    logs.push(`KV ${key} isn't JSON; ignored`);
     return null;
   }
   if (!isObject(store) || store.schemaVersion !== 1 || !Number.isInteger(store.season) || !Number.isInteger(store.week)
     || (store.seasonType !== "regular" && store.seasonType !== "postseason") || typeof store[stamp] !== "string" || !isObject(store.players)) {
-    log(`KV ${key} isn't the store kv.ts describes; ignored`);
+    logs.push(`KV ${key} isn't the store kv.ts describes; ignored`);
     return null;
   }
   const players = store.players;
@@ -141,8 +161,8 @@ function readStore<S extends ExpectedStore | EspnStore>(key: string, text: strin
       bad++;
     }
   }
-  if (bad > 0) log(`KV ${key}: ${bad} malformed player entr${bad === 1 ? "y" : "ies"} ignored`);
-  return store as unknown as S;
+  if (bad > 0) logs.push(`KV ${key}: ${bad} malformed player entr${bad === 1 ? "y" : "ies"} ignored`);
+  return store;
 }
 
 async function guarded(what: string, deps: RunDeps, run: () => Promise<"written" | "unchanged">): Promise<Outcome> {

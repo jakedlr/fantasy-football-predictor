@@ -6,12 +6,14 @@ import {
   HEARTBEAT_MINUTES,
   KEYS,
   runScoreboard,
+  readStore,
   runStats,
   SCOREBOARD_URL,
   sleeperStatsUrl,
   USER_AGENT,
   type RunDeps,
 } from "../../src/worker/refresh.js";
+import type { ExpectedStore } from "../../src/worker/kv.js";
 import { parseScoreboard } from "../../src/worker/scoreboard.js";
 import { fakeClock, fakeFetch, FakeKV, readJson, type Route } from "../helpers/fakes.js";
 
@@ -286,6 +288,20 @@ describe("stats run", () => {
       expect(validate(lb), JSON.stringify(validate.errors)).toBe(true);
       expect(lb.players.find((p) => p.id === "sleeper:9758")!.expectedSource).toBe("ffp");
       expect(lb.players.map((p) => p.id)).not.toContain("sleeper:7585");
+    });
+
+    it("parses an unchanged store once per isolate, and still logs a bad one on every run", () => {
+      const logs: string[] = [];
+      const log = (m: string) => logs.push(m);
+      const a = readStore<ExpectedStore>(KEYS.expected, expectedText, "generatedAt", log);
+      // A new string with the same text, as each KV read returns.
+      const b = readStore<ExpectedStore>(KEYS.expected, `${expectedText} `.trimEnd(), "generatedAt", log);
+      expect(a).not.toBeNull();
+      expect(b).toBe(a);
+      expect(readStore(KEYS.espn, expectedText, "fetchedAt", log)).toBeNull(); // keyed by KV key too
+      readStore(KEYS.expected, "{oops", "generatedAt", log);
+      readStore(KEYS.expected, "{oops", "generatedAt", log);
+      expect(logs.filter((m) => m.includes("isn't JSON"))).toHaveLength(2);
     });
 
     it("runs as before with neither store in KV, without a log", async () => {

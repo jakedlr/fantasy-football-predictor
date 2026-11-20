@@ -175,12 +175,7 @@ export function buildLeaderboard(
   const espn = forWeek(stores.espn, scoreboard.week);
   const ffpPlayers = ffp?.players ?? NONE;
   const espnPlayers = espn?.players ?? NONE;
-  const sourceOf = (id: string): ["ffp" | "espn", Expectation] | null => {
-    const a = Object.hasOwn(ffpPlayers, id) ? ffpPlayers[id] : undefined;
-    if (a) return ["ffp", a];
-    const b = Object.hasOwn(espnPlayers, id) ? espnPlayers[id] : undefined;
-    return b ? ["espn", b] : null;
-  };
+  const own = (store: Readonly<Record<string, Expectation>>, id: string) => (Object.hasOwn(store, id) ? store[id] : undefined);
 
   const players: LeaderboardPlayer[] = [];
   const seen = new Set<string>();
@@ -189,21 +184,21 @@ export function buildLeaderboard(
     seen.add(p.id);
     const game = gameByTeam.get(p.team);
     if (game === undefined) continue;
-    const source = sourceOf(p.id);
-    const e = source?.[1];
+    const fromFfp = own(ffpPlayers, p.id);
+    const e = fromFfp ?? own(espnPlayers, p.id);
     if (!hasStat(p.stats) && !(e !== undefined && (expectedUnder(e, DEFAULT_RULE) ?? 0) >= MIN_EXPECTED_POINTS)) continue;
     players.push({
       id: p.id, name: p.name, team: p.team, position: p.position, gameId: game.id, out: false,
-      expectedSource: source?.[0] ?? null,
+      expectedSource: fromFfp ? "ffp" : e ? "espn" : null,
       points: pointsFor(game, fByGame.get(game.id)!, p, e),
     });
   }
   // Players with an expectation but no Sleeper row: ffp's first, so its entry wins over ESPN's.
-  for (const store of [ffpPlayers, espnPlayers]) {
+  for (const [expectedSource, store] of [["ffp", ffpPlayers], ["espn", espnPlayers]] as const) {
     for (const id in store) {
       if (seen.has(id)) continue;
       seen.add(id);
-      const [expectedSource, e] = sourceOf(id)!;
+      const e = store[id]!;
       const game = gameByTeam.get(e.team);
       if (game === undefined || !LEADERBOARD_ID.test(id)) continue;
       if ((expectedUnder(e, DEFAULT_RULE) ?? 0) < MIN_EXPECTED_POINTS) continue;

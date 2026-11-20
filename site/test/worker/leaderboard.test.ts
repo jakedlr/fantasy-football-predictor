@@ -6,6 +6,10 @@ import { buildLeaderboard, fractionLeft, round2, sameContent, serialize, updated
 import type { Game, Scoreboard } from "../../src/worker/scoreboard.js";
 import { RULES, RULES_NAMES, score, scoreLine } from "../../src/worker/scoring.js";
 import type { SleeperDstPlayer, SleeperKickerPlayer, SleeperOffensePlayer } from "../../src/worker/sleeper.js";
+import { buildIndex, rankRows } from "../../src/page/model.js";
+import { rowHTML } from "../../src/page/render.js";
+import { makeTimeFormat } from "../../src/page/time.js";
+import type { Leaderboard as PageLeaderboard } from "../../src/page/types.js";
 import { readJson } from "../helpers/fakes.js";
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -394,6 +398,24 @@ describe("buildLeaderboard with Expected Points", () => {
   it("leaves `out` false: nothing in Sleeper's rows or the scoreboard says a player was ruled out", () => {
     const lb = buildLeaderboard(scoreboard, [player({ stats: { receptions: 1 } })], UPDATED, { expected: expectedStore({ "sleeper:1": expectation() }), espn: null });
     expect(lb.players[0]!.out).toBe(false);
+  });
+
+  it("reads on the page as intended: Upcoming ranks by Expected Points, the ESPN note, the banked bar", () => {
+    const lb = buildLeaderboard(liveAt(2, "0:00"), [player({ id: "sleeper:1", stats: { passing_yards: 100 } })], UPDATED, {
+      expected: expectedStore({ "sleeper:1": expectation(), "sleeper:2": expectation({ name: "Up Coming", team: "SEA", expected: { ppr: 20 } }) }),
+      espn: espnStore({ "sleeper:3": expectation({ name: "Espn Guy", team: "SF", expected: { ppr: 3 } }) }),
+    });
+    const board = JSON.parse(serialize(lb)) as PageLeaderboard;
+    const rows = rankRows(buildIndex(board), "ppr");
+    expect(rows.map((r) => [r.player.name, r.rank, r.points.week])).toEqual([
+      ["Up Coming", 1, 20],
+      ["Pat Doe", 2, 12], // 4 so far + half of 250 yards and 1.5 TDs: 4 + 5 + 3
+      ["Espn Guy", 3, 3],
+    ]);
+    const fmt = makeTimeFormat({ locale: "en-US", timeZone: "America/New_York" });
+    expect(rowHTML(rows[1]!, fmt)).toContain("scaleX(0.333)"); // 4 of 12 banked
+    expect(rowHTML(rows[2]!, fmt)).toContain("ESPN projection");
+    expect(rowHTML(rows[0]!, fmt)).not.toContain('class="none"');
   });
 
   it("gives an expectation missing a Scoring Rules option no Expected Points under it", () => {
