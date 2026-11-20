@@ -184,6 +184,14 @@ function bandPoints(stats: Readonly<Record<string, number>>, bands: typeof PA_BA
   return Math.abs(mass - 1) < 0.02 ? total : null;
 }
 
+interface ProjectedLine {
+  statSourceId?: unknown;
+  statSplitTypeId?: unknown;
+  scoringPeriodId?: unknown;
+  seasonId?: unknown;
+  stats?: unknown;
+}
+
 /** One ESPN player's projection for the week, converted and scored. */
 export interface EspnProjection {
   espnId: string;
@@ -203,7 +211,6 @@ export interface EspnProjection {
 export function parseProjections(json: unknown, week: Week, positions: readonly Position[]): EspnProjection[] {
   const root = object(json, "response");
   if (!Array.isArray(root.players)) throw new EspnProjectionsError("players is missing or not a list");
-  const id = lineId(week);
   const out: EspnProjection[] = [];
   for (let i = 0; i < root.players.length; i++) {
     const at = `players[${i}]`;
@@ -218,10 +225,11 @@ export function parseProjections(json: unknown, week: Week, positions: readonly 
     const abbreviation = typeof teamId === "number" ? PRO_TEAMS[teamId] : undefined;
     if (abbreviation === undefined) throw new EspnProjectionsError(`${at}: unknown team id ${String(teamId)}`);
     if (!Array.isArray(player.stats)) throw new EspnProjectionsError(`${at}.player.stats is missing or not a list`);
-    const line = player.stats.find((s) => typeof s === "object" && s !== null && (s as { id?: unknown }).id === id) as
-      | { statSourceId?: unknown; statSplitTypeId?: unknown; stats?: unknown }
-      | undefined;
-    if (line === undefined || line.statSourceId !== 1 || line.statSplitTypeId !== 1) continue;
+    // Matched on its fields rather than ESPN's composite id, whose layout for weeks 1–9 we haven't seen.
+    const line = (player.stats as ProjectedLine[]).find(
+      (s) => typeof s === "object" && s !== null && s.statSourceId === 1 && s.statSplitTypeId === 1 && s.scoringPeriodId === week.number && s.seasonId === week.season,
+    );
+    if (line === undefined) continue;
     const stats = object(line.stats, `${at} projected stats`) as Record<string, number>;
     const statMeans = espnStatMeans(position, stats);
     if (Object.keys(statMeans).length === 0) continue;
