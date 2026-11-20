@@ -104,6 +104,21 @@ def test_each_team_gets_its_kicker_and_dst(nflverse, books):
     assert [(s.name, s.reason) for s in skipped if "kicker" in s.reason] == [("BAL K", slate.NO_KICKER)]
 
 
+def test_without_an_active_kicker_the_practice_squad_one_kicks(nflverse, books):
+    # Week 11, 2026: MIA cut its kicker and had only Daniel Carlson on the practice squad (DEV) midweek.
+    from ffp.players import RosterEntry
+
+    roster = [*nflverse[0], RosterEntry("00-0034161", "Daniel Carlson", "K", "BAL", "DEV", 10),
+              RosterEntry("00-0000001", "Cut Kicker", "K", "BAL", "RES", 9)]
+    targets, skipped = slate.slate_targets(fixture_week(nflverse).upcoming(BEFORE_MNF), books, roster)
+    assert ("K", "BAL", "Daniel Carlson") in {(t.player.position, t.player.team, t.player.name) for t in targets}
+    assert not [s for s in skipped if s.reason == slate.NO_KICKER]
+    # An active one comes first.
+    roster.append(RosterEntry("00-0000002", "Active Kicker", "K", "BAL", "ACT", 9))
+    targets, _ = slate.slate_targets(fixture_week(nflverse).upcoming(BEFORE_MNF), books, roster)
+    assert "Active Kicker" in {t.player.name for t in targets} and "Daniel Carlson" not in {t.player.name for t in targets}
+
+
 def test_a_book_name_no_roster_has_is_logged_not_fatal(nflverse, caplog):
     week = fixture_week(nflverse)
     dk_game = Game("g1", "LA Chargers", "BAL Ravens", "2026-11-17T01:15:00Z", "draftkings", False)

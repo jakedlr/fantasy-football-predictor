@@ -52,7 +52,7 @@ DEFAULT_OUTPUT = Path("expected-points.json")
 REGULAR_WEEKS = 18  # nflverse's postseason weeks follow on from 19 (since 2021)
 SLEEPER_FIXTURE = "sleeper_players_nfl.json"  # a --fixtures directory's Sleeper player list
 
-NO_KICKER = "no active kicker on the team's roster"
+NO_KICKER = "no active or practice-squad kicker on the team's roster"
 NO_SLEEPER_ID = "no Sleeper id (not in Sleeper's player list)"
 NOT_ON_A_ROSTER = "Book name not a QB/RB/WR/TE on either team's roster"
 TWO_ON_A_ROSTER = "Book name shared by two QB/RB/WR/TE on the Game's teams"
@@ -180,14 +180,16 @@ def _resolve(name: str, book_team: str | None, game: ScheduledGame, roster: Rost
 
 
 def _kicker(team: str, roster: Roster) -> Player | None:
-    """The team's kicker: its active K on the roster (the latest week's, then by name, if several)."""
-    kickers = [e for e in roster if e.team == team and e.position == "K" and e.status == "ACT"]
+    """The team's kicker: its active K on the roster, else its practice-squad one (DEV: midweek, a team
+    that cut its kicker may have only one to elevate); the latest week's, then by name, if several."""
+    on_team = [e for e in roster if e.team == team and e.position == "K"]
+    kickers = [e for e in on_team if e.status == "ACT"] or [e for e in on_team if e.status == "DEV"]
     if not kickers:
         return None
     kickers.sort(key=lambda e: (-e.week, e.name))
-    if len(kickers) > 1:
-        log.info("%s has %d active kickers (%s); using %s", team, len(kickers),
-                 ", ".join(e.name for e in kickers), kickers[0].name)
+    if len(kickers) > 1 or kickers[0].status != "ACT":
+        log.info("%s's kicker: %s (%s), of %s", team, kickers[0].name, kickers[0].status,
+                 ", ".join(e.name for e in kickers))
     e = kickers[0]
     return Player(e.gsis_id, e.name, e.position, e.team)
 

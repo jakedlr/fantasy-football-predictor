@@ -121,6 +121,18 @@ def test_a_dst_s_sleeper_id_is_its_team():
     assert sleeper.dst_id(Player("DST-WAS", "WAS D/ST", "DST", "WAS")) == "WAS"
 
 
+def test_a_player_listed_at_another_position_counts_by_his_fantasy_position():
+    # Sleeper lists Travis Hunter as a DB (fantasy positions DB and WR), Kyle Juszczyk as a FB (RB).
+    payload = {"12530": {"player_id": "12530", "full_name": "Travis Hunter", "position": "DB", "team": "JAX",
+                         "fantasy_positions": ["DB", "WR"], "gsis_id": None, "espn_id": 4685415},
+               "1379": {"player_id": "1379", "full_name": "Kyle Juszczyk", "position": "FB", "team": "SF",
+                        "fantasy_positions": ["RB"]},
+               "99": {"player_id": "99", "full_name": "A Linebacker", "position": "LB", "team": "SF",
+                      "fantasy_positions": ["LB"]}}
+    players = {p.name: p.position for p in sleeper.parse_players(payload)}
+    assert players == {"Travis Hunter": "WR", "Kyle Juszczyk": "RB"}
+
+
 def test_the_roster_keeps_nflverse_s_sleeper_and_espn_ids():
     from ffp.players import load_roster
 

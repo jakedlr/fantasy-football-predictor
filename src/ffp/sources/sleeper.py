@@ -63,13 +63,19 @@ def _text(value) -> str | None:
 
 def parse_players(payload: Mapping) -> list[SleeperPlayer]:
     """The QB/RB/WR/TE/K in Sleeper's player list, ids cleaned (Sleeper pads some gsis_ids with a
-    space and sends espn_id as a number)."""
+    space and sends espn_id as a number). A player listed at another position counts at his first
+    fantasy position among those (Travis Hunter is a DB with fantasy positions DB and WR; a FB's is RB)."""
     out = []
     for pid, p in payload.items():
-        if not isinstance(p, Mapping) or p.get("position") not in POSITIONS:
+        if not isinstance(p, Mapping):
+            continue
+        fantasy = p.get("fantasy_positions") if isinstance(p.get("fantasy_positions"), list) else []
+        position = p.get("position") if p.get("position") in POSITIONS else next(
+            (f for f in fantasy if f in POSITIONS), None)
+        if position is None:
             continue
         name = _text(p.get("full_name")) or " ".join(filter(None, (_text(p.get("first_name")), _text(p.get("last_name")))))
-        out.append(SleeperPlayer(str(p.get("player_id") or pid), name, p["position"], _text(p.get("team")),
+        out.append(SleeperPlayer(str(p.get("player_id") or pid), name, position, _text(p.get("team")),
                                  _text(p.get("gsis_id")), _text(p.get("espn_id"))))
     return out
 
