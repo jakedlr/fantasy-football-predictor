@@ -17,10 +17,16 @@
  *   and otherwise once updatedAt is HEARTBEAT_MINUTES old, so "Updated … ago" on the page means
  *   the last successful refresh within that bound: 1,440 / 10 = 144 a day. At worst 288 a day.
  * - Worst case 288 + 288 = 576 a day; a quiet day 144 + a handful. That leaves over 400 a day for
- *   Sprint 11's Expected Points push (every 30 minutes on game days, 48 a day, plus kickoff windows).
- * KV reads: 1 per scoreboard run + 2 per stats run = 864 a day, against 100,000.
+ *   Sprint 11's Expected Points push (every 30 minutes on game days, 48 a day, plus kickoff windows)
+ *   and the ESPN projections run's `espn` (written only when it changes).
+ * KV reads: 1 per scoreboard run + 4 per stats run (`scoreboard`, `expected`, `espn`, `leaderboard`)
+ * = 1,440 a day, against 100,000.
+ *
+ * The stats run reads KV `expected` and `espn` defensively: a store that isn't the shape kv.ts
+ * describes is ignored with a log (the Leaderboard is built without it), and a malformed player
+ * entry is dropped with a log; neither fails the run.
  */
-import { KEYS, updatedAtOf, type KV } from "./kv.js";
+import { KEYS, updatedAtOf, type EspnStore, type ExpectedStore, type KV } from "./kv.js";
 import { buildLeaderboard, sameContent, serialize } from "./leaderboard.js";
 import { parseScoreboard, type Scoreboard, type Week } from "./scoreboard.js";
 import { sleeperStatsToPlayers } from "./sleeper.js";
@@ -31,7 +37,7 @@ export { KEYS };
 /** An unchanged Leaderboard is still rewritten, with a new updatedAt, once it is this old. */
 export const HEARTBEAT_MINUTES = 10;
 const DEFAULT_TIMEOUT_MS = 10_000;
-/** As in the S9.1 recorder (scripts/record_live.py). K and DEF rows are skipped until Sprint 11. */
+/** As in the S9.1 recorder (scripts/record_live.py). */
 const SLEEPER_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"] as const;
 
 export interface RunDeps {
@@ -66,12 +72,18 @@ export async function runStats(deps: RunDeps): Promise<Outcome> {
     const stored = await deps.kv.get(KEYS.scoreboard, { type: "text" });
     if (stored === null) throw new Error("no scoreboard in KV yet (the scoreboard run writes it)");
     const scoreboard = JSON.parse(stored) as Scoreboard;
-    const rows = await fetchJson(sleeperStatsUrl(scoreboard.week), deps);
+    const [rows, expectedText, espnText] = await Promise.all([
+      fetchJson(sleeperStatsUrl(scoreboard.week), deps),
+      deps.kv.get(KEYS.expected, { type: "text" }),
+      deps.kv.get(KEYS.espn, { type: "text" }),
+    ]);
     if (!Array.isArray(rows)) throw new Error("Sleeper stats: expected a list of rows");
     const { players } = sleeperStatsToPlayers(rows);
+    const expected = readStore<ExpectedStore>(KEYS.expected, expectedText, "generatedAt", deps.log);
+    const espn = readStore<EspnStore>(KEYS.espn, espnText, "fetchedAt", deps.log);
 
     const now = deps.now();
-    const text = serialize(buildLeaderboard(scoreboard, players, instant(now)));
+    const text = serialize(buildLeaderboard(scoreboard, players, instant(now), { expected, espn }));
     const previous = await deps.kv.get(KEYS.leaderboard, { type: "text" });
     if (previous !== null && sameContent(previous, text)) {
       const last = Date.parse(updatedAtOf(previous) ?? "");
@@ -80,6 +92,57 @@ export async function runStats(deps: RunDeps): Promise<Outcome> {
     await deps.kv.put(KEYS.leaderboard, text);
     return "written";
   });
+}
+
+const POSITIONS: ReadonlySet<string> = new Set(["QB", "RB", "WR", "TE", "K", "D/ST"]);
+const PLAYER_ID = /^(sleeper:\d+|dst:[A-Z]{2,3})$/;
+const TEAM = /^[A-Z]{2,3}$/;
+
+const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
+
+function numbersOnly(x: unknown): boolean {
+  if (!isObject(x)) return false;
+  for (const k in x) if (typeof x[k] !== "number" || !Number.isFinite(x[k])) return false;
+  return true;
+}
+
+/** Whether one `players` entry is an `Expectation` the Leaderboard can use. */
+function usableEntry(id: string, e: unknown): boolean {
+  return PLAYER_ID.test(id) && isObject(e)
+    && typeof e.name === "string" && e.name !== ""
+    && typeof e.team === "string" && TEAM.test(e.team)
+    && typeof e.position === "string" && POSITIONS.has(e.position)
+    && numbersOnly(e.statMeans) && numbersOnly(e.expected);
+}
+
+/**
+ * KV `expected` or `espn` → the store, or null when it's missing or not the shape kv.ts describes
+ * (logged). Malformed player entries are dropped (one log line). Never throws.
+ */
+function readStore<S extends ExpectedStore | EspnStore>(key: string, text: string | null, stamp: "generatedAt" | "fetchedAt", log: (m: string) => void): S | null {
+  if (text === null) return null;
+  let store: unknown;
+  try {
+    store = JSON.parse(text);
+  } catch {
+    log(`KV ${key} isn't JSON; ignored`);
+    return null;
+  }
+  if (!isObject(store) || store.schemaVersion !== 1 || !Number.isInteger(store.season) || !Number.isInteger(store.week)
+    || (store.seasonType !== "regular" && store.seasonType !== "postseason") || typeof store[stamp] !== "string" || !isObject(store.players)) {
+    log(`KV ${key} isn't the store kv.ts describes; ignored`);
+    return null;
+  }
+  const players = store.players;
+  let bad = 0;
+  for (const id in players) {
+    if (!usableEntry(id, players[id])) {
+      delete players[id];
+      bad++;
+    }
+  }
+  if (bad > 0) log(`KV ${key}: ${bad} malformed player entr${bad === 1 ? "y" : "ies"} ignored`);
+  return store as unknown as S;
 }
 
 async function guarded(what: string, deps: RunDeps, run: () => Promise<"written" | "unchanged">): Promise<Outcome> {
