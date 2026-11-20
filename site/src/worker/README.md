@@ -5,7 +5,7 @@ The Leaderboard's cron Worker (ADR 0006), `ffp-leaderboard-cron`, configured in 
 Pure modules, no fetch, KV or clock:
 
 - `scoreboard.ts`: ESPN scoreboard → NFL Week, its dates, and each Game with its Game Status.
-- `sleeper.ts`: Sleeper weekly stats rows → `ffp.scoring` stat lines (QB/RB/WR/TE in Sprint 10; K and D/ST in Sprint 11).
+- `sleeper.ts`: Sleeper weekly stats rows → `ffp.scoring` stat lines: QB/RB/WR/TE; kickers by Sleeper's FG distance buckets; D/ST, with Points Allowed rebuilt from Sleeper's `pts_allow` and the opponent's DEF row (the key map and its checks are in research/leaderboard-live-spike.md, "K and D/ST from Sleeper").
 - `scoring.ts`: the TypeScript port of `ffp.scoring`, held to `site/contracts/` (ADR 0005).
 - `leaderboard.ts`: scoreboard + Sleeper players → the Leaderboard JSON (`site/schema/leaderboard.schema.json`). Players join their Game by team; a team with no Game (bye) is left out. Points So Far under every Scoring Rules option, to 2 decimals. Until Sprint 11 adds Expected Points, Week Points are Points So Far for Live and Final Games, and 0 (Points So Far null) for Upcoming Games; `expected` and `expectedSource` are null.
 

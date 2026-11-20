@@ -7,7 +7,7 @@ const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta
 // One Game, live in Q3 (S9.1), straight from Sleeper.
 const live = read("../fixtures/sleeper/stats-live.json");
 // A completed week (2026 Week 10), trimmed to rows with 2-pt conversions, lost fumbles, interceptions,
-// a FB, a DB with WR eligibility, gms_active-only rows, a K and a DEF.
+// a FB, a DB with WR eligibility, gms_active-only rows, a K and a DEF (all Ks and DEFs: stats-week10-k-dst.json).
 const week10 = read("../fixtures/sleeper/stats-week10-final.json");
 
 const ppr = RULES.ppr!;
@@ -100,15 +100,13 @@ describe("sleeperStatsToPlayers: one row", () => {
     expect(players.map((p) => p.position)).toEqual(["RB", "WR"]);
   });
 
-  it("skips K and DEF rows (Sprint 11) and players with no offense position, counting each", () => {
-    const { players, skipped } = offenseOf([
-      row({ player_id: "1", player: { first_name: "K", last_name: "K", position: "K", fantasy_positions: ["K"] } }),
-      row({ player_id: "HOU", player: { first_name: "Houston", last_name: "Texans", position: "DEF", fantasy_positions: ["DEF"] } }),
+  it("skips players with no QB/RB/WR/TE, K or DEF position, counting them", () => {
+    const { players, skipped } = sleeperStatsToPlayers([
       row({ player_id: "3", player: { first_name: "L", last_name: "B", position: "LB", fantasy_positions: ["LB"] } }),
       row({ player_id: "4" }),
     ]);
     expect(players.map((p) => p.id)).toEqual(["sleeper:4"]);
-    expect(skipped).toEqual({ K: 1, DEF: 1, other: 1 });
+    expect(skipped).toEqual({ other: 1 });
   });
 
   it("gives a null Sleeper game id when the row has none", () => {
@@ -126,10 +124,10 @@ describe("sleeperStatsToPlayers: one row", () => {
 describe("sleeperStatsToPlayers: the live fixture end to end (Sleeper → stat lines → ppr points)", () => {
   const { players, skipped } = offenseOf(live);
 
-  it("lists every QB/RB/WR/TE row once and skips the Ks and DEFs", () => {
+  it("lists every QB/RB/WR/TE row once (the Ks and DEFs are in sleeper-k-dst.test.ts)", () => {
     expect(live).toHaveLength(50);
     expect(players).toHaveLength(46);
-    expect(skipped).toEqual({ K: 2, DEF: 2, other: 0 });
+    expect(skipped).toEqual({ other: 0 });
     expect(new Set(players.map((p) => p.id)).size).toBe(46);
     for (const p of players) {
       expect(p.id).toMatch(/^sleeper:\d+$/); // leaderboard.schema.json's player id
