@@ -183,4 +183,4 @@ Measured with `wrangler tail --config site/worker/wrangler.toml` over 10:22–10
 | Stats (`*/5`) | 2 (one "unchanged", one "written") | 3, 3 | 395–620 |
 | Scoreboard (`2-59/5`) | 2 (both "unchanged") | 3, 4 | 183–205 |
 
-A full Sunday has about 15 times as many rows. The S10.1 probe put a full week's Sleeper parse at 4–5 ms, so the stats run should land around 7–9 ms. Check it with `wrangler tail` during Sunday's Games.
+A full Sunday has about 15 times as many rows. The S10.1 probe put a full week's Sleeper parse at 4–5 ms, so the stats run should land around 7–9 ms or more: scoring under four Scoring Rules and building the Leaderboard JSON also grow with rows. That is close to the 10 ms limit. Check it with `wrangler tail` during Sunday's Games.
