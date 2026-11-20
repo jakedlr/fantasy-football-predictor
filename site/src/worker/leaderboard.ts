@@ -5,7 +5,8 @@
  * Week Points per Game Status (GLOSSARY.md, PLAN.md "Ranking" and "Projected Total"):
  * - Upcoming: Expected Points (0, with `expected` null, for a player who has none); Points So Far null.
  * - Live: the Projected Total, each Scoring Stat's current value + its pregame mean × the fraction of
- *   the Game left (`fractionLeft`), then scored, so D/ST tiers and kick distances stay right. A
+ *   the Game left (`fractionLeft`), then scored, so D/ST tiers and kick distances stay right (a D/ST's
+ *   tier points are blended with its expected tier points by the fraction left, `projectedTotal`). A
  *   player with no expectation has Week Points = Points So Far.
  * - Final: Points So Far.
  * `expected` is the frozen Expected Points in every Game Status. Expected Points come from KV
@@ -17,7 +18,7 @@
  */
 import { LEADERBOARD_HEAD, updatedAtOf, type EspnStore, type Expectation, type ExpectedStore, type Position } from "./kv.js";
 import type { Game, Scoreboard, Week } from "./scoreboard.js";
-import { RULES, RULES_NAMES, scoreLine, type AnyStatLine } from "./scoring.js";
+import { dstTierPoints, RULES, RULES_NAMES, scoreLine, type AnyStatLine, type DstStatLine, type ScoringRules } from "./scoring.js";
 import type { SleeperPlayer } from "./sleeper.js";
 
 export interface PointsEntry {
@@ -131,6 +132,23 @@ function projectLine(line: AnyStatLine, means: Readonly<Record<string, number>>,
   return { kind: line.kind, stats: out } as AnyStatLine;
 }
 
+/**
+ * The Projected Total of a projected line. For a D/ST, the Points and Yards Allowed tier points of
+ * the projected line are blended with the expected tier points by the fraction of the Game left:
+ * the tier of a mean overstates a D/ST (the spread of outcomes matters, research/leaderboard-live-spike.md
+ * "ESPN projections"), so at kickoff the Projected Total is the Expected Points, and at the end the
+ * tier actually reached. Expected tier points are Expected Points less the per-unit stats' means
+ * (the per-unit part is linear, so its expectation is the score of the means).
+ */
+function projectedTotal(projected: AnyStatLine, rules: ScoringRules, f: number, e: Expectation, expected: number | null): number {
+  const total = scoreLine(projected, rules);
+  if (projected.kind !== "dst" || expected === null) return total;
+  const means = e.statMeans as DstStatLine;
+  const expectedTiers = expected - (scoreLine({ kind: "dst", stats: means }, rules) - dstTierPoints(means, rules));
+  const tiers = dstTierPoints(projected.stats, rules);
+  return total - tiers + (1 - f) * tiers + f * expectedTiers;
+}
+
 function pointsFor(game: Game, f: number, line: AnyStatLine, e: Expectation | undefined): Record<string, PointsEntry> {
   const points: Record<string, PointsEntry> = {};
   const projected = game.status === "live" && e !== undefined && f > 0 ? projectLine(line, e.statMeans, f) : null;
@@ -140,7 +158,7 @@ function pointsFor(game: Game, f: number, line: AnyStatLine, e: Expectation | un
       points[name] = { week: expected ?? 0, soFar: null, expected };
     } else {
       const soFar = round2(scoreLine(line, rules));
-      const week = projected === null ? soFar : round2(scoreLine(projected, rules));
+      const week = projected === null ? soFar : round2(projectedTotal(projected, rules, f, e!, expected));
       points[name] = { week, soFar, expected };
     }
   }

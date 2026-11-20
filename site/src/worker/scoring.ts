@@ -151,6 +151,14 @@ export function pointsAllowed(line: DstStatLine, rules: ScoringRules): number {
   return pa;
 }
 
+/** A D/ST's Points Allowed and Yards Allowed tier points alone (scoreDst less the per-unit stats). */
+export function dstTierPoints(line: DstStatLine, rules: ScoringRules): number {
+  const d = rules.dst;
+  let total = tierPoints(pointsAllowed(line, rules), d.points_allowed_tiers ?? []);
+  if (d.yards_allowed_tiers?.length) total += tierPoints(line.yards_allowed ?? 0, d.yards_allowed_tiers);
+  return total;
+}
+
 /** A D/ST's fantasy points: the per-unit stats plus the Points Allowed and Yards Allowed tiers. */
 export function scoreDst(line: DstStatLine, rules: ScoringRules): number {
   const d = rules.dst;
@@ -159,9 +167,7 @@ export function scoreDst(line: DstStatLine, rules: ScoringRules): number {
     const value = line[stat];
     if (value) total += (d[stat] ?? 0) * value;
   }
-  total += tierPoints(pointsAllowed(line, rules), d.points_allowed_tiers ?? []);
-  if (d.yards_allowed_tiers?.length) total += tierPoints(line.yards_allowed ?? 0, d.yards_allowed_tiers);
-  return total;
+  return total + dstTierPoints(line, rules);
 }
 
 /** A stat line of any kind, scored with its kind's scorer. */

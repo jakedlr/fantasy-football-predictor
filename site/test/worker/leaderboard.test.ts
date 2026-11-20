@@ -374,8 +374,22 @@ describe("buildLeaderboard with Expected Points", () => {
     // So far: 2 sacks + PA 6 (4) + YA 150 (3) = 9. Projected: 3 sacks + PA 16 (1) + YA 310 (0) = 4.
     // Prorating points instead would give 9 + 6 × 0.5 = 12: the tiers matter.
     expect(round2(scoreLine({ kind: "dst", stats: { sacks: 3, points_allowed_all: 16, yards_allowed: 310 } }, RULES.ppr!))).toBe(4);
-    expect(lb.players[0]!.points.ppr).toEqual({ week: 4, soFar: 9, expected: 6 });
+    // The tier part is blended with the expected tier points by the fraction left: expected tier
+    // points are Expected Points less the per-unit means (6 − 2 sacks = 4), so 3 + 0.5 × 1 + 0.5 × 4.
+    expect(lb.players[0]!.points.ppr).toEqual({ week: 5.5, soFar: 9, expected: 6 });
     expect(validate(lb), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it("Live D/ST at kickoff: the Projected Total equals Expected Points, not the tier of the mean", () => {
+    // Points Allowed 12.5 on average is in the 7–13 tier (3 under ppr), but the expected tier points
+    // are much lower when the spread of outcomes is wide; Expected Points carry that.
+    const lb = buildLeaderboard(liveAt(1, "15:00"), [dst({ stats: {} })], UPDATED, {
+      expected: expectedStore({
+        "dst:KC": expectation({ name: "Chiefs D/ST", position: "D/ST", statMeans: { sacks: 2.5, points_allowed_all: 12.5, yards_allowed: 330 }, expected: { ppr: 4.1, "half-ppr": 4.1, standard: 4.1, "espn-league": 3.6 } }),
+      }),
+      espn: null,
+    });
+    for (const name of RULES_NAMES) expect(lb.players[0]!.points[name]!.week, name).toBeCloseTo(lb.players[0]!.points[name]!.expected!, 6);
   });
 
   it("Final: Week Points are Points So Far, with the frozen Expected Points beside them", () => {
