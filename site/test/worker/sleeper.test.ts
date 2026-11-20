@@ -8,7 +8,7 @@ const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta
 const live = read("../fixtures/sleeper/stats-live.json");
 // A completed week (2026 Week 10), trimmed to rows with 2-pt conversions, lost fumbles, interceptions,
 // a FB, a DB with WR eligibility, gms_active-only rows, a K and a DEF.
-const week10 = read("./fixtures/sleeper-week10-final.json");
+const week10 = read("../fixtures/sleeper/stats-week10-final.json");
 
 const ppr = RULES.ppr!;
 // Sleeper's own `pts_ppr` takes 1 point per interception; the Leaderboard's ppr takes 2 (ESPN's default).
