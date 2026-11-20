@@ -1,37 +1,44 @@
 /**
- * The Worker's two cron runs (PLAN.md S10.1, research/leaderboard-live-spike.md "Full-week CPU"):
+ * The Worker's three cron runs (PLAN.md S10.1 and S11.5, research/leaderboard-live-spike.md
+ * "Full-week CPU" and "ESPN projections"):
  *
  * - Scoreboard run: ESPN's scoreboard → KV `scoreboard` (the NFL Week and its Games).
  * - Stats run: KV `scoreboard` + Sleeper's weekly stats → KV `leaderboard`, which
  *   /api/leaderboard serves.
+ * - ESPN projections run: KV `scoreboard` + `idmap` + one position group of ESPN's weekly
+ *   projections → KV `espn` (espn.ts), the fallback for players without `ffp` Expected Points.
  *
- * ESPN's scoreboard and Sleeper's stats together don't fit the free plan's 10 ms of CPU, so each
- * run parses one response. fetch, KV and the clock are passed in, so tests use fakes.
+ * No two sources fit the free plan's 10 ms of CPU together, so each run parses one response; ESPN's
+ * projections for all six positions (2.9 MB) don't fit either, so each run takes one group of
+ * 0.7–0.9 MB. fetch, KV and the clock are passed in, so tests use fakes.
  *
  * A failed run logs, returns `failed` and writes nothing: the last good data stays in KV.
  *
- * KV write budget (free plan: 1,000 writes a day). Each cron fires every 5 minutes, 288 times a day:
+ * KV write budget (free plan: 1,000 writes a day). The scoreboard and stats crons fire every
+ * 5 minutes, 288 times a day; the ESPN cron 3 times an hour, 72 times a day:
  * - `scoreboard` is written only when it changes. While a Game is Live its clock moves, so at worst
  *   288 a day; otherwise only at kickoffs and Finals.
  * - `leaderboard` is written when anything but updatedAt changes (so every run while a Game is Live),
  *   and otherwise once updatedAt is HEARTBEAT_MINUTES old, so "Updated … ago" on the page means
  *   the last successful refresh within that bound: 1,440 / 10 = 144 a day. At worst 288 a day.
- * - Worst case 288 + 288 = 576 a day; a quiet day 144 + a handful.
+ * - `espn` is written only when a group's players changed: at worst 72 a day, never in the
+ *   postseason.
  * - /api/expected-points (functions/api/expected-points.ts) writes `expected` once per accepted
  *   push and `idmap` only when it changed, at most once an hour. ffp pushes every 30 minutes on game
  *   days plus before each kickoff window: about 52 + a handful a day. The Function refuses a push
  *   under 5 minutes after the last (429), so whatever sends pushes, at most 288 + 24 = 312 a day.
- * - Worst case with ffp's schedule 576 + ~60 ≈ 640, leaving about 360 a day for the ESPN projections
- *   run's `espn` (S11.5). A leaked push secret used at full rate could reach 576 + 312 = 888 before
- *   `espn`; rotating the secret (scripts/setup_cloudflare.sh, then a deploy) stops it.
+ * - Worst case with ffp's schedule: 288 + 288 + 72 + ~60 ≈ 710 a day, against 1,000; a quiet day
+ *   144 + 72 + a handful. A leaked push secret used at full rate could reach 648 + 312 = 960;
+ *   rotating the secret (scripts/setup_cloudflare.sh, then a deploy) stops it.
  * KV reads: 1 per scoreboard run + 4 per stats run (`scoreboard`, `expected`, `espn`, `leaderboard`)
- * = 1,440 a day, plus 2 per push, against 100,000.
+ * + 3 per ESPN run = 1,656 a day, plus 2 per push, against 100,000.
  *
  * The stats run reads KV `expected` and `espn` defensively: a store that isn't the shape kv.ts
  * describes is ignored with a log (the Leaderboard is built without it), and a malformed player
  * entry is dropped with a log; neither fails the run.
  */
-import { KEYS, updatedAtOf, type EspnStore, type ExpectedStore, type KV } from "./kv.js";
+import { buildEspnStore, EspnProjectionsError, groupAt, instant as espnInstant, parseProjections, projectionsRequest } from "./espn.js";
+import { KEYS, updatedAtOf, type EspnStore, type ExpectedStore, type IdMapStore, type KV } from "./kv.js";
 import { buildLeaderboard, sameContent, serialize } from "./leaderboard.js";
 import { parseScoreboard, type Scoreboard, type Week } from "./scoreboard.js";
 import { sleeperStatsToPlayers } from "./sleeper.js";
@@ -170,6 +177,68 @@ function parseStore(key: string, text: string, stamp: "generatedAt" | "fetchedAt
   return store;
 }
 
+/**
+ * ESPN projections run (S11.5): one position group per run (espn.ts `groupAt`), so each response
+ * is under 0.9 MB. Joined through KV `idmap` and the scoreboard's Games, frozen at kickoff, and
+ * written to KV `espn` only when the players changed. ESPN's fantasy game has no postseason weeks,
+ * so in the postseason the run does nothing.
+ */
+export async function runEspn(deps: RunDeps): Promise<Outcome> {
+  return guarded("ESPN projections run", deps, async () => {
+    const scoreboardText = await deps.kv.get(KEYS.scoreboard, { type: "text" });
+    if (scoreboardText === null) throw new Error("no scoreboard in KV yet (the scoreboard run writes it)");
+    const scoreboard = JSON.parse(scoreboardText) as Scoreboard;
+    if (scoreboard.week.seasonType !== "regular") return "unchanged";
+
+    const now = deps.now();
+    const group = groupAt(now);
+    const { url, filter } = projectionsRequest(scoreboard.week, group);
+    const projections = parseProjections(await fetchJson(url, deps, { "x-fantasy-filter": filter }), scoreboard.week, group.positions);
+
+    const [idmapText, storedText] = await Promise.all([
+      deps.kv.get(KEYS.idmap, { type: "text" }),
+      deps.kv.get(KEYS.espn, { type: "text" }),
+    ]);
+    const idmap = idmapText === null ? null : readIdMap(idmapText);
+    const stored = storedText === null ? null : readEspnStore(storedText, deps);
+    const { store, counts } = buildEspnStore({ stored, scoreboard, projections, idmap, positions: group.positions, now });
+    deps.log(
+      `ESPN projections run (${group.positions.join(", ")}): ${counts.written} players, ${counts.unmapped} unmapped` +
+        `${idmap === null ? " (no idmap yet)" : ""}, ${counts.noGame} not playing`,
+    );
+
+    if (JSON.stringify(store) === storedText) return "unchanged";
+    store.fetchedAt = espnInstant(now);
+    await deps.kv.put(KEYS.espn, JSON.stringify(store));
+    return "written";
+  });
+}
+
+/** KV `idmap`, written by /api/expected-points after the schema check; anything else is an error. */
+function readIdMap(text: string): IdMapStore {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    value = null;
+  }
+  const map = (value as Partial<IdMapStore> | null)?.espnToSleeper;
+  if (typeof map !== "object" || map === null || Array.isArray(map)) throw new EspnProjectionsError("KV idmap has no espnToSleeper map");
+  return value as IdMapStore;
+}
+
+/** Our own KV `espn`; one we can't read is replaced rather than kept. */
+function readEspnStore(text: string, deps: RunDeps): EspnStore | null {
+  try {
+    const value = JSON.parse(text) as EspnStore | null;
+    if (value?.schemaVersion === 1 && typeof value.players === "object" && value.players !== null) return value;
+  } catch {
+    // replaced below
+  }
+  deps.log("ESPN projections run: replacing a KV espn it can't read");
+  return null;
+}
+
 async function guarded(what: string, deps: RunDeps, run: () => Promise<"written" | "unchanged">): Promise<Outcome> {
   try {
     return { result: await run() };
@@ -180,9 +249,9 @@ async function guarded(what: string, deps: RunDeps, run: () => Promise<"written"
   }
 }
 
-async function fetchJson(url: string, deps: RunDeps): Promise<unknown> {
+async function fetchJson(url: string, deps: RunDeps, headers: Record<string, string> = {}): Promise<unknown> {
   const res = await deps.fetch(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...headers },
     signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
