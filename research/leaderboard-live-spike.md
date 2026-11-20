@@ -173,3 +173,14 @@ A throwaway Worker (`ffp-cpu-probe`, deleted afterwards) fetched Sleeper's compl
 - **Still to do:**
   - Sunday's recording (`snapshots/live-sunday/`) re-checks this with a live mid-slate response.
   - The joined Worker's own CPU (scoring under four rule sets, building the Leaderboard JSON) is measured when it's built.
+
+## The deployed cron Worker (2026-11-20, after Sprint 10 went live)
+
+Measured with `wrangler tail --config site/worker/wrangler.toml` over 10:22–10:33 UTC. It was Thursday after the week's first Game, so Sleeper listed 46 players:
+
+| Cron | Runs | CPU (ms) | Wall (ms) |
+|---|---|---|---|
+| Stats (`*/5`) | 2 (one "unchanged", one "written") | 3, 3 | 395–620 |
+| Scoreboard (`2-59/5`) | 2 (both "unchanged") | 3, 4 | 183–205 |
+
+A full Sunday has about 15 times as many rows. The S10.1 probe put a full week's Sleeper parse at 4–5 ms, so the stats run should land around 7–9 ms. Check it with `wrangler tail` during Sunday's Games.
