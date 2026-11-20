@@ -1,0 +1,16 @@
+# The Pages project: the page in public/ and the Functions in functions/ (/api/leaderboard).
+# Deploy from site/: npm run deploy:pages. The account comes from CLOUDFLARE_ACCOUNT_ID in the
+# environment, never from this file. The cron Worker has its own config in worker/wrangler.toml.
+name = "ffp-leaderboard"
+pages_build_output_dir = "public"
+compatibility_date = "2026-11-01"
+
+# The namespace the cron Worker writes. KV ids aren't secret (PLAN.md).
+[[kv_namespaces]]
+binding = "LEADERBOARD"
+id = "505854716af94d8d9420b88da26d29a2"
+
+# Pages has no preview_id; preview deployments take their bindings from env.preview.
+[[env.preview.kv_namespaces]]
+binding = "LEADERBOARD"
+id = "fda7273654e84716abf4f9f25dcd72e8"

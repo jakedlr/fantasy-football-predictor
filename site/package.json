@@ -4,13 +4,16 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy:worker": "wrangler deploy --config worker/wrangler.toml",
+    "deploy:pages": "wrangler pages deploy public --project-name ffp-leaderboard --branch main"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "wrangler": "4.158.0"
   }
 }
