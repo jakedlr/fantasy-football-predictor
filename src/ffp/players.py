@@ -69,6 +69,8 @@ class RosterEntry:
     team: str
     status: str  # nflverse roster status, e.g. "ACT", "RES", "DEV"
     week: int  # the week this row is from
+    sleeper_id: str | None = None  # nflverse's crosswalk ids (S11.2), when the row has them
+    espn_id: str | None = None
 
 
 def load_roster(season: int, fetch: Fetch | None = None) -> list[RosterEntry]:
@@ -95,6 +97,8 @@ def load_roster(season: int, fetch: Fetch | None = None) -> list[RosterEntry]:
             team=str(row["team"]),
             status=str(row["status"]),
             week=int(row["week"]),
+            sleeper_id=_id(row.get("sleeper_id")),
+            espn_id=_id(row.get("espn_id")),
         )
         held = latest.get(entry.gsis_id)
         if held is None or entry.week >= held.week:
@@ -110,6 +114,15 @@ def _present(value: object) -> bool:
     if value is None or value != value:  # NaN is the one value unequal to itself
         return False
     return str(value).strip().lower() not in ("", "none", "nan", "null")
+
+
+def _id(value: object) -> str | None:
+    """An id column as text ("4429615", also from 4429615 or 4429615.0), or None when missing."""
+    if not _present(value):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).strip()
 
 
 def name_key(name: str) -> str:
