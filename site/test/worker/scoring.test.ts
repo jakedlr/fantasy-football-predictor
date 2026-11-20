@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  FG_BUCKET_KEYS,
   fgMadeYardsFromSleeperBuckets,
   pointsAllowed,
   RULES,
@@ -121,5 +122,24 @@ describe("fgMadeYardsFromSleeperBuckets", () => {
       const rules = RULES[name]!;
       expect(scoreKicker({ fg_made_yards: fromBuckets, pat_made: 2 }, rules)).toBe(scoreKicker({ fg_made_yards: [27], pat_made: 2 }, rules));
     }
+  });
+});
+
+describe("scoreKicker with Sleeper FG bucket counts", () => {
+  it("scores whole bucket counts exactly as the kicks' distances", () => {
+    for (const name of RULES_NAMES) {
+      const rules = RULES[name]!;
+      const line = { fgm_20_29: 2, fgm_40_49: 1, fgm_60p: 1, pat_made: 3, fg_missed: 1 };
+      expect(scoreKicker(line, rules)).toBeCloseTo(scoreKicker({ ...line, fgm_20_29: 0, fgm_40_49: 0, fgm_60p: 0, fg_made_yards: fgMadeYardsFromSleeperBuckets(line) }, rules), 9);
+    }
+  });
+
+  it("scores fractional counts (a Projected Total) linearly", () => {
+    const rules = RULES["espn-league"]!;
+    expect(scoreKicker({ fgm_30_39: 1.5, fgm_50_59: 0.25 }, rules)).toBeCloseTo(1.5 * 3 + 0.25 * 5, 9);
+  });
+
+  it("knows every bucket in the contract", () => {
+    expect([...FG_BUCKET_KEYS].sort()).toEqual(Object.keys(read("contracts/scoring-rules.json").sleeperFgBuckets).sort());
   });
 });

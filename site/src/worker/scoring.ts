@@ -71,8 +71,16 @@ export interface ScoringRules {
 }
 
 export type OffenseStatLine = Partial<Record<OffenseStat, number>>;
-/** `fg_made_yards`: the distance of each FG made. */
-export type KickerStatLine = Partial<Record<KickerStat, number>> & { fg_made_yards?: readonly number[] };
+/** Sleeper's FGs-made distance buckets (`contracts/scoring-rules.json` sleeperFgBuckets), shortest first. */
+export const FG_BUCKET_KEYS = ["fgm_0_19", "fgm_20_29", "fgm_30_39", "fgm_40_49", "fgm_50_59", "fgm_60p"] as const;
+export type FgBucket = (typeof FG_BUCKET_KEYS)[number];
+
+/**
+ * `fg_made_yards`: the distance of each FG made. `fgm_*`: FGs made per Sleeper bucket, each scored
+ * at its bucket's min; may be fractional (a Projected Total: made so far + mean × fraction left).
+ * A line uses one or the other; both count if both are given.
+ */
+export type KickerStatLine = Partial<Record<KickerStat | FgBucket, number>> & { fg_made_yards?: readonly number[] };
 export type DstStatLine = Partial<Record<DstStat, number>> & {
   points_allowed_all?: number;
   opponent_defensive_tds_points?: number;
@@ -127,6 +135,10 @@ export function scoreKicker(line: KickerStatLine, rules: ScoringRules): number {
   }
   const tiers = k.fg_made_by_distance ?? [];
   for (const yards of line.fg_made_yards ?? []) total += tierPoints(yards, tiers);
+  for (const [key, min] of FG_BUCKET_MINS) {
+    const made = line[key];
+    if (made) total += made * tierPoints(min, tiers);
+  }
   return total;
 }
 
@@ -153,6 +165,11 @@ export function scoreDst(line: DstStatLine, rules: ScoringRules): number {
 }
 
 const FG_BUCKETS = Object.entries(CONTRACT.sleeperFgBuckets);
+const FG_BUCKET_MINS = FG_BUCKET_KEYS.map((key) => {
+  const bucket = CONTRACT.sleeperFgBuckets[key];
+  if (!bucket) throw new Error(`contracts/scoring-rules.json: no Sleeper FG bucket ${key}`);
+  return [key, bucket.min] as const;
+});
 
 /**
  * The FGs made in a Sleeper stats row (`fgm_20_29`-style buckets), each at its bucket's min. Exact

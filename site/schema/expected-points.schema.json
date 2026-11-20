@@ -2,41 +2,198 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ffp-leaderboard.pages.dev/schema/expected-points.schema.json",
   "title": "Expected Points push",
-  "description": "What the home machine's ffp run pushes to KV: each priced player's Expected Points and per-Scoring-Stat means for an NFL Week's Games that haven't kicked off. Terms as in GLOSSARY.md.",
+  "description": "What the home machine's ffp run POSTs to /api/expected-points: each priced player's Expected Points and per-Scoring-Stat means for an NFL Week's Games that haven't kicked off, plus the Sleeper-to-ESPN id map for the ESPN projection fallback. Signed as in site/contracts/push-signature.json. Terms as in GLOSSARY.md.",
   "type": "object",
-  "required": ["schemaVersion", "generatedAt", "season", "week", "players"],
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "season",
+    "seasonType",
+    "week",
+    "players",
+    "idMap"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schemaVersion": {"const": 1},
-    "generatedAt": {"type": "string", "format": "date-time", "pattern": "Z$"},
-    "season": {"type": "integer", "minimum": 2000},
-    "week": {"type": "integer", "minimum": 1, "maximum": 23},
+    "schemaVersion": {
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "season": {
+      "type": "integer",
+      "minimum": 2000
+    },
+    "week": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 23
+    },
     "players": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["sleeperId", "gsisId", "espnId", "name", "team", "position", "kickoff", "statMeans", "expected"],
+        "required": [
+          "sleeperId",
+          "gsisId",
+          "espnId",
+          "name",
+          "team",
+          "position",
+          "kickoff",
+          "statMeans",
+          "expected"
+        ],
         "additionalProperties": false,
         "properties": {
-          "sleeperId": {"type": "string", "pattern": "^(\\d+|[A-Z]{2,3})$", "description": "Sleeper player id (the team for a D/ST). The home machine maps it from Sleeper's player list, which carries gsis and ESPN ids, so the Worker never downloads that list (14.7 MB)."},
-          "gsisId": {"type": ["string", "null"], "description": "nflverse gsis_id; null for a D/ST."},
-          "espnId": {"type": ["string", "null"], "pattern": "^\\d+$", "description": "From nflverse's id map; null if unmapped."},
-          "name": {"type": "string", "minLength": 1},
-          "team": {"type": "string", "pattern": "^[A-Z]{2,3}$"},
-          "position": {"enum": ["QB", "RB", "WR", "TE", "K", "D/ST"]},
-          "kickoff": {"type": "string", "format": "date-time", "pattern": "Z$"},
+          "sleeperId": {
+            "type": "string",
+            "pattern": "^(\\d+|[A-Z]{2,3})$",
+            "description": "Sleeper player id (the team for a D/ST). The home machine maps it from Sleeper's player list, which carries gsis and ESPN ids, so the Worker never downloads that list (14.7 MB)."
+          },
+          "gsisId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "nflverse gsis_id; null for a D/ST."
+          },
+          "espnId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d+$",
+            "description": "From Sleeper's player list (espn_id); null if unmapped or a D/ST."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "team": {
+            "type": "string",
+            "pattern": "^[A-Z]{2,3}$"
+          },
+          "position": {
+            "enum": [
+              "QB",
+              "RB",
+              "WR",
+              "TE",
+              "K",
+              "D/ST"
+            ]
+          },
+          "kickoff": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "Z$",
+            "description": "The Game's kickoff. The push only lists players whose Game hasn't kicked off at generatedAt; /api/expected-points keeps an earlier push's entry for a player whose Game has kicked off (frozen at kickoff)."
+          },
           "statMeans": {
-            "description": "Mean of each Scoring Stat for the whole Game, keyed as in ffp.scoring (kicker and D/ST keys settled in Sprint 11).",
+            "description": "Mean of each Scoring Stat for the whole Game. QB/RB/WR/TE: ffp.scoring's offensive stats. K: pat_made, pat_missed, fg_missed and FGs made by Sleeper's distance buckets (fgm_0_19 \u2026 fgm_60p, as site/contracts/scoring-rules.json sleeperFgBuckets). D/ST: ffp.scoring's D/ST counts plus points_allowed_all, opponent_defensive_tds_points, opponent_return_tds_points and yards_allowed. A missing stat is 0. The Projected Total is current + mean \u00d7 fraction of the Game left, per stat, then scored.",
             "type": "object",
-            "additionalProperties": {"type": "number"}
+            "propertyNames": {
+              "enum": [
+                "passing_yards",
+                "passing_tds",
+                "passing_interceptions",
+                "passing_2pt",
+                "rushing_yards",
+                "rushing_tds",
+                "rushing_2pt",
+                "receptions",
+                "receiving_yards",
+                "receiving_tds",
+                "receiving_2pt",
+                "fumbles_lost",
+                "pat_made",
+                "pat_missed",
+                "fg_missed",
+                "fgm_0_19",
+                "fgm_20_29",
+                "fgm_30_39",
+                "fgm_40_49",
+                "fgm_50_59",
+                "fgm_60p",
+                "sacks",
+                "interceptions",
+                "fumble_recoveries",
+                "forced_fumbles",
+                "safeties",
+                "blocked_kicks",
+                "interception_return_tds",
+                "fumble_return_tds",
+                "kickoff_return_tds",
+                "punt_return_tds",
+                "blocked_kick_return_tds",
+                "points_allowed_all",
+                "opponent_defensive_tds_points",
+                "opponent_return_tds_points",
+                "yards_allowed"
+              ]
+            },
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0
+            }
           },
           "expected": {
-            "description": "Expected Points by Scoring Rules name.",
+            "description": "Expected Points (the Score Distribution's mean) by Scoring Rules name; every Leaderboard Scoring Rules option (ppr, half-ppr, standard, espn-league).",
             "type": "object",
-            "minProperties": 1,
-            "additionalProperties": {"type": "number"}
+            "required": [
+              "ppr",
+              "half-ppr",
+              "standard",
+              "espn-league"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ppr": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 150
+              },
+              "half-ppr": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 150
+              },
+              "standard": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 150
+              },
+              "espn-league": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 150
+              }
+            }
           }
         }
+      },
+      "maxItems": 1500
+    },
+    "seasonType": {
+      "enum": [
+        "regular",
+        "postseason"
+      ]
+    },
+    "idMap": {
+      "description": "Sleeper player id \u2192 ESPN player id, for every QB/RB/WR/TE/K on a team that plays this NFL Week (priced or not), from Sleeper's player list. The Worker joins ESPN's projections to Sleeper ids through it.",
+      "type": "object",
+      "maxProperties": 3000,
+      "propertyNames": {
+        "pattern": "^\\d+$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^\\d+$"
       }
     }
   }

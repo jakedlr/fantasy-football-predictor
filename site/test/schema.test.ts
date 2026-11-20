@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -55,6 +56,24 @@ describe("expected-points.schema.json", () => {
     expect(validate(example)).toBe(false);
   });
 
+  it("rejects a Scoring Stat mean outside ffp.scoring's keys and Sleeper's FG buckets", () => {
+    const example = read("schema/examples/expected-points.json");
+    example.players[1].statMeans.fgm_50p = 0.2;
+    expect(validate(example)).toBe(false);
+  });
+
+  it("requires Expected Points under every Leaderboard Scoring Rules option", () => {
+    const example = read("schema/examples/expected-points.json");
+    delete example.players[0].expected["espn-league"];
+    expect(validate(example)).toBe(false);
+  });
+
+  it("requires the Sleeper-to-ESPN id map", () => {
+    const example = read("schema/examples/expected-points.json");
+    delete example.idMap;
+    expect(validate(example)).toBe(false);
+  });
+
   it("rejects a push without Expected Points", () => {
     const example = read("schema/examples/expected-points.json");
     example.players[0].expected = {};
@@ -78,5 +97,13 @@ describe("the two examples", () => {
       }
     }
     expect(matched).toBeGreaterThan(0);
+  });
+});
+
+describe("push-signature.json", () => {
+  it("is HMAC-SHA256 of timestamp + '.' + body under the secret's UTF-8 bytes", () => {
+    const { vector } = read("contracts/push-signature.json");
+    const hex = createHmac("sha256", vector.secret).update(`${vector.timestamp}.${vector.body}`).digest("hex");
+    expect(`sha256=${hex}`).toBe(vector.signature);
   });
 });

@@ -378,6 +378,20 @@ Parallel pieces: the Worker's ESPN scoreboard client (Game Status, NFL Week); Sl
 
 Parallel pieces: K stats (Sleeper's distance buckets) and D/ST stats; `ffp --slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the signed push to `/api/expected-points`; ESPN projections as the fallback, with the Sleeper↔ESPN id map sent in the push (Sleeper's rows carry no ESPN id); the Projected Total per Scoring Stat.
 
+**S11.0 Contracts** (main thread, first on `sprint-11`):
+- `site/schema/expected-points.schema.json`: the statMeans keys per position (K FGs by Sleeper's `fgm_*` buckets; D/ST counts plus Points and Yards Allowed), Expected Points under all four Scoring Rules options, `seasonType`, and `idMap` (Sleeper id → ESPN id for every QB/RB/WR/TE/K on a team that plays).
+- `site/contracts/push-signature.json`: the signing scheme and a test vector, checked by both the signer and the Function.
+- `site/src/worker/kv.ts`: the KV keys `expected`, `idmap` and `espn`, their shapes, and how a push is merged (frozen at kickoff).
+- `scoreKicker` scores Sleeper bucket counts, fractional ones included.
+
+Stories, one worktree each:
+- **S11.1 K and D/ST from Sleeper** (Worker): kicker and D/ST stat lines from Sleeper's rows, checked against Sleeper's own points and nflverse.
+- **S11.2 `ffp slate`** (Python): every player with props in the Games that haven't kicked off, plus every team's K and D/ST. It reports the mean and per-Scoring-Stat means, scores Expected Points under the four options, maps Sleeper ids, and writes the push JSON.
+- **S11.3 The push and its scheduler** (Python and Docker): signs and sends the push. It runs every 30 minutes on game days and about 10 minutes before each kickoff window.
+- **S11.4 `/api/expected-points`** (Pages Function): checks the signature, the time and the schema, merges into KV `expected` and `idmap`. The deploy job hands `LEADERBOARD_PUSH_SECRET` to Pages.
+- **S11.5 ESPN projection fallback** (Worker): a third cron trigger. It reads ESPN's weekly projections, rescores them, joins them through `idmap` and writes KV `espn` only when it changes. First it measures whether the response fits 10 ms of CPU.
+- **S11.6 Week Points** (Worker): the stats run merges `expected` and `espn` into the Leaderboard. Upcoming players are listed from their Expected Points (≥ 1). Live players get the Projected Total per stat, using the fraction of the Game left from quarter and clock. The full-Sunday CPU is re-measured.
+
 ## Sprint 12 — Finish
 
 Design review (Emil's skills, Laws of UX) of the page built in S10.5 (sorting, "Show more", phone layout, the delayed banner, credit line and disclaimer are in), ntfy alerts, a Playwright smoke test, README.

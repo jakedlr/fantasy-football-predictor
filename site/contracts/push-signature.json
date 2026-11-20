@@ -1,0 +1,15 @@
+{
+  "description": "How a push to /api/expected-points is signed (ADR 0006). The home machine sends the JSON body with two headers: X-FFP-Timestamp, Unix seconds when it was signed, and X-FFP-Signature, 'sha256=' + lowercase hex HMAC-SHA256 under LEADERBOARD_PUSH_SECRET (its UTF-8 bytes, used as given: 64 hex characters, not decoded) of the UTF-8 bytes of timestamp + '.' + body. The Function compares in constant time and rejects a timestamp more than 300 s from its clock either way. This vector is checked by both the Python signer and the Function.",
+  "headers": {
+    "timestamp": "X-FFP-Timestamp",
+    "signature": "X-FFP-Signature"
+  },
+  "maxSkewSeconds": 300,
+  "maxBodyBytes": 1048576,
+  "vector": {
+    "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "timestamp": "1795370400",
+    "body": "{\"schemaVersion\":1,\"generatedAt\":\"2026-11-22T17:20:00Z\"}",
+    "signature": "sha256=cbc63f7810ed7d487766c1f200ddbb49013363aff85c4166106a39f33c22ce2d"
+  }
+}
