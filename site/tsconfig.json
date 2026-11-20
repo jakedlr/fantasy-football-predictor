@@ -10,5 +10,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["schema", "contracts", "test"]
+  "include": ["src", "schema", "contracts", "test"]
 }
