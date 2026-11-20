@@ -119,9 +119,12 @@ describe("stats run", () => {
     expect(lb.updatedAt).toBe("2026-11-20T02:45:00Z");
     expect(lb.week.number).toBe(11);
     expect(lb.games).toHaveLength(13);
-    // Every QB/RB/WR/TE row is in the Live Game; K and DEF rows wait for Sprint 11.
+    // Every QB/RB/WR/TE row that has recorded a Scoring Stat is in the Live Game. With no Expected
+    // Points in KV, the 30 rows with only gms_active-style keys (backups who haven't touched the
+    // ball) aren't listed. K and DEF rows come with S11.1.
     const offense = sleeperLive.filter((r) => ["QB", "RB", "WR", "TE"].includes((r as { player: { position: string } }).player.position));
-    expect(lb.players).toHaveLength(offense.length);
+    expect(offense).toHaveLength(46);
+    expect(lb.players).toHaveLength(16);
     expect(new Set(lb.players.map((p) => p.gameId))).toEqual(new Set(["401873066"]));
     // C.J. Stroud: 134 pass yards, 2 pass TDs, 1 INT, 4 rush yards. Sleeper's pts_ppr is 12.76 with
     // −1 per INT; ours takes −2.
@@ -131,8 +134,8 @@ describe("stats run", () => {
     expect(Object.keys(stroud.points)).toEqual(lb.scoringRules);
   });
 
-  it("gives players of an Upcoming Game 0 Week Points, and leaves out teams on bye", async () => {
-    const row = (id: string, team: string) => ({ player_id: id, team, stats: { gms_active: 1 }, player: { first_name: "A", last_name: id, position: "WR" } });
+  it("gives players of an Upcoming Game 0 Week Points without Expected Points, and leaves out teams on bye", async () => {
+    const row = (id: string, team: string) => ({ player_id: id, team, stats: { rec: 0 }, player: { first_name: "A", last_name: id, position: "WR" } });
     // KC plays later in Week 11; ATL is on bye.
     const { deps, kv } = setup({ [SLEEPER]: [...sleeperLive, row("1", "KC"), row("2", "ATL")] }, withScoreboard());
     await runStats(deps);
