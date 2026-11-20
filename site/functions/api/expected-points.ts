@@ -4,12 +4,16 @@
  * In order: a body over MAX_BODY_BYTES is 413; a bad or stale signature is 401, with no hint of
  * which part failed (site/contracts/push-signature.json); invalid JSON or a push failing
  * site/schema/expected-points.schema.json is 400 with a short reason; a push older than the
- * stored one is 409, so a delayed retry can't roll Expected Points back. Otherwise it is merged
+ * stored one is 409, so a delayed retry can't roll Expected Points back, and one too soon after it
+ * is 429 (below). Otherwise it is merged
  * into KV `expected` (kv.ts `ExpectedStore`: frozen at kickoff, a new week replaces) and 204.
  *
- * Free-plan budget: per push, 2 KV reads, 1 write of `expected`, and 1 of `idmap` only when the
- * id map changed (refresh.ts has the day's write budget). A repeat of the stored push (same
- * generatedAt) writes nothing. Without LEADERBOARD_PUSH_SECRET it answers 500 and never accepts.
+ * Free-plan budget (1,000 KV writes a day, shared with the cron Worker; refresh.ts has the day's
+ * sum): per accepted push, 2 KV reads, 1 write of `expected`, and 1 of `idmap` only when the id map
+ * changed and the stored one is at least an hour old. A push under 5 minutes after the stored one
+ * is 429 and writes nothing, so even a leaked secret or a runaway scheduler can't spend more than
+ * 288 + 24 writes a day. A repeat of the stored push (same generatedAt, e.g. a retry) is 204 and
+ * writes nothing. Without LEADERBOARD_PUSH_SECRET it answers 500 and never accepts.
  */
 import { invertIdMap, mergeExpected, sameIdMap } from "../../src/push/merge.js";
 import { validatePush } from "../../src/push/validate.js";
@@ -19,6 +23,10 @@ import { KEYS, type ExpectedStore, type IdMapStore, type KV } from "../../src/wo
 /** As in site/contracts/push-signature.json (a test holds them equal). */
 export const MAX_SKEW_SECONDS = 300;
 export const MAX_BODY_BYTES = 1_048_576;
+/** The least time between accepted pushes' generatedAt (ffp pushes every 30 minutes). */
+export const MIN_PUSH_SPACING_MS = 5 * 60_000;
+/** The least time between writes of a changed `idmap` (it only joins ESPN's fallback projections). */
+export const MIN_IDMAP_SPACING_MS = 60 * 60_000;
 /** A secret shorter than this is a misconfiguration (setup_cloudflare.sh makes 64 hex characters). */
 const MIN_SECRET_LENGTH = 32;
 
@@ -70,13 +78,18 @@ export async function handlePush(request: Request, env: PushEnv, now: Date): Pro
     const storedAt = Date.parse(stored.generatedAt);
     if (generatedAt < storedAt) return answer(409, `older than the stored push (${stored.generatedAt})`);
     if (generatedAt === storedAt) return new Response(null, { status: 204 });
+    if (generatedAt - storedAt < MIN_PUSH_SPACING_MS) {
+      const wait = Math.ceil((storedAt + MIN_PUSH_SPACING_MS - generatedAt) / 1000);
+      return answer(429, "under 5 minutes after the stored push", { "Retry-After": String(wait) });
+    }
   }
 
   // idmap first: `expected` is written last, so a push whose writes failed halfway isn't taken
   // for a repeat (same generatedAt) when it's retried.
   const espnToSleeper = invertIdMap(push.idMap);
   const idmap = await readStore<IdMapStore>(env.LEADERBOARD, KEYS.idmap);
-  if (idmap === null || !sameIdMap(idmap.espnToSleeper, espnToSleeper)) {
+  const idmapDue = idmap === null || generatedAt - Date.parse(idmap.generatedAt) >= MIN_IDMAP_SPACING_MS;
+  if (idmapDue && (idmap === null || !sameIdMap(idmap.espnToSleeper, espnToSleeper))) {
     const next: IdMapStore = { schemaVersion: 1, generatedAt: push.generatedAt, espnToSleeper };
     await env.LEADERBOARD.put(KEYS.idmap, JSON.stringify(next));
   }

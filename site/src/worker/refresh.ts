@@ -16,9 +16,15 @@
  * - `leaderboard` is written when anything but updatedAt changes (so every run while a Game is Live),
  *   and otherwise once updatedAt is HEARTBEAT_MINUTES old, so "Updated … ago" on the page means
  *   the last successful refresh within that bound: 1,440 / 10 = 144 a day. At worst 288 a day.
- * - Worst case 288 + 288 = 576 a day; a quiet day 144 + a handful. That leaves over 400 a day for
- *   Sprint 11's Expected Points push (every 30 minutes on game days, 48 a day, plus kickoff windows).
- * KV reads: 1 per scoreboard run + 2 per stats run = 864 a day, against 100,000.
+ * - Worst case 288 + 288 = 576 a day; a quiet day 144 + a handful.
+ * - /api/expected-points (functions/api/expected-points.ts) writes `expected` once per accepted
+ *   push and `idmap` only when it changed, at most once an hour. ffp pushes every 30 minutes on game
+ *   days plus before each kickoff window: about 52 + a handful a day. The Function refuses a push
+ *   under 5 minutes after the last (429), so whatever sends pushes, at most 288 + 24 = 312 a day.
+ * - Worst case with ffp's schedule 576 + ~60 ≈ 640, leaving about 360 a day for the ESPN projections
+ *   run's `espn` (S11.5). A leaked push secret used at full rate could reach 576 + 312 = 888 before
+ *   `espn`; rotating the secret (scripts/setup_cloudflare.sh, then a deploy) stops it.
+ * KV reads: 1 per scoreboard run + 2 per stats run = 864 a day, plus 2 per push, against 100,000.
  */
 import { KEYS, updatedAtOf, type KV } from "./kv.js";
 import { buildLeaderboard, sameContent, serialize } from "./leaderboard.js";

@@ -592,7 +592,8 @@ else
   NEW_SECRET=1
   write_env LEADERBOARD_PUSH_SECRET "$PUSH_SECRET"
 fi
-# The deploy job (Sprint 10) hands it to the site with `wrangler pages secret put`.
+# The deploy job (deploy.yml) hands it to the Pages project with `wrangler pages secret put`
+# before each Pages deploy, so a new secret reaches /api/expected-points at the next deploy.
 if (( NEW_SECRET == 0 )) && gh_secret_exists LEADERBOARD_PUSH_SECRET; then
   ok "GitHub secret LEADERBOARD_PUSH_SECRET already set"
 else

@@ -49,17 +49,41 @@ describe("POST /api/expected-points", () => {
     });
   });
 
+  // Pushes at these times, each sent a minute after it was generated.
+  const pushAt = (kv: FakeKV, generatedAt: string, idMap = example().idMap) =>
+    post(kv, { ...example(), generatedAt, idMap }, new Date(Date.parse(generatedAt) + 60_000));
+  const moved = { ...example().idMap, "9999": "1234" };
+
   it("writes expected once per push, and idmap only when the map changed", async () => {
     const kv = new FakeKV();
-    await post(kv, example());
-    const next = { ...example(), generatedAt: "2026-11-22T17:55:00Z" };
-    expect((await post(kv, next, new Date("2026-11-22T17:56:00Z"))).status).toBe(204);
+    await pushAt(kv, "2026-11-22T16:00:00Z");
+    expect((await pushAt(kv, "2026-11-22T16:30:00Z")).status).toBe(204);
     expect(kv.writes.map((w) => w.key)).toEqual([KEYS.idmap, KEYS.expected, KEYS.expected]);
 
-    const moved = { ...example(), generatedAt: "2026-11-22T17:58:00Z", idMap: { ...example().idMap, "9999": "1234" } };
-    expect((await post(kv, moved, new Date("2026-11-22T17:59:00Z"))).status).toBe(204);
+    expect((await pushAt(kv, "2026-11-22T17:00:00Z", moved)).status).toBe(204);
     expect(kv.writes.map((w) => w.key).slice(3)).toEqual([KEYS.idmap, KEYS.expected]);
     expect(stored<IdMapStore>(kv, KEYS.idmap).espnToSleeper["1234"]).toBe("9999");
+  });
+
+  it("writes a changed idmap at most once an hour (KV write budget), catching up on a later push", async () => {
+    const kv = new FakeKV();
+    await pushAt(kv, "2026-11-22T16:00:00Z");
+    await pushAt(kv, "2026-11-22T16:30:00Z", moved);
+    expect(kv.writes.map((w) => w.key)).toEqual([KEYS.idmap, KEYS.expected, KEYS.expected]);
+    await pushAt(kv, "2026-11-22T17:00:00Z", moved);
+    expect(kv.writes.map((w) => w.key).slice(3)).toEqual([KEYS.idmap, KEYS.expected]);
+    expect(stored<IdMapStore>(kv, KEYS.idmap).generatedAt).toBe("2026-11-22T17:00:00Z");
+  });
+
+  it("answers 429 to a push under 5 minutes after the stored one (KV write budget), writing nothing", async () => {
+    const kv = new FakeKV();
+    await pushAt(kv, "2026-11-22T16:00:00Z");
+    const writes = kv.writes.length;
+    const res = await pushAt(kv, "2026-11-22T16:04:59Z");
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("1");
+    expect(kv.writes.length).toBe(writes);
+    expect((await pushAt(kv, "2026-11-22T16:05:00Z")).status).toBe(204);
   });
 
   it("merges with the stored week: a player whose Game has kicked off stays frozen", async () => {
