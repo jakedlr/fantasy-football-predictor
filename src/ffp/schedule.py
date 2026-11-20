@@ -6,8 +6,12 @@ The rules (`next_run`), all in US Eastern time, the NFL's own clock:
 - On a game day there is a run every 30 minutes on :00 and :30 from 08:00 until the day's last
   kickoff, plus one 10 minutes before each kickoff window. A window is the kickoffs within 30
   minutes of its first one, so Sunday's 16:05 and 16:25 Games share a 15:55 run.
-- A :00/:30 run that would start 10 minutes or less before a window's run is dropped (it would
-  still be running): Sunday Night Football at 20:20 gets 19:30 and 20:10, not 20:00.
+- A :00/:30 run 10 minutes or less before or after a window's run is dropped, so runs stay more
+  than 10 minutes apart: the site answers 429 to a push under 5 minutes after the last one it
+  accepted (S11.4). Sunday's early window gets 12:30, 12:50, 13:30; Sunday Night Football at 20:20
+  gets 19:30 and 20:10.
+- The loop also starts a run no sooner than 5 minutes after the last successful one ended, in case
+  a long run ended just before a slot.
 - After the day's last kickoff there is nothing left to price (`ffp slate` leaves out Games that
   have kicked off), so nothing runs until the next game day.
 
@@ -43,6 +47,7 @@ WINDOW = timedelta(minutes=30)  # kickoffs this close to a window's first share 
 IDLE_RECHECK = timedelta(days=1)  # no kickoffs ahead (off-season): look again then
 RELOAD_EVERY = timedelta(hours=6)  # the longest the loop goes without reloading the schedule
 SCHEDULE_RETRY = timedelta(hours=1)  # after the schedule failed to load
+MIN_SPACING = timedelta(minutes=5)  # the site's least time between accepted pushes (429 otherwise)
 MAX_SLEEP = timedelta(minutes=5)  # sleep in steps, so a machine that was suspended wakes on time
 SLATE_TIMEOUT = timedelta(minutes=45)
 PUSH_TIMEOUT = timedelta(minutes=3)
@@ -73,7 +78,7 @@ def day_runs(kickoffs: Iterable[datetime]) -> list[datetime]:
     grid, slot = [], datetime.combine(day, DAY_START, EASTERN)
     while slot < kickoffs[-1]:
         utc = slot.astimezone(UTC)
-        if not any(timedelta(0) < run - utc <= LEAD for run in window_runs):
+        if not any(abs(run - utc) <= LEAD for run in window_runs):
             grid.append(utc)
         slot = (utc + EVERY).astimezone(EASTERN)  # step in UTC: a daylight-saving day stays on :00/:30
     return sorted(set(grid) | set(window_runs))
@@ -127,7 +132,7 @@ def serve(
 ) -> None:
     """Run `run_once(slot)` at each `next_run` slot, forever (or `max_runs` times)."""
     alerts = alerts or Alerts()
-    runs = 0
+    runs, last_success = 0, None
     while max_runs is None or runs < max_runs:
         now = clock()
         try:
@@ -136,7 +141,9 @@ def serve(
             log.warning("could not load the schedule (%s); trying again in %s", error, SCHEDULE_RETRY)
             _sleep_until(now + SCHEDULE_RETRY, clock, sleep)
             continue
-        at = next_run(now, kickoffs)
+        # next_run is strictly after its argument: a slot exactly MIN_SPACING after the last success counts
+        earliest = now if last_success is None else max(now, last_success + MIN_SPACING - timedelta(seconds=1))
+        at = next_run(earliest, kickoffs)
         if at - now > RELOAD_EVERY:
             log.info("next run %s; reloading the schedule in %s", _show(at), RELOAD_EVERY)
             _sleep_until(now + RELOAD_EVERY, clock, sleep)
@@ -151,6 +158,7 @@ def serve(
         except Exception as error:  # noqa: BLE001 - one bad run must not stop the scheduler
             alerts.run_failed(at, "run", repr(error))
         else:
+            last_success = clock()
             alerts.run_succeeded(at)
 
 

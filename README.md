@@ -246,7 +246,19 @@ ffp push expected-points.json                     # to https://ffp-leaderboard.p
 ffp push expected-points.json --url http://localhost:8788/api/expected-points
 ```
 
-It checks FILE against `site/schema/expected-points.schema.json` first and sends nothing if it fails. It then signs the body as `site/contracts/push-signature.json` says (ADR 0006): `X-FFP-Timestamp` and `X-FFP-Signature`, an HMAC-SHA256 under `LEADERBOARD_PUSH_SECRET`. The secret is read from the environment, else from `.env.leaderboard` in the current directory (written by the setup wizard); it is never printed. A 5xx or a network error is retried once after 10 s, signed afresh; a 400 (schema), 401 (signature or clock), 413 (too large) or other 4xx fails at once with the site's reply. It exits 1 on any failure. The site rejects a timestamp more than 5 minutes off its clock, so the machine's clock must be right.
+It checks FILE against `site/schema/expected-points.schema.json` first and sends nothing if it fails. It then signs the body as `site/contracts/push-signature.json` says (ADR 0006): `X-FFP-Timestamp` and `X-FFP-Signature`, an HMAC-SHA256 under `LEADERBOARD_PUSH_SECRET`. The secret is read from the environment, else from `.env.leaderboard` in the current directory (written by the setup wizard); it is never printed. How it treats `/api/expected-points`'s answers:
+
+| Answer | Meaning | `ffp push` |
+|---|---|---|
+| 204 | accepted (also a repeat of the push the site holds, same `generatedAt`) | exits 0 |
+| 429 | under 5 minutes after the last accepted push | prints "Skipped", exits 0, no retry |
+| 409 | older than the push the site holds | exits 1, no retry |
+| 400 | invalid; the reason is in the reply | exits 1, no retry |
+| 401 | bad signature or timestamp (no detail given) | exits 1, no retry |
+| 413 | over 1 MiB (also refused before sending) | exits 1, no retry |
+| 5xx, network error | 500 means the site has no `LEADERBOARD_PUSH_SECRET` | one retry after 10 s, of the same body signed afresh; then exits 1 |
+
+The retry resends the same bytes, so if the first attempt was accepted but its answer lost, the site answers 204 again. The site rejects a timestamp more than 5 minutes off its clock, and a `generatedAt` more than 5 minutes in the future, so the machine's clock must be right.
 
 `ffp schedule` runs `ffp slate --output-dir DIR` and then `ffp push DIR/expected-points.json`, each in its own process, on game days, until stopped:
 
@@ -260,10 +272,10 @@ ffp schedule --slate-arg=--jobs=4           # pass an argument on to ffp slate (
 The run times, in US Eastern time:
 
 - A game day is a date with a kickoff still ahead, from the nflverse schedule `ffp` already loads (it holds the whole season, so the scheduler knows next week's game days; it is reloaded at least every 6 hours to pick up flexed Games).
-- On a game day: a run every 30 minutes on :00 and :30 from 08:00 until the day's last kickoff, plus one 10 minutes before each kickoff window. Kickoffs within 30 minutes of a window's first share it, so Sunday's 16:05 and 16:25 Games share one at 15:55. A :00/:30 run 10 minutes or less before a window's run is dropped.
+- On a game day: a run every 30 minutes on :00 and :30 from 08:00 until the day's last kickoff, plus one 10 minutes before each kickoff window. Kickoffs within 30 minutes of a window's first share it, so Sunday's 16:05 and 16:25 Games share one at 15:55. A :00/:30 run 10 minutes or less before or after a window's run is dropped, so runs stay more than 10 minutes apart (the site answers 429 to a push under 5 minutes after the last). The scheduler also waits at least 5 minutes after a run that succeeded before starting the next.
 - After the day's last kickoff nothing runs until the next game day (`ffp slate` leaves out Games that have kicked off).
 
-A typical Sunday (13:00, 16:05/16:25, 20:20): 08:00, 08:30, … 12:30, **12:50**, 13:00, … 15:30, **15:55**, 16:00, 16:30, … 19:30, **20:10**. A run that fails (slate or push; slate gets 45 minutes, push 3) is logged and the scheduler waits for the next run time; it never retries at once. A run that takes longer than 30 minutes skips the run times it covered. Before each run the last `expected-points.json` is deleted, so a failed slate never pushes old numbers.
+A typical Sunday (13:00, 16:05/16:25, 20:20): 08:00, 08:30, … 12:30, **12:50**, 13:30, … 15:30, **15:55**, 16:30, … 19:30, **20:10**. A run that fails (slate or push; slate gets 45 minutes, push 3) is logged and the scheduler waits for the next run time; it never retries at once. A run that takes longer than 30 minutes skips the run times it covered. Before each run the last `expected-points.json` is deleted, so a failed slate never pushes old numbers.
 
 ##### In Docker
 

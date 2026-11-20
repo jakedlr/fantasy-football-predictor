@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
 from pathlib import Path
@@ -100,11 +101,28 @@ def load_secret(environ: Mapping[str, str] = os.environ, path: Path = DEFAULT_SE
 
 # --- sending -------------------------------------------------------------------------------------
 
+# The Function's answers (site/functions/api/expected-points.ts): 204 accepted, also for a repeat
+# of the stored push (same generatedAt), which is why a retry resends the same body; 429 too soon
+# after the stored push (skipped, not an error); the rest fail.
 _REFUSED = {
-    400: "the site says the push fails its schema",
+    400: "the site says the push is invalid",
     401: "the site rejected the signature or timestamp (check LEADERBOARD_PUSH_SECRET and the clock)",
+    409: "the site says this push is older than the push the site holds",
     413: "the site says the push is too large",
 }
+_SERVER = {500: "the site has no LEADERBOARD_PUSH_SECRET configured (re-run the deploy) or failed"}
+
+
+@dataclass(frozen=True)
+class Sent:
+    """What the site did with a push: accepted (2xx), or skipped (429: too soon after the last one)."""
+
+    accepted: bool
+    note: str = ""
+
+    @property
+    def skipped(self) -> bool:
+        return not self.accepted
 
 
 def send(
@@ -114,20 +132,25 @@ def send(
     *,
     now: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
-) -> str:
-    """POST `body`, signed, to `url`; the site's reply text. One retry, freshly signed, after a 5xx or
-    a network error; a 4xx fails at once. Raises PushError."""
+) -> Sent:
+    """POST `body`, signed, to `url`. One retry of the same body, freshly signed, after a 5xx or a
+    network error; a 429 is skipped and other 4xx fail, both at once. Raises PushError."""
     if len(body) > MAX_BODY_BYTES:
         raise PushError(f"push too large: {len(body)} bytes, the site takes at most {MAX_BODY_BYTES}")
     for attempt in (1, 2):
         try:
-            return _post(body, url, secret, str(int(now())))
+            _post(body, url, secret, str(int(now())))
+            return Sent(accepted=True)
         except urllib.error.HTTPError as error:
             detail = _reply_text(error)
+            if error.code == 429:
+                wait = error.headers.get("Retry-After", "?")
+                return Sent(accepted=False, note=f"under 5 minutes after the last accepted push "
+                                                 f"(Retry-After {wait} s): {detail}")
             if error.code < 500:
                 reason = _REFUSED.get(error.code, "the site refused the push")
                 raise PushError(f"HTTP {error.code}: {reason}: {detail}") from None
-            failure = f"HTTP {error.code}: {detail}"
+            failure = f"HTTP {error.code}: {_SERVER.get(error.code, 'server error')}: {detail}"
         except (urllib.error.URLError, OSError, http.client.HTTPException) as error:  # refused, reset, DNS, timeout
             failure = f"network error: {getattr(error, 'reason', error)}"
         if attempt == 1:
@@ -184,9 +207,12 @@ def run(args: argparse.Namespace) -> int:
         shown = "\n  ".join(errors[:20]) + (f"\n  … and {len(errors) - 20} more" if len(errors) > 20 else "")
         return _fail(f"{args.file} fails site/schema/expected-points.schema.json, not sent:\n  {shown}")
     try:
-        send(body, args.url, load_secret())
+        sent = send(body, args.url, load_secret())
     except PushError as error:
         return _fail(f"push to {args.url} failed: {error}")
+    if sent.skipped:  # not a failure: the site already holds a push from the last 5 minutes
+        print(f"Skipped by {args.url}: {sent.note}")
+        return 0
     print(f"Pushed {len(payload['players'])} players (week {payload['week']}, "
           f"generated {payload['generatedAt']}) to {args.url}")
     return 0

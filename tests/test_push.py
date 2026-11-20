@@ -93,7 +93,7 @@ class FakeSite:
             def do_POST(self):  # noqa: N802 - http.server's name
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 site.requests.append({"path": self.path, "headers": dict(self.headers), "body": body})
-                status, text = site.replies.pop(0) if site.replies else (200, '{"ok":true}')
+                status, text, *extra = site.replies.pop(0) if site.replies else (204, "")
                 if status == "drop":  # close without answering: a network error for the client
                     self.close_connection = True
                     return
@@ -101,6 +101,8 @@ class FakeSite:
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
+                for name, value in (extra[0] if extra else {}).items():
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(data)
 
@@ -176,7 +178,8 @@ def test_the_retry_is_signed_with_a_fresh_timestamp(site_factory):
     assert [{k.lower(): v for k, v in r["headers"].items()}["x-ffp-timestamp"] for r in site.requests] == ["1795370400", "1795370405"]
 
 
-@pytest.mark.parametrize("status, words", [(401, "signature"), (400, "schema"), (413, "too large")])
+@pytest.mark.parametrize("status, words", [(401, "signature"), (400, "invalid"), (413, "too large"),
+                                           (409, "older than the push the site holds")])
 def test_client_errors_fail_at_once_with_a_clear_message(site_factory, status, words):
     site = site_factory((status, '{"error":"details from the site"}'))
     with pytest.raises(push.PushError, match=words) as raised:
@@ -241,3 +244,45 @@ def test_cli_push_without_a_secret(monkeypatch, tmp_path, capsys):
 
 def test_default_url_is_the_live_site():
     assert push.DEFAULT_URL == "https://ffp-leaderboard.pages.dev/api/expected-points"
+
+
+# --- the Function's answers (site/functions/api/expected-points.ts, S11.4) --------------------
+
+
+def test_204_is_accepted(site_factory):
+    site = site_factory((204, ""))
+    assert _send(site).accepted
+
+
+def test_a_retry_resends_the_same_body_so_a_lost_204_is_answered_204_again(site_factory):
+    site = site_factory(("drop", ""), (204, ""))
+    assert _send(site).accepted
+    assert site.requests[0]["body"] == site.requests[1]["body"] == EXAMPLE.read_bytes()
+
+
+def test_429_is_skipped_not_retried(site_factory):
+    site = site_factory((429, '{"error":"under 5 minutes after the stored push"}', {"Retry-After": "120"}))
+    result = _send(site)
+    assert not result.accepted and result.skipped and len(site.requests) == 1
+    assert "120" in result.note
+
+
+def test_a_500_says_the_site_is_not_configured(site_factory):
+    site = site_factory((500, '{"error":"not configured"}'), (500, '{"error":"not configured"}'))
+    with pytest.raises(push.PushError, match="LEADERBOARD_PUSH_SECRET"):
+        _send(site)
+    assert len(site.requests) == 2
+
+
+def test_cli_push_skipped_by_the_site_exits_0(site_factory, monkeypatch, capsys):
+    site = site_factory((429, '{"error":"under 5 minutes"}', {"Retry-After": "90"}))
+    monkeypatch.setenv("LEADERBOARD_PUSH_SECRET", SECRET)
+    assert main(["push", str(EXAMPLE), "--url", site.url]) == 0
+    assert "skipped" in capsys.readouterr().out.lower()
+
+
+def test_cli_push_older_than_the_stored_one_fails(site_factory, monkeypatch, capsys):
+    site = site_factory((409, '{"error":"older than the stored push (2026-11-22T18:00:00Z)"}'))
+    monkeypatch.setenv("LEADERBOARD_PUSH_SECRET", SECRET)
+    assert main(["push", str(EXAMPLE), "--url", site.url]) == 1
+    assert "409" in capsys.readouterr().err and len(site.requests) == 1
