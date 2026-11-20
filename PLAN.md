@@ -403,6 +403,7 @@ Design review (Emil's skills, Laws of UX) of the page built in S10.5 (sorting, "
 - **Kicker team-tendency term and weather/wind; D/ST pass-rush and turnover features** (Sprint 6 research: each adds about 1 point of R² or less, or the data is mixed or patchy).
 - **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against the model's P(D/ST TD ≥ 1): the pull maps D/ST targets but leaves their Rungs out (`dst_rung`; their KXNFLFFPTSLADDER markets `dst_mean`).
 
+- **`sleeper` preset 60+ yard FG:** `src/ffp/scoring.py` gives 6 points; Sleeper's stats endpoint (`pts_std`) gives 5 to all four 60+ yard FGs this season (found in S11.1). Check Sleeper's league defaults and fix the preset if they agree, since the Kalshi checks use it.
 - **Lint in CI** (ruff for `ffp`, a TypeScript linter for `site/`): promised for Sprint 10, not done.
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
 - **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).
