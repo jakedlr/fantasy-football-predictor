@@ -140,6 +140,7 @@ ask_secret() {
 write_env() {
   local key="$1" value="$2" tmp sq="'\\''"
   [[ -e "$ENV_FILE" ]] || (umask 077 && : > "$ENV_FILE")
+  chmod 600 "$ENV_FILE"   # before the secret lands, even if the file was looser
   tmp=$(mktemp)
   grep -vE "^${key}=" "$ENV_FILE" > "$tmp" || true
   printf "%s='%s'\n" "$key" "${value//\'/$sq}" >> "$tmp"
@@ -148,6 +149,15 @@ write_env() {
   printf -v "$key" '%s' "$value"
   WRITTEN_ENV+=("$key")
   printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
+}
+
+# unset_env KEY removes KEY's line from ENV_FILE, if any.
+unset_env() {
+  local tmp; tmp=$(mktemp)
+  grep -vE "^${1}=" "$ENV_FILE" > "$tmp" || true
+  cat "$tmp" > "$ENV_FILE"
+  rm -f "$tmp"
+  printf '  %s✓ removed%s %s from %s\n' "$GREEN" "$RESET" "$1" "$ENV_FILE"
 }
 
 # set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
@@ -275,6 +285,8 @@ cf_token_status() { _node_json 'return data.success === true && data.result ? da
 
 valid_ntfy_topic() { [[ "$1" =~ ^[A-Za-z0-9_-]{16,64}$ ]]; }
 make_ntfy_topic()  { printf 'ffp-alerts-%s' "$(od -An -N10 -tx1 /dev/urandom | tr -d ' \n')"; }
+valid_push_secret() { [[ "$1" =~ ^[0-9a-f]{64}$ ]]; }
+make_push_secret()  { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 valid_account_id() { [[ "$1" =~ ^[0-9a-f]{32}$ ]]; }
 
 # ── Networked helpers ─────────────────────────────────────────────────────
@@ -361,6 +373,21 @@ self_test() {
     printf '%s|%s|%s|%s' "$(_existing K1)" "$(_existing K2)" "$(grep -c '^K1=' "$ENV_FILE")" "$(stat -c %a "$ENV_FILE")"
   )
   check "write_env upsert, quoting, mode 600" "replaced|it's quoted|1|600" "$got"
+  got=$(
+    ENV_FILE="$tmpd/loose.env"; : > "$ENV_FILE"; chmod 644 "$ENV_FILE"
+    write_env K1 "secret" >/dev/null
+    stat -c %a "$ENV_FILE"
+  )
+  check "write_env tightens a loose existing file before writing" "600" "$got"
+  got=$(
+    ENV_FILE="$tmpd/u.env"; write_env A 1 >/dev/null; write_env B 2 >/dev/null; unset_env A >/dev/null
+    printf '%s|%s' "$(_existing A || true)" "$(_existing B)"
+  )
+  check "unset_env removes one key" "|2" "$got"
+  got=$(make_push_secret)
+  check "push secret is 64 hex characters" "yes" "$(yn valid_push_secret "$got")"
+  check "push secrets are random" "yes" "$(yn test "$got" != "$(make_push_secret)")"
+  check "short push secret rejected" "no" "$(yn valid_push_secret abc123)"
 
   # cf_call: the token goes to curl on stdin, never in its argv
   mkdir "$tmpd/bin"
@@ -552,55 +579,34 @@ fi
 pause
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
-stage "Home push token (Expected Points to KV)"
-say "The Docker job on this machine pushes Expected Points to KV. Its token gets KV"
-say "and nothing else, so a leak can't touch the page or the Worker."
-HOME_DONE=0
-CF_KV_TOKEN=$(_existing CLOUDFLARE_KV_PUSH_TOKEN || true)
-if [[ -n "$CF_KV_TOKEN" ]]; then
-  if [[ "$(cf_call "$CF_KV_TOKEN" GET /user/tokens/verify | cf_token_status || true)" == "active" ]] \
-     && can "$CF_KV_TOKEN" "/storage/kv/namespaces?per_page=5"; then
-    ok "$SECRETS_FILE already holds a working KV token"
-    HOME_DONE=1
-  else
-    warn "The token saved in $SECRETS_FILE no longer works or is too broad: make a new one."
-  fi
+stage "Home push secret (Expected Points to the site)"
+say "The Docker job on this machine sends Expected Points to the site, signed with a shared"
+say "secret. The site checks the signature and the data before saving it, so a leaked secret"
+say "can only send Expected Points, which still have to pass that check."
+PUSH_SECRET=$(_existing LEADERBOARD_PUSH_SECRET || true)
+NEW_SECRET=0
+if [[ -n "$PUSH_SECRET" ]] && valid_push_secret "$PUSH_SECRET"; then
+  ok "$SECRETS_FILE already holds a push secret"
+else
+  PUSH_SECRET=$(make_push_secret)
+  NEW_SECRET=1
+  write_env LEADERBOARD_PUSH_SECRET "$PUSH_SECRET"
 fi
-if (( HOME_DONE == 0 )); then
+# The deploy job (Sprint 10) hands it to the site with `wrangler pages secret put`.
+if (( NEW_SECRET == 0 )) && gh_secret_exists LEADERBOARD_PUSH_SECRET; then
+  ok "GitHub secret LEADERBOARD_PUSH_SECRET already set"
+else
+  set_secret LEADERBOARD_PUSH_SECRET "$PUSH_SECRET"
+fi
+unset PUSH_SECRET
+if [[ -n "$(_existing CLOUDFLARE_KV_PUSH_TOKEN || true)" ]]; then
+  for key in CLOUDFLARE_KV_PUSH_TOKEN CLOUDFLARE_ACCOUNT_ID LEADERBOARD_KV_NAMESPACE_ID; do unset_env "$key"; done
+  warn "An earlier run made the KV token 'ffp-leaderboard-home-push'. Nothing uses it now, and"
+  warn "Cloudflare lets it edit every KV namespace on the account, so delete it:"
   open_url "$TOKENS_URL"
-  step "Click 'Create Token', then 'Get started' next to 'Create Custom Token'."
-  step "Token name: ffp-leaderboard-home-push"
-  step "Permissions: one row only:"
-  say  "      Account · Workers KV Storage · Edit"
-  step "Account Resources: Include · your account."
-  step "Optional: Client IP Address Filtering → 'Is in' → your home IP, if it never changes."
-  step "Click 'Continue to summary', then 'Create Token', and copy it."
-  ask_secret CF_KV_TOKEN "Paste the home push token (hidden):" || die "No token entered."
-  [[ -n "$CF_KV_TOKEN" ]] || die "No token entered."
-  verify_token "$CF_KV_TOKEN"
-  KV_PATH="/storage/kv/namespaces/$(ENV_FILE="$IDS_FILE" _existing KV_LEADERBOARD_PREVIEW_ID)/values/wizard-check"
-  cf_call "$CF_KV_TOKEN" PUT "/accounts/$CF_ACCOUNT_ID$KV_PATH" "ok" | cf_success \
-    || die "The token can't write to KV." "Edit the token: it needs 'Account · Workers KV Storage · Edit' on this account."
-  cf_call "$CF_KV_TOKEN" DELETE "/accounts/$CF_ACCOUNT_ID$KV_PATH" >/dev/null
-  ok "wrote and deleted a test key in $KV_PREVIEW_TITLE"
-  # A read probe, not proof of edit rights: Cloudflare may answer a list call for a KV-only
-  # token, so an answer is a warning to check the dashboard, not a reason to stop.
-  READABLE=()
-  can "$CF_KV_TOKEN" "/pages/projects" && READABLE+=("Pages projects")
-  can "$CF_KV_TOKEN" "/workers/scripts" && READABLE+=("Worker scripts")
-  if (( ${#READABLE[@]} )); then
-    warn "This token can list: ${READABLE[*]}. Listing isn't editing, but check in the dashboard"
-    warn "that its only permission is 'Account · Workers KV Storage · Edit'."
-  else
-    ok "can't list Pages or Workers, as intended"
-  fi
-  write_env CLOUDFLARE_KV_PUSH_TOKEN "$CF_KV_TOKEN"
+  step "Click '...' next to ffp-leaderboard-home-push, then 'Delete'."
+  pause "Press Enter once it's deleted."
 fi
-unset CF_KV_TOKEN
-write_env CLOUDFLARE_ACCOUNT_ID "$CF_ACCOUNT_ID"
-write_env LEADERBOARD_KV_NAMESPACE_ID "$(ENV_FILE="$IDS_FILE" _existing KV_LEADERBOARD_ID)"
-chmod 600 "$SECRETS_FILE"
-ok "$SECRETS_FILE is readable by you only (mode 600)"
 pause
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
@@ -639,14 +645,14 @@ ok "Cloudflare account  $CF_ACCOUNT_ID"
 ok "Pages project       $PAGES_PROJECT → https://$PAGES_DOMAIN (Direct Upload, production branch $PAGES_BRANCH)"
 ok "KV namespaces       $KV_TITLE and $KV_PREVIEW_TITLE (ids in $IDS_FILE)"
 ok "GitHub secrets      $(gh secret list --json name -q '[.[].name] | join(", ")' 2>/dev/null) on $GH_REPO"
-ok "Home push token     in $SECRETS_FILE (mode 600, gitignored)"
+ok "Home push secret    in $SECRETS_FILE (mode 600, gitignored) and on GitHub"
 note "Nothing is live yet: the first deploy comes with Sprint 10's GitHub Actions workflow."
 printf '\n'
 say "${BOLD}To undo a step:${RESET}"
 note "  Pages project:  npx $WRANGLER_PKG pages project delete $PAGES_PROJECT"
 note "  KV namespaces:  npx $WRANGLER_PKG kv namespace delete --namespace-id <id from $IDS_FILE>"
-note "  API tokens:     $TOKENS_URL → '...' next to ffp-leaderboard-ci or -home-push → Delete"
-note "  GitHub secrets: gh secret delete CLOUDFLARE_API_TOKEN (likewise CLOUDFLARE_ACCOUNT_ID, NTFY_TOPIC)"
+note "  API tokens:     $TOKENS_URL → '...' next to ffp-leaderboard-ci → Delete"
+note "  GitHub secrets: gh secret delete CLOUDFLARE_API_TOKEN (likewise CLOUDFLARE_ACCOUNT_ID, LEADERBOARD_PUSH_SECRET, NTFY_TOPIC)"
 note "  ntfy:           unsubscribe in the app; topics need no deleting"
 note "  Local files:    rm $IDS_FILE $SECRETS_FILE"
 note "  wrangler login: npx $WRANGLER_PKG logout"

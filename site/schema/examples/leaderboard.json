@@ -21,12 +21,12 @@
      "homeScore": null, "awayScore": null, "period": null, "clock": null}
   ],
   "players": [
-    {"id": "espn:4361370", "name": "Example Receiver", "team": "BAL", "position": "WR", "gameId": "401772905",
+    {"id": "sleeper:11635", "name": "Example Receiver", "team": "BAL", "position": "WR", "gameId": "401772905",
      "out": false, "expectedSource": "ffp",
      "points": {
        "ppr": {"week": 19.4, "soFar": 12.1, "expected": 16.2},
-       "half-ppr": {"week": 16.6, "soFar": 10.1, "expected": 13.7},
-       "standard": {"week": 13.8, "soFar": 8.1, "expected": 11.2},
+       "half-ppr": {"week": 16.6, "soFar": 10.1, "expected": 13.5},
+       "standard": {"week": 13.8, "soFar": 8.1, "expected": 10.8},
        "espn-league": {"week": 19.4, "soFar": 12.1, "expected": 16.2}
      }},
     {"id": "dst:PIT", "name": "Steelers D/ST", "team": "PIT", "position": "D/ST", "gameId": "401772900",
@@ -37,7 +37,7 @@
        "standard": {"week": 9.0, "soFar": 9.0, "expected": 6.8},
        "espn-league": {"week": 9.0, "soFar": 9.0, "expected": 6.8}
      }},
-    {"id": "espn:3139477", "name": "Example Kicker", "team": "SF", "position": "K", "gameId": "401772911",
+    {"id": "sleeper:4227", "name": "Example Kicker", "team": "SF", "position": "K", "gameId": "401772911",
      "out": false, "expectedSource": "espn",
      "points": {
        "ppr": {"week": 8.3, "soFar": null, "expected": 8.3},
@@ -45,7 +45,7 @@
        "standard": {"week": 8.3, "soFar": null, "expected": 8.3},
        "espn-league": {"week": 8.6, "soFar": null, "expected": 8.6}
      }},
-    {"id": "espn:4241457", "name": "Example Back", "team": "SEA", "position": "RB", "gameId": "401772911",
+    {"id": "sleeper:8150", "name": "Example Back", "team": "SEA", "position": "RB", "gameId": "401772911",
      "out": true, "expectedSource": null,
      "points": {
        "ppr": {"week": 0, "soFar": null, "expected": null},

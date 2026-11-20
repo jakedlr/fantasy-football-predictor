@@ -1,31 +1,26 @@
-name: CI
+name: CI site
 
 on:
   pull_request:
+    paths:
+      - "site/**"
+      - "scripts/setup_cloudflare.sh"
+      - ".github/workflows/ci-site.yml"
   push:
     branches: [main]
+    paths:
+      - "site/**"
+      - "scripts/setup_cloudflare.sh"
+      - ".github/workflows/ci-site.yml"
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-site-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  python:
-    name: ffp (pytest)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-          cache: pip
-      - run: pip install -e '.[dev]'
-      - run: python -m pytest -q
-
   site:
     name: site (types, Vitest)
     runs-on: ubuntu-latest
@@ -43,3 +38,14 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  wizard:
+    name: setup wizard (self-test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: bash scripts/setup_cloudflare.sh --self-test

@@ -137,7 +137,7 @@
     },
     {
       "kind": "kicker",
-      "name": "FG distance edges",
+      "name": "FG distance edges together",
       "stats": {
         "fg_made_yards": [
           19,
@@ -155,6 +155,126 @@
         "half-ppr": 34.0,
         "standard": 34.0,
         "espn-league": 36.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 19-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          19
+        ]
+      },
+      "expected": {
+        "ppr": 3.0,
+        "half-ppr": 3.0,
+        "standard": 3.0,
+        "espn-league": 3.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 39-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          39
+        ]
+      },
+      "expected": {
+        "ppr": 3.0,
+        "half-ppr": 3.0,
+        "standard": 3.0,
+        "espn-league": 3.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 40-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          40
+        ]
+      },
+      "expected": {
+        "ppr": 4.0,
+        "half-ppr": 4.0,
+        "standard": 4.0,
+        "espn-league": 4.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 49-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          49
+        ]
+      },
+      "expected": {
+        "ppr": 4.0,
+        "half-ppr": 4.0,
+        "standard": 4.0,
+        "espn-league": 4.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 50-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          50
+        ]
+      },
+      "expected": {
+        "ppr": 5.0,
+        "half-ppr": 5.0,
+        "standard": 5.0,
+        "espn-league": 5.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 59-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          59
+        ]
+      },
+      "expected": {
+        "ppr": 5.0,
+        "half-ppr": 5.0,
+        "standard": 5.0,
+        "espn-league": 5.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 60-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          60
+        ]
+      },
+      "expected": {
+        "ppr": 5.0,
+        "half-ppr": 5.0,
+        "standard": 5.0,
+        "espn-league": 6.0
+      }
+    },
+    {
+      "kind": "kicker",
+      "name": "one 64-yard FG",
+      "stats": {
+        "fg_made_yards": [
+          64
+        ]
+      },
+      "expected": {
+        "ppr": 5.0,
+        "half-ppr": 5.0,
+        "standard": 5.0,
+        "espn-league": 6.0
       }
     },
     {
@@ -179,6 +299,20 @@
       "name": "0 points allowed",
       "stats": {
         "points_allowed_all": 0,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": 5.0,
+        "half-ppr": 5.0,
+        "standard": 5.0,
+        "espn-league": 5.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "0.5 points allowed",
+      "stats": {
+        "points_allowed_all": 0.5,
         "yards_allowed": 320
       },
       "expected": {
@@ -218,6 +352,20 @@
     },
     {
       "kind": "dst",
+      "name": "6.5 points allowed",
+      "stats": {
+        "points_allowed_all": 6.5,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": 4.0,
+        "half-ppr": 4.0,
+        "standard": 4.0,
+        "espn-league": 4.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "7 points allowed",
       "stats": {
         "points_allowed_all": 7,
@@ -235,6 +383,20 @@
       "name": "13 points allowed",
       "stats": {
         "points_allowed_all": 13,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": 3.0,
+        "half-ppr": 3.0,
+        "standard": 3.0,
+        "espn-league": 3.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "13.5 points allowed",
+      "stats": {
+        "points_allowed_all": 13.5,
         "yards_allowed": 320
       },
       "expected": {
@@ -274,6 +436,34 @@
     },
     {
       "kind": "dst",
+      "name": "17.4 points allowed",
+      "stats": {
+        "points_allowed_all": 17.4,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": 1.0,
+        "half-ppr": 1.0,
+        "standard": 1.0,
+        "espn-league": 1.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "17.5 points allowed",
+      "stats": {
+        "points_allowed_all": 17.5,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": 1.0,
+        "half-ppr": 1.0,
+        "standard": 1.0,
+        "espn-league": 1.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "18 points allowed",
       "stats": {
         "points_allowed_all": 18,
@@ -291,6 +481,20 @@
       "name": "27 points allowed",
       "stats": {
         "points_allowed_all": 27,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": 0.0,
+        "half-ppr": 0.0,
+        "standard": 0.0,
+        "espn-league": 0.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "27.5 points allowed",
+      "stats": {
+        "points_allowed_all": 27.5,
         "yards_allowed": 320
       },
       "expected": {
@@ -330,6 +534,20 @@
     },
     {
       "kind": "dst",
+      "name": "34.5 points allowed",
+      "stats": {
+        "points_allowed_all": 34.5,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": -1.0,
+        "half-ppr": -1.0,
+        "standard": -1.0,
+        "espn-league": -1.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "35 points allowed",
       "stats": {
         "points_allowed_all": 35,
@@ -347,6 +565,20 @@
       "name": "45 points allowed",
       "stats": {
         "points_allowed_all": 45,
+        "yards_allowed": 320
+      },
+      "expected": {
+        "ppr": -3.0,
+        "half-ppr": -3.0,
+        "standard": -3.0,
+        "espn-league": -3.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "45.5 points allowed",
+      "stats": {
+        "points_allowed_all": 45.5,
         "yards_allowed": 320
       },
       "expected": {
@@ -428,6 +660,20 @@
     },
     {
       "kind": "dst",
+      "name": "99.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 99.5
+      },
+      "expected": {
+        "ppr": 5.0,
+        "half-ppr": 5.0,
+        "standard": 5.0,
+        "espn-league": 5.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "100 yards allowed",
       "stats": {
         "points_allowed_all": 20,
@@ -446,6 +692,20 @@
       "stats": {
         "points_allowed_all": 20,
         "yards_allowed": 199
+      },
+      "expected": {
+        "ppr": 3.0,
+        "half-ppr": 3.0,
+        "standard": 3.0,
+        "espn-league": 3.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "199.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 199.5
       },
       "expected": {
         "ppr": 3.0,
@@ -484,6 +744,20 @@
     },
     {
       "kind": "dst",
+      "name": "299.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 299.5
+      },
+      "expected": {
+        "ppr": 2.0,
+        "half-ppr": 2.0,
+        "standard": 2.0,
+        "espn-league": 2.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "300 yards allowed",
       "stats": {
         "points_allowed_all": 20,
@@ -502,6 +776,20 @@
       "stats": {
         "points_allowed_all": 20,
         "yards_allowed": 349
+      },
+      "expected": {
+        "ppr": 0.0,
+        "half-ppr": 0.0,
+        "standard": 0.0,
+        "espn-league": 0.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "349.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 349.5
       },
       "expected": {
         "ppr": 0.0,
@@ -540,6 +828,20 @@
     },
     {
       "kind": "dst",
+      "name": "399.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 399.5
+      },
+      "expected": {
+        "ppr": -1.0,
+        "half-ppr": -1.0,
+        "standard": -1.0,
+        "espn-league": -1.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "400 yards allowed",
       "stats": {
         "points_allowed_all": 20,
@@ -558,6 +860,20 @@
       "stats": {
         "points_allowed_all": 20,
         "yards_allowed": 449
+      },
+      "expected": {
+        "ppr": -3.0,
+        "half-ppr": -3.0,
+        "standard": -3.0,
+        "espn-league": -3.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "449.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 449.5
       },
       "expected": {
         "ppr": -3.0,
@@ -596,6 +912,20 @@
     },
     {
       "kind": "dst",
+      "name": "499.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 499.5
+      },
+      "expected": {
+        "ppr": -5.0,
+        "half-ppr": -5.0,
+        "standard": -5.0,
+        "espn-league": -5.0
+      }
+    },
+    {
+      "kind": "dst",
       "name": "500 yards allowed",
       "stats": {
         "points_allowed_all": 20,
@@ -614,6 +944,20 @@
       "stats": {
         "points_allowed_all": 20,
         "yards_allowed": 549
+      },
+      "expected": {
+        "ppr": -6.0,
+        "half-ppr": -6.0,
+        "standard": -6.0,
+        "espn-league": -6.0
+      }
+    },
+    {
+      "kind": "dst",
+      "name": "549.5 yards allowed",
+      "stats": {
+        "points_allowed_all": 20,
+        "yards_allowed": 549.5
       },
       "expected": {
         "ppr": -6.0,

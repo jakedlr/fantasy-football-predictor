@@ -135,6 +135,17 @@ pytest                 # full offline suite (tests never touch the network)
 pytest -m live         # live smoke tests against the real sportsbooks
 ```
 
+The Leaderboard site lives in `site/` (Node 24):
+
+```bash
+cd site && npm ci && npm run typecheck && npm test   # JSON schemas and, from Sprint 10, the Worker and page
+python scripts/export_scoring_contract.py            # re-export site/contracts/ after any Scoring Rules or scorer change
+```
+
+`site/contracts/` holds the Leaderboard's Scoring Rules and scored cases from `ffp.scoring`, which the TypeScript scorer must match (ADR 0005); `pytest` fails while they're stale. GitHub Actions runs `ci-python.yml` (pytest) and `ci-site.yml` (type-check, Vitest and the setup wizard's self-test) on every PR, each only when its files change.
+
+`scripts/record_live.py` records ESPN's scoreboard and summaries and Sleeper's stats every minute during a Game into `snapshots/` (gitignored), and `scripts/analyze_live_spike.py` measures their staleness and blocking; see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md).
+
 Model parameters are committed JSON in `src/ffp/params/`:
 
 - dispersion relations, per-carry rushing yards, correlation matrices and Base Rates;
@@ -201,11 +212,11 @@ You need Node 22.12 or newer (it runs `npx wrangler@4`), `curl`, and the GitHub 
 3. creates the Pages project `ffp-leaderboard`, Direct Upload with production branch `main` (GitHub Actions deploys it; Cloudflare's Git integration stays off);
 4. creates the KV namespaces `ffp-leaderboard` and `ffp-leaderboard_preview`;
 5. has you create a CI API token (Account: Cloudflare Pages Edit, Workers Scripts Edit, Workers KV Storage Edit), checks it, and sets the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;
-6. has you create a home push token (Workers KV Storage Edit only) for the Expected Points push, checks it can write KV, and warns if it can also list Pages or Workers;
+6. generates the home push secret that signs the Expected Points push, and sets it as the GitHub secret `LEADERBOARD_PUSH_SECRET` (the deploy hands it to the site); if an earlier run made a KV push token, it removes it from `.env.leaderboard` and asks you to delete it in Cloudflare;
 7. optionally sets up an ntfy topic for alerts (GitHub secret `NTFY_TOPIC`);
 8. lists what it made and how to undo each step.
 
-It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages domain and KV namespace ids, not secret) and `.env.leaderboard` (the home push token, account id, KV namespace id and ntfy topic; mode 600). Tokens are typed with hidden input and never printed.
+It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages domain and KV namespace ids, not secret) and `.env.leaderboard` (the home push secret and ntfy topic; mode 600). Tokens are typed with hidden input and never printed.
 
 ### Layout
 
@@ -234,6 +245,12 @@ scripts/build_params.py   regenerates params/ from nflverse
 scripts/backtest_kalshi.py   runs the Kalshi Backtest (ffp.backtest)
 scripts/backtest_k_dst.py    walk-forward kicker and D/ST Backtest, plus Kalshi's K and D/ST lines
 scripts/setup_cloudflare.sh  interactive Cloudflare and GitHub setup for the Leaderboard site
+scripts/export_scoring_contract.py   site/contracts/ from ffp.scoring (ADR 0005)
+scripts/record_live.py, analyze_live_spike.py   the S9.1 live test recorder and analysis
+site/
+  schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples
+  contracts/       Scoring Rules and scored cases for the TypeScript scorer (generated)
+  test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
 ```

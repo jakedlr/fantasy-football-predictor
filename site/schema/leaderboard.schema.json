@@ -63,7 +63,7 @@
       "required": ["id", "name", "team", "position", "gameId", "out", "expectedSource", "points"],
       "additionalProperties": false,
       "properties": {
-        "id": {"type": "string", "pattern": "^(espn:\\d+|dst:[A-Z]{2,3})$", "description": "ESPN athlete id, or the team for a D/ST."},
+        "id": {"type": "string", "pattern": "^(sleeper:\\d+|dst:[A-Z]{2,3})$", "description": "Sleeper player id (the live stats source), or the team for a D/ST."},
         "name": {"type": "string", "minLength": 1},
         "team": {"$ref": "#/$defs/team"},
         "position": {"enum": ["QB", "RB", "WR", "TE", "K", "D/ST"]},

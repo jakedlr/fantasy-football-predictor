@@ -15,9 +15,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["gsisId", "espnId", "name", "team", "position", "kickoff", "statMeans", "expected"],
+        "required": ["sleeperId", "gsisId", "espnId", "name", "team", "position", "kickoff", "statMeans", "expected"],
         "additionalProperties": false,
         "properties": {
+          "sleeperId": {"type": "string", "pattern": "^(\\d+|[A-Z]{2,3})$", "description": "Sleeper player id (the team for a D/ST). The home machine maps it from Sleeper's player list, which carries gsis and ESPN ids, so the Worker never downloads that list (14.7 MB)."},
           "gsisId": {"type": ["string", "null"], "description": "nflverse gsis_id; null for a D/ST."},
           "espnId": {"type": ["string", "null"], "pattern": "^\\d+$", "description": "From nflverse's id map; null if unmapped."},
           "name": {"type": "string", "minLength": 1},

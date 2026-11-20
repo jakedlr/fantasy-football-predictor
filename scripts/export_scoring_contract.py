@@ -15,6 +15,14 @@ OUT = Path(__file__).resolve().parents[1] / "site" / "contracts"
 # The Leaderboard's Scoring Rules toggle, default first (PLAN, Leaderboard site).
 LEADERBOARD_RULES = ("ppr", "half-ppr", "standard", "espn-league")
 _SCORERS = {"offense": score, "kicker": score_kicker, "dst": score_dst}
+# Sleeper's FGs-made buckets (`fgm_20_29`, ...). The TypeScript port scores each kick at its bucket's
+# min, exact while no bucket straddles a tier edge (tests/test_scoring_contract.py). `fgm_50p` is
+# the sum of the last two and `fgm`/`fgm_yds`/`fgm_lng` are totals, so they are not buckets.
+SLEEPER_FG_BUCKETS = {
+    "fgm_0_19": (0, 19), "fgm_20_29": (20, 29), "fgm_30_39": (30, 39),
+    "fgm_40_49": (40, 49), "fgm_50_59": (50, 59), "fgm_60p": (60, None),
+}
+FG_EDGES = (19, 39, 40, 49, 50, 59, 60, 64)
 
 
 def _offense_cases() -> list[dict]:
@@ -36,15 +44,18 @@ def _kicker_cases() -> list[dict]:
     return [
         ("no kicks", {}),
         ("PATs only", {"pat_made": 4, "pat_missed": 1}),
-        ("FG distance edges", {"fg_made_yards": [19, 39, 40, 49, 50, 59, 60, 64]}),
+        ("FG distance edges together", {"fg_made_yards": list(FG_EDGES)}),
+        *((f"one {y}-yard FG", {"fg_made_yards": [y]}) for y in FG_EDGES),
         ("misses", {"fg_made_yards": [33], "fg_missed": 2, "pat_made": 1}),
     ]
 
 
 def _dst_cases() -> list[dict]:
-    edges = sorted({0, 1, 6, 7, 13, 14, 17, 18, 27, 28, 34, 35, 45, 46, 60})
-    yard_edges = sorted({-12, 0, 99, 100, 199, 200, 299, 300, 349, 350, 399, 400, 449, 450, 499,
-                         500, 549, 550, 612})
+    # Whole-number tier edges, plus the fractional gaps between tiers a Projected Total can land in.
+    edges = sorted({0, 0.5, 1, 6, 6.5, 7, 13, 13.5, 14, 17, 17.4, 17.5, 18, 27, 27.5, 28, 34, 34.5, 35,
+                    45, 45.5, 46, 60})
+    yard_edges = sorted({-12, 0, 99, 99.5, 100, 199, 199.5, 200, 299, 299.5, 300, 349, 349.5, 350, 399,
+                         399.5, 400, 449, 449.5, 450, 499, 499.5, 500, 549, 549.5, 550, 612})
     cases = [(f"{pa} points allowed", {"points_allowed_all": pa, "yards_allowed": 320}) for pa in edges]
     cases += [(f"{ya} yards allowed", {"points_allowed_all": 20, "yards_allowed": ya}) for ya in yard_edges]
     cases += [
@@ -82,7 +93,9 @@ def build() -> dict[str, dict]:
     header = {"generatedBy": "scripts/export_scoring_contract.py", "schemaVersion": 1}
     return {
         "scoring-rules.json": {**header, "default": LEADERBOARD_RULES[0],
-                               "rules": {name: _rules_payload(name) for name in LEADERBOARD_RULES}},
+                               "rules": {name: _rules_payload(name) for name in LEADERBOARD_RULES},
+                               "sleeperFgBuckets": {k: {"min": lo, "max": hi}
+                                                    for k, (lo, hi) in SLEEPER_FG_BUCKETS.items()}},
         "scoring-cases.json": {**header, "cases": cases},
     }
 
