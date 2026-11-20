@@ -1,0 +1,23 @@
+# The Expected Points scheduler (README, "Expected Points push"): `docker compose up -d --build`.
+# It needs .env.leaderboard (scripts/setup_cloudflare.sh) for LEADERBOARD_PUSH_SECRET.
+name: ffp
+
+services:
+  ffp:
+    build: .
+    image: ffp-scheduler:latest
+    env_file:
+      - path: .env.leaderboard
+        required: true
+    volumes:
+      - ffp-data:/data
+    init: true  # Ctrl-C / docker compose down stop a run at once instead of after 10 s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ffp-data:

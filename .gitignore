@@ -15,3 +15,4 @@ output.json
 .env.leaderboard
 site/.cloudflare-ids.env
 .playwright-mcp/
+expected-points.json
