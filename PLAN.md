@@ -329,6 +329,55 @@ Three small stories. Same process as Sprint 7.
   
   Two alternating live A/B pairs were unusable: main and this branch both ran 31–108 s, while DraftKings or the network was slow.
 
+## Leaderboard site — settled decisions (planning session, 2026-11-18)
+
+A public, one-page Leaderboard of every player's Week Points for the current NFL Week, at `ffp-leaderboard.pages.dev`. Terms are in GLOSSARY.md (*Leaderboard*). Research: [research/leaderboard-stats-sources.md](research/leaderboard-stats-sources.md), [research/leaderboard-hosting.md](research/leaderboard-hosting.md), [research/leaderboard-projections.md](research/leaderboard-projections.md).
+
+| Topic | Decision |
+|---|---|
+| Scoring | A Scoring Rules toggle: `ppr` (default), `half-ppr`, `standard`, `espn-league`. |
+| Players | QB, RB, WR, TE, K, D/ST on teams that play this NFL Week; a player is listed once he has recorded a stat or has Expected Points ≥ 1. Bye-week teams are left out. A player ruled Out or Inactive before kickoff is dropped; one ruled out after the list was built shows 0 with an "Out" note. Filters: All, QB, RB, WR, TE, FLEX (RB/WR/TE), K, D/ST. |
+| Ranking | By Week Points: Points So Far when Final, Projected Total when Live (with Points So Far beside it), Expected Points when Upcoming. |
+| NFL Week | ESPN's week start and end (Wednesday to Wednesday) decide the current NFL Week; the header shows the week number and the dates of its first and last Game, in the viewer's timezone. |
+| Search | Name and team (abbreviation or nickname), as you type, combined with the position filter. |
+| Table | Rank, Player, Team, Pos, Opponent, Game Status, Week Points, Points So Far. Sorted by Week Points; any header sorts. First 50 rows, then "Show more". Works at phone width. |
+| Time | "Updated 1:05 PM EST · 3 min ago" in the browser's timezone (`Intl.DateTimeFormat`, `Intl.RelativeTimeFormat`); no picker. A "data delayed" banner when data is more than 15 minutes old. |
+| Live stats | Sleeper's weekly stats endpoint: one call per refresh for every player, with K distance buckets and D/ST stats ready-made. ESPN's scoreboard gives the NFL Week, its dates and each Game Status. ESPN's per-Game summary is the fallback. Response shapes are checked on every poll; a refused minute keeps the last good data. Final Games keep refreshing 30 minutes after Final and once the next day (ESPN corrected stats for 24 minutes after Final in the live test). Changed 2026-11-20 after S9.1 (ADR 0006). |
+| Cost | Free only: no paid plan, not even as a fallback. |
+| Expected Points | `ffp` on the user's machine in Docker (the prizepicks scheduler pattern): every 30 minutes on game days plus about 10 minutes before each kickoff window, sent to `/api/expected-points` signed with a shared secret, checked against the schema before it is saved (ADR 0006). Players are keyed by Sleeper id, mapped on the home machine from Sleeper's player list. Frozen at kickoff. Players without props, or when the machine is off, use ESPN's projections rescored under our Scoring Rules, marked "ESPN projection". |
+| Projected Total | Per Scoring Stat: current value + pregame mean × fraction of the Game left (from quarter and clock; overtime counts as nothing left), then scored, so D/ST tiers and kick distances stay right. A player injured mid-game gets no remainder only once ESPN marks him out (a known limitation). |
+| Hosting | A free Cloudflare Worker on a 5-minute timer writes one small JSON to KV only when it changes and serves it at `/api/leaderboard` through a Pages Function. The page polls every 5 minutes while visible and a Game is Live or about to kick off; otherwise it waits for the next kickoff or for the tab to be shown again (every Function call counts toward the free 100,000 requests a day). Changed 2026-11-20 in the PR 17 review; it was every 60 s. Redeploying Pages and GitHub Actions timers can't meet 5 minutes (500 builds a month; timers run 3–16 minutes late). |
+| Scoring code | Ported to TypeScript for the Worker, kept in step with shared cases generated from the Python scorer (ADR 0005). |
+| Exposure | Public, non-commercial, no ads or betting links, a credit line and disclaimer. Browsers never call ESPN. The stats source sits behind one swappable interface. |
+| Alerts | ntfy when the Worker fails 3 runs in a row, or no `ffp` push has arrived for 2 hours on a game day. |
+| Stack | Plain TypeScript in `site/`; Vitest for the page, `@cloudflare/vitest-pool-workers` for the Worker; pytest for `ffp`. A Playwright smoke test. |
+| CI/CD | GitHub Actions: on every PR, pytest, Vitest, type-check and the setup wizard's self-test, each workflow only when its files change (lint joins in Sprint 10); on merge to `main`, `wrangler pages deploy` and `wrangler deploy` with `CLOUDFLARE_API_TOKEN` (Pages and Workers edit only) and `CLOUDFLARE_ACCOUNT_ID`. Cloudflare's Git integration stays off. |
+| Setup | `scripts/setup_cloudflare.sh`, an interactive wizard that walks the user through the account token, KV namespace, Pages project, GitHub secrets and the home push secret, checking each step. |
+| Design | taste-skill proposes 2–3 directions as throwaway prototypes on recorded data; the user picks one. Emil Kowalski's skills and the Laws of UX are the review checklist (familiar table, few position chips, 44 px targets, filter under 100 ms, Live rows stand out, motion only where it means something, none under reduced motion). |
+| Process | As for `ffp`: one branch and PR per sprint, red→green→refactor. Contracts (the JSON schema, the shared scoring cases) are fixed first on the sprint branch; then one subagent per isolated piece in its own worktree; the main thread reviews, merges and runs the full suite. |
+
+## Sprint 9 — Leaderboard foundation
+
+- **S9.1 Live test** (Thursday 2026-11-19): record ESPN's scoreboard and summaries, and Sleeper's stats, every minute during the Game, from a throwaway Worker and from the user's machine. Measure staleness against the game clock and any blocking (403/429). Findings in `research/leaderboard-live-spike.md`; trimmed responses become fixtures. If ESPN blocks Workers, the Hosting decision is reopened before Sprint 10. **Done 2026-11-20** (results in research/leaderboard-live-spike.md): both sources answered Workers (ESPN refused two single minutes), both were fresh within a minute, ESPN kept correcting stats about 24 minutes after Final. A free Worker can't parse every Live Game's ESPN summary (up to 559 KB each) within 10 ms of CPU, so live stats moved to Sleeper on the free plan (ADR 0006). The recorder Worker and its KV namespace were deleted; trimmed responses are in `site/test/fixtures/`.
+- **S9.2 Cloudflare setup wizard** (`scripts/setup_cloudflare.sh`), run by the user. Written; it creates the Pages project and KV namespaces (`ffp-leaderboard`, `ffp-leaderboard_preview`), the CI token, the home push secret, the GitHub secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `LEADERBOARD_PUSH_SECRET` and `NTFY_TOPIC`, and the gitignored `site/.cloudflare-ids.env` and `.env.leaderboard`.
+- **S9.3 Contracts:** `site/schema/leaderboard.schema.json`; shared scoring cases generated from `ffp.scoring`; ADR 0005 (TypeScript scoring port) and ADR 0006 (Worker for live stats, home machine for Expected Points).
+- **S9.4 CI:** the PR workflows (`ci-python.yml`, `ci-site.yml`), red first.
+- **PR 17 review fixes:** players keyed by Sleeper id; one-kick FG cases, fractional D/ST cases and Sleeper's FG buckets in the scoring contract; the Expected Points push signed with a shared secret instead of a KV token; polling every 5 minutes; path-filtered CI with the wizard's self-test.
+
+## Sprint 10 — Walking skeleton: Points So Far on the live site
+
+First: measure the Worker's CPU on a full-Sunday Sleeper response and scoreboard (recorded 2026-11-22, `snapshots/live-sunday/`). If it doesn't fit 10 ms, apply the free answers in ADR 0006 before building on it.
+
+Parallel pieces: the Worker's ESPN scoreboard client (Game Status, NFL Week); Sleeper stats to QB/RB/WR/TE stat lines plus the TypeScript scoring port; the page (design direction chosen, then the table, week header, chips, search, last updated). Joined: timer → KV → `/api/leaderboard` → page; deploy on merge, handing `LEADERBOARD_PUSH_SECRET` to the site with `wrangler pages secret put`.
+
+## Sprint 11 — Complete Week Points
+
+Parallel pieces: K stats (Sleeper's distance buckets) and D/ST stats; `ffp --slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the signed push to `/api/expected-points`; ESPN projections as the fallback, with the Sleeper↔ESPN id map sent in the push (Sleeper's rows carry no ESPN id); the Projected Total per Scoring Stat.
+
+## Sprint 12 — Finish
+
+Design review (Emil's skills, Laws of UX), sorting and "Show more", phone layout, the delayed banner, ntfy alerts, credit line and disclaimer, a Playwright smoke test, README.
+
 ## Backlog
 
 - **Kickers from DraftKings' FG Made and PAT Made Ladders**, once live runs have saved a few weeks of them (every live run with a K that saves a Snapshot keeps them): does fitting attempts to them beat the Game Lines alone?

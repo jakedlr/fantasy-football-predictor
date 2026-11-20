@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-11-22T20:05:00Z",
+  "expectedPointsAsOf": "2026-11-22T17:50:00Z",
+  "week": {
+    "season": 2026,
+    "seasonType": "regular",
+    "number": 12,
+    "start": "2026-11-18T08:00:00Z",
+    "end": "2026-11-25T07:59:00Z",
+    "firstKickoff": "2026-11-20T01:15:00Z",
+    "lastKickoff": "2026-11-24T01:15:00Z"
+  },
+  "scoringRules": ["ppr", "half-ppr", "standard", "espn-league"],
+  "games": [
+    {"id": "401772900", "kickoff": "2026-11-20T01:15:00Z", "status": "final", "home": "PIT", "away": "CLE",
+     "homeScore": 24, "awayScore": 17, "period": null, "clock": null},
+    {"id": "401772905", "kickoff": "2026-11-22T18:00:00Z", "status": "live", "home": "BAL", "away": "CIN",
+     "homeScore": 14, "awayScore": 10, "period": 3, "clock": "7:32"},
+    {"id": "401772911", "kickoff": "2026-11-22T21:25:00Z", "status": "upcoming", "home": "SF", "away": "SEA",
+     "homeScore": null, "awayScore": null, "period": null, "clock": null}
+  ],
+  "players": [
+    {"id": "sleeper:11635", "name": "Example Receiver", "team": "BAL", "position": "WR", "gameId": "401772905",
+     "out": false, "expectedSource": "ffp",
+     "points": {
+       "ppr": {"week": 19.4, "soFar": 12.1, "expected": 16.2},
+       "half-ppr": {"week": 16.6, "soFar": 10.1, "expected": 13.5},
+       "standard": {"week": 13.8, "soFar": 8.1, "expected": 10.8},
+       "espn-league": {"week": 19.4, "soFar": 12.1, "expected": 16.2}
+     }},
+    {"id": "dst:PIT", "name": "Steelers D/ST", "team": "PIT", "position": "D/ST", "gameId": "401772900",
+     "out": false, "expectedSource": "ffp",
+     "points": {
+       "ppr": {"week": 9.0, "soFar": 9.0, "expected": 6.8},
+       "half-ppr": {"week": 9.0, "soFar": 9.0, "expected": 6.8},
+       "standard": {"week": 9.0, "soFar": 9.0, "expected": 6.8},
+       "espn-league": {"week": 9.0, "soFar": 9.0, "expected": 6.8}
+     }},
+    {"id": "sleeper:4227", "name": "Example Kicker", "team": "SF", "position": "K", "gameId": "401772911",
+     "out": false, "expectedSource": "espn",
+     "points": {
+       "ppr": {"week": 8.3, "soFar": null, "expected": 8.3},
+       "half-ppr": {"week": 8.3, "soFar": null, "expected": 8.3},
+       "standard": {"week": 8.3, "soFar": null, "expected": 8.3},
+       "espn-league": {"week": 8.6, "soFar": null, "expected": 8.6}
+     }},
+    {"id": "sleeper:8150", "name": "Example Back", "team": "SEA", "position": "RB", "gameId": "401772911",
+     "out": true, "expectedSource": null,
+     "points": {
+       "ppr": {"week": 0, "soFar": null, "expected": null},
+       "half-ppr": {"week": 0, "soFar": null, "expected": null},
+       "standard": {"week": 0, "soFar": null, "expected": null},
+       "espn-league": {"week": 0, "soFar": null, "expected": null}
+     }}
+  ]
+}

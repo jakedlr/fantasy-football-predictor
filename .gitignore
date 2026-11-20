@@ -10,3 +10,7 @@ data/
 OUTPUT.md
 output.json
 .claude/
+
+# Cloudflare ids and the home push token (scripts/setup_cloudflare.sh)
+.env.leaderboard
+site/.cloudflare-ids.env

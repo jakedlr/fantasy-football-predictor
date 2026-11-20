@@ -1,0 +1,48 @@
+name: CI ffp
+
+# Runs only when something pytest reads changes, so site- or docs-only PRs skip the 3-minute suite.
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "scoring/**"
+      - "research/**"
+      - "site/contracts/**"
+      - "pyproject.toml"
+      - ".gitignore"
+      - ".github/workflows/ci-python.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "scoring/**"
+      - "research/**"
+      - "site/contracts/**"
+      - "pyproject.toml"
+      - ".gitignore"
+      - ".github/workflows/ci-python.yml"
+
+concurrency:
+  group: ci-python-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: ffp (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -e '.[dev]'
+      - run: python -m pytest -q

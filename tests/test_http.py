@@ -289,23 +289,82 @@ from ffp.sources.http import BOOK_PACING, Cancelled, Pacing, PushedBack  # noqa:
 
 
 class Network:
-    """A fake network that notes when each request starts and how many are in flight at once."""
+    """A fake network that notes when each request starts (by `clock`) and how many are in flight at once.
 
-    def __init__(self, seconds=0.05, status=None):
-        self.seconds, self.status = seconds, status or (lambda url, n: (200, {}))
+    `status(url, n)` answers the url's n-th request; it is decided as the request starts, one request at a
+    time. The first `together` requests wait for each other, so they are in flight at once however the
+    threads are scheduled. `before_answer(status)`, if given, is called before each answer goes back."""
+
+    def __init__(self, seconds=0.05, status=None, clock=time.monotonic, together=0, before_answer=None):
+        self.seconds, self.status, self.clock = seconds, status or (lambda url, n: (200, {})), clock
+        self.together = threading.Barrier(together) if together else None
+        self.before_answer = before_answer
         self.lock, self.in_flight, self.peak, self.starts = threading.Lock(), 0, 0, []
 
     def __call__(self, url):
         with self.lock:
             self.in_flight += 1
             self.peak = max(self.peak, self.in_flight)
-            self.starts.append((time.monotonic(), url))
+            self.starts.append((self.clock(), url))
             n = sum(u == url for _, u in self.starts)
+            sent = len(self.starts)
+            status, headers = self.status(url, n)
+        if self.together is not None and sent <= self.together.parties:
+            self.together.wait(timeout=5)
+        if self.before_answer is not None:
+            self.before_answer(status)
         time.sleep(self.seconds)
         with self.lock:
             self.in_flight -= 1
-        status, headers = self.status(url, n)
         return status, json.dumps({"url": url}).encode(), headers
+
+
+class HeldTime:
+    """Injected time for a Book's threads around a pushback. It stands still until the Book has backed off
+    (logged "backing off"), then moves only when a request waits its turn. Every wait first waits for the
+    back-off, so a request that reserved its start before the pushback cannot slip out ahead of it, however
+    the threads are scheduled, and a slow machine changes no time the test sees."""
+
+    def __init__(self):
+        self.now, self.lock, self.backed_off = 0.0, threading.Lock(), threading.Event()
+        self.waits, self.waited = 0, threading.Condition(self.lock)
+
+    def __call__(self):
+        with self.lock:
+            return self.now
+
+    def sleep(self, seconds):
+        with self.lock:
+            self.waits += 1
+            self.waited.notify_all()
+        assert self.backed_off.wait(timeout=5), "a request waited, but the Book never backed off"
+        with self.lock:
+            self.now += seconds
+
+    def until_waiting(self, n):
+        """Blocks until `n` waits have begun."""
+        with self.waited:
+            assert self.waited.wait_for(lambda: self.waits >= n, timeout=5), f"{n} requests never waited"
+
+    def after_back_off(self, status):
+        """A Network's `before_answer`: every answer but a pushback waits for the Book to back off."""
+        if status not in (403, 429):
+            assert self.backed_off.wait(timeout=5), "the Book never backed off"
+
+
+@pytest.fixture
+def held():
+    time_ = HeldTime()
+
+    class BackedOff(logging.Handler):
+        def emit(self, record):
+            if "backing off" in record.getMessage():
+                time_.backed_off.set()
+
+    handler, logger = BackedOff(), logging.getLogger("ffp.sources.http")
+    logger.addHandler(handler)
+    yield time_
+    logger.removeHandler(handler)
 
 
 URLS = [f"https://dk.example/{i}" for i in range(9)]
@@ -317,7 +376,7 @@ def test_each_book_is_paced_at_3_in_flight_0_3_s_apart():
 
 
 def test_a_paced_book_keeps_at_most_in_flight_requests_going_and_answers_in_order(tmp_path):
-    net = Network()
+    net = Network(together=3)  # the first three meet in flight, however late a thread starts
     with Http(tmp_path, fetch=net).for_book("draftkings", FAST) as dk:
         got = dk.get_many(URLS)
     assert got == [{"url": u} for u in URLS]
@@ -325,11 +384,11 @@ def test_a_paced_book_keeps_at_most_in_flight_requests_going_and_answers_in_orde
 
 
 def test_a_paced_book_starts_requests_at_least_min_gap_apart(tmp_path):
-    net = Network(seconds=0.01)
-    with Http(tmp_path, fetch=net).for_book("draftkings", Pacing(3, 0.05)) as dk:
+    slept = []  # time stands still, so each wait is how far after the first its request starts
+    http = Http(tmp_path, fetch=Network(seconds=0), sleep=slept.append, clock=FakeClock())
+    with http.for_book("draftkings", Pacing(3, 0.05)) as dk:
         dk.get_many(URLS[:5])
-    starts = sorted(t for t, _ in net.starts)
-    assert min(b - a for a, b in zip(starts, starts[1:])) >= 0.045
+    assert sorted(slept) == pytest.approx([0.05, 0.1, 0.15, 0.2])
 
 
 def test_a_book_without_pacing_keeps_one_request_at_a_time_with_the_slow_pause(tmp_path):
@@ -374,20 +433,32 @@ def limits_first(url_to_limit, status=429, retry_after=None, times=1):
     return respond
 
 
+def limits_the_first_sent(retry_after=None):
+    """A Book that rate-limits whichever request reaches it first, and answers every other."""
+    sent = []  # Network asks one request at a time
+
+    def respond(url, n):
+        sent.append(url)
+        return (429, {} if retry_after is None else {"Retry-After": retry_after}) if len(sent) == 1 else (200, {})
+    return respond
+
+
 @pytest.mark.parametrize("asked, delay", [("0.3", (0.01, 0.01)), (None, (0.3, 0.3))])
-def test_a_book_that_pushes_back_holds_every_request_until_the_wait_is_over(tmp_path, asked, delay):
-    net = Network(seconds=0.02, status=limits_first(URLS[0], retry_after=asked))
-    http = Http(tmp_path, fetch=net, delay=delay)
+def test_a_book_that_pushes_back_holds_every_request_until_the_wait_is_over(tmp_path, held, asked, delay):
+    # Two requests are in flight alongside the one rate-limited (all three sent at once), and answer only once
+    # the Book has backed off.
+    net = Network(seconds=0, status=limits_the_first_sent(asked), clock=held, together=3,
+                  before_answer=held.after_back_off)
+    http = Http(tmp_path, fetch=net, delay=delay, clock=held, sleep=held.sleep)
     with http.for_book("draftkings", FAST) as dk:
         got = dk.get_many(URLS)
     assert got == [{"url": u} for u in URLS]
     assert http.timing["draftkings"]["rate_limited"] is True
-    refused = min(t for t, u in net.starts if u == URLS[0]) + 0.02
-    # Requests already admitted as the refusal landed are under way; nothing else may go out during the wait.
-    later = sorted(t for t, _ in net.starts if t > refused + 0.015)
-    assert later and later[0] >= refused + 0.3 - 0.02
+    starts = sorted(t for t, _ in net.starts)
+    # The three sent before the 429 landed are under way; nothing else goes out during the 0.3 s wait.
+    assert starts[:3] == [0, 0, 0] and len(starts) == 10 and starts[3] >= 0.3
     # Then one at a time, pausing after each.
-    assert all(b - a >= 0.02 + delay[0] - 0.005 for a, b in zip(later, later[1:]))
+    assert all(b - a >= delay[0] - 1e-9 for a, b in zip(starts[3:], starts[4:]))
 
 
 def run_book(tmp_path, respond, urls=URLS[:1]):
@@ -438,14 +509,15 @@ def test_a_slowed_book_stays_slowed_when_handed_a_view_again(tmp_path):
 # --- stopping: Ctrl-C ends every wait and every request still to start ------------
 
 def test_a_stopped_http_cuts_a_back_off_wait_short(tmp_path):
-    net = Network(seconds=0, status=limits_first(URLS[0], retry_after="5"))
+    # Real time: the wait being cut is Http's own. Stopped after 0.1 s of a 10 s wait; a slow machine has 5 s.
+    net = Network(seconds=0, status=limits_first(URLS[0], retry_after="10"))
     http = Http(tmp_path, fetch=net)
     threading.Timer(0.1, http.stop).start()
     began = time.monotonic()
     with pytest.raises(Cancelled):
         with http.for_book("draftkings", Pacing(1, 0.0)) as dk:
             dk.get_many(URLS[:1])
-    assert time.monotonic() - began < 1 and len(net.starts) == 1
+    assert time.monotonic() - began < 5 and len(net.starts) == 1
 
 
 def test_a_stopped_http_stops_the_rest_of_a_batch(tmp_path):
@@ -455,7 +527,7 @@ def test_a_stopped_http_stops_the_rest_of_a_batch(tmp_path):
         http.stop()
         return 200, {}
 
-    net = Network(status=stop_on_first)
+    net = Network(status=stop_on_first)  # stops as the first request goes out, before any has finished
     http = Http(tmp_path, fetch=net)
     with pytest.raises(Cancelled):
         with http.for_book("draftkings", FAST) as dk:
@@ -464,13 +536,14 @@ def test_a_stopped_http_stops_the_rest_of_a_batch(tmp_path):
 
 
 def test_a_stopped_http_ends_the_slow_pause_early(tmp_path):
-    http = Http(tmp_path, fetch=Network(seconds=0), delay=(5, 5))
+    # Real time, as above: stopped after 0.1 s of a 10 s pause.
+    http = Http(tmp_path, fetch=Network(seconds=0), delay=(10, 10))
     http.get_json("https://kalshi.example/a")
     threading.Timer(0.1, http.stop).start()
     began = time.monotonic()
     with pytest.raises(Cancelled):
         http.get_json("https://kalshi.example/b")
-    assert time.monotonic() - began < 1
+    assert time.monotonic() - began < 5
 
 
 # --- review of PR #15 ------------------------------------------------------------
@@ -488,15 +561,16 @@ def test_batch_requests_run_on_daemon_threads(tmp_path):
     assert daemons and all(daemons)
 
 
-def test_requests_already_waiting_their_turn_also_wait_out_a_hold(tmp_path):
-    # Finding 2: B and C had reserved starts before A's 429 and went out during the hold.
-    net = Network(seconds=0.01, status=limits_first(URLS[0], retry_after="0.5"))
-    http = Http(tmp_path, fetch=net, delay=(0.01, 0.01))
+def test_requests_already_waiting_their_turn_also_wait_out_a_hold(tmp_path, held):
+    # Finding 2: B and C had reserved starts before A's 429 and went out during the hold. Whichever request
+    # the threads send first is A: the Book rate-limits it, answering once B and C are waiting their turn.
+    net = Network(seconds=0, status=limits_the_first_sent(retry_after="0.5"), clock=held,
+                  before_answer=lambda status: held.until_waiting(2))
+    http = Http(tmp_path, fetch=net, delay=(0.01, 0.01), clock=held, sleep=held.sleep)
     with http.for_book("draftkings", Pacing(3, 0.1)) as dk:
         dk.get_many(URLS[:3])
-    first = min(t for t, u in net.starts if u == URLS[0])
-    others = [t for t, u in net.starts if u != URLS[0]]
-    assert all(t >= first + 0.01 + 0.5 - 0.02 for t in others)
+    first, *others = sorted(t for t, _ in net.starts)
+    assert first == 0 and len(others) == 3 and all(t >= 0.5 for t in others)  # B, C and A's retry
 
 
 def test_a_long_retry_after_fails_only_that_request(tmp_path):
@@ -512,7 +586,8 @@ def test_a_long_retry_after_fails_only_that_request(tmp_path):
 
 def test_simultaneous_pushbacks_back_the_book_off_once(tmp_path, caplog):
     # Finding 4: three 403s in flight each held, warned and retried on their own.
-    net = Network(seconds=0.02, status=lambda url, n: (403, {}) if n == 1 and url in URLS[:3] else (200, {}))
+    net = Network(seconds=0.02, status=lambda url, n: (403, {}) if n == 1 and url in URLS[:3] else (200, {}),
+                  together=3)  # all three in flight at once, however the threads are scheduled
     http = Http(tmp_path, fetch=net, delay=(0.01, 0.01))
     with http.for_book("fanduel", FAST) as fd:
         got = fd.get_many(URLS[:3])

@@ -10,6 +10,8 @@ Vocabulary (Score Percentile, Ladder, Rung, Main Line, Usage Stat, ...) is defin
 
 Sprints 0–8 are done and merged. Every QB, RB, WR, TE, kicker and D/ST gets a full Score Distribution. Sprint 6 added kickers and D/ST, predicted from the Game Lines (spread, total, team totals); see [research/kickers-dst.md](research/kickers-dst.md). Sprint 5 backtested the model on 7,165 settled Kalshi player-games: P5–P95 covers 91.3% of actual scores (target 90%), and the model matches Kalshi's own fantasy-points markets. Sprint 5.6 reworked RB rushing yards (a sum of carries, and better estimates when unpriced). See [research/backtest-kalshi.md](research/backtest-kalshi.md). Sprint 7 fetches the books concurrently: a fresh 9-player lineup now runs in about 16 s, down from about 4 minutes. Sprint 8 predicts players in parallel processes and downloads nflverse while the odds come in, about 20% faster again, and gives the kicker/D/ST backtest `--jobs`.
 
+Next: a public live Leaderboard site of every player's Week Points for the current NFL Week, on Cloudflare (Sprints 9–12, planned in [PLAN.md](PLAN.md)). Sprint 9, the foundation, is done: the research, the scoring contract and JSON schemas, CI, the Cloudflare setup wizard, and a live test on Thursday Night Football (see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md)). Live stats come from Sleeper, the schedule from ESPN, all on free plans. Sprint 10 builds the first working page.
+
 | Position | Fitted from Prop Markets | From nflverse Base Rates |
 |---|---|---|
 | QB | passing yards, pass TDs, INTs, rushing yards, rush+rec TDs | fumbles lost (flat per game), 2-pt (passing and rush/rec) |
@@ -133,6 +135,17 @@ pytest                 # full offline suite (tests never touch the network)
 pytest -m live         # live smoke tests against the real sportsbooks
 ```
 
+The Leaderboard site lives in `site/` (Node 24):
+
+```bash
+cd site && npm ci && npm run typecheck && npm test   # JSON schemas and, from Sprint 10, the Worker and page
+python scripts/export_scoring_contract.py            # re-export site/contracts/ after any Scoring Rules or scorer change
+```
+
+`site/contracts/` holds the Leaderboard's Scoring Rules and scored cases from `ffp.scoring`, which the TypeScript scorer must match (ADR 0005); `pytest` fails while they're stale. GitHub Actions runs `ci-python.yml` (pytest) and `ci-site.yml` (type-check, Vitest and the setup wizard's self-test) on every PR, each only when its files change.
+
+`scripts/record_live.py` records ESPN's scoreboard and summaries and Sleeper's stats every minute during a Game into `snapshots/` (gitignored), and `scripts/analyze_live_spike.py` measures their staleness and blocking; see [research/leaderboard-live-spike.md](research/leaderboard-live-spike.md).
+
 Model parameters are committed JSON in `src/ffp/params/`:
 
 - dispersion relations, per-carry rushing yards, correlation matrices and Base Rates;
@@ -183,6 +196,28 @@ python scripts/backtest_k_dst.py   # [--seasons 2016-2025] [--samples 2000] [--o
 
 It runs a walk-forward backtest on nflverse: each test season's kicker and D/ST models are fitted on earlier seasons only and scored on that season's team-games from their closing lines. Each model is compared with a baseline that ignores the Game Lines. `--jobs N` runs the test seasons in N worker processes, with identical results: 8 jobs take about 33 s instead of 61 s. It then checks Kalshi's 2026 kicker and D/ST fantasy-point lines against the model and the outcomes. The pull maps Kalshi's D/ST targets to `DST-<team>`, and lines with spreads over 10¢ are kept as their own group. The run writes `summary.json` and `tables.md` to `--out`; results are in [research/kickers-dst.md](research/kickers-dst.md).
 
+### Cloudflare setup (Leaderboard site)
+
+The Leaderboard site needs a one-off setup in Cloudflare and GitHub that only the account owner can do. A wizard walks through it and checks each step:
+
+```bash
+scripts/setup_cloudflare.sh              # interactive; safe to re-run, finished steps are skipped
+scripts/setup_cloudflare.sh --self-test  # offline test of its helpers
+```
+
+You need Node 22.12 or newer (it runs `npx wrangler@4`), `curl`, and the GitHub CLI logged in (`gh auth login`). It:
+
+1. checks those tools and that you have a Cloudflare account (free plan);
+2. logs wrangler in (`wrangler login`) and picks the account;
+3. creates the Pages project `ffp-leaderboard`, Direct Upload with production branch `main` (GitHub Actions deploys it; Cloudflare's Git integration stays off);
+4. creates the KV namespaces `ffp-leaderboard` and `ffp-leaderboard_preview`;
+5. has you create a CI API token (Account: Cloudflare Pages Edit, Workers Scripts Edit, Workers KV Storage Edit), checks it, and sets the GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;
+6. generates the home push secret that signs the Expected Points push, and sets it as the GitHub secret `LEADERBOARD_PUSH_SECRET` (the deploy hands it to the site); if an earlier run made a KV push token, it removes it from `.env.leaderboard` and asks you to delete it in Cloudflare;
+7. optionally sets up an ntfy topic for alerts (GitHub secret `NTFY_TOPIC`);
+8. lists what it made and how to undo each step.
+
+It writes two gitignored files: `site/.cloudflare-ids.env` (account id, Pages domain and KV namespace ids, not secret) and `.env.leaderboard` (the home push secret and ntfy topic; mode 600). Tokens are typed with hidden input and never printed.
+
 ### Layout
 
 ```
@@ -209,6 +244,13 @@ src/ffp/
 scripts/build_params.py   regenerates params/ from nflverse
 scripts/backtest_kalshi.py   runs the Kalshi Backtest (ffp.backtest)
 scripts/backtest_k_dst.py    walk-forward kicker and D/ST Backtest, plus Kalshi's K and D/ST lines
+scripts/setup_cloudflare.sh  interactive Cloudflare and GitHub setup for the Leaderboard site
+scripts/export_scoring_contract.py   site/contracts/ from ffp.scoring (ADR 0005)
+scripts/record_live.py, analyze_live_spike.py   the S9.1 live test recorder and analysis
+site/
+  schema/          the /api/leaderboard and Expected Points push JSON schemas, with examples
+  contracts/       Scoring Rules and scored cases for the TypeScript scorer (generated)
+  test/            Vitest suites; fixtures/ has trimmed ESPN and Sleeper responses
 research/          research notes, recorded fixtures, research scripts
 docs/adr/          architecture decisions
 ```

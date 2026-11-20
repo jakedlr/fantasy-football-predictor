@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ffp-leaderboard.pages.dev/schema/expected-points.schema.json",
+  "title": "Expected Points push",
+  "description": "What the home machine's ffp run pushes to KV: each priced player's Expected Points and per-Scoring-Stat means for an NFL Week's Games that haven't kicked off. Terms as in GLOSSARY.md.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "season", "week", "players"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "generatedAt": {"type": "string", "format": "date-time", "pattern": "Z$"},
+    "season": {"type": "integer", "minimum": 2000},
+    "week": {"type": "integer", "minimum": 1, "maximum": 23},
+    "players": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sleeperId", "gsisId", "espnId", "name", "team", "position", "kickoff", "statMeans", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "sleeperId": {"type": "string", "pattern": "^(\\d+|[A-Z]{2,3})$", "description": "Sleeper player id (the team for a D/ST). The home machine maps it from Sleeper's player list, which carries gsis and ESPN ids, so the Worker never downloads that list (14.7 MB)."},
+          "gsisId": {"type": ["string", "null"], "description": "nflverse gsis_id; null for a D/ST."},
+          "espnId": {"type": ["string", "null"], "pattern": "^\\d+$", "description": "From nflverse's id map; null if unmapped."},
+          "name": {"type": "string", "minLength": 1},
+          "team": {"type": "string", "pattern": "^[A-Z]{2,3}$"},
+          "position": {"enum": ["QB", "RB", "WR", "TE", "K", "D/ST"]},
+          "kickoff": {"type": "string", "format": "date-time", "pattern": "Z$"},
+          "statMeans": {
+            "description": "Mean of each Scoring Stat for the whole Game, keyed as in ffp.scoring (kicker and D/ST keys settled in Sprint 11).",
+            "type": "object",
+            "additionalProperties": {"type": "number"}
+          },
+          "expected": {
+            "description": "Expected Points by Scoring Rules name.",
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {"type": "number"}
+          }
+        }
+      }
+    }
+  }
+}

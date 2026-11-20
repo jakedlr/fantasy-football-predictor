@@ -107,3 +107,33 @@ _Avoid_: Neighbour, comparable, comp
 **Score Percentile (Pₖ)**:
 The fantasy point total x such that the player has a k% chance of scoring x or fewer. P5 is the floor, P95 the ceiling.
 _Avoid_: "5% score", chance of N+ points
+
+## Leaderboard
+
+**Leaderboard**:
+The public ranking of every listed player's Week Points for the current NFL Week, filterable by position.
+_Avoid_: Rankings, standings, board
+
+**NFL Week**:
+One numbered week of the NFL season, bounded by ESPN's week start and end times (Wednesday to Wednesday), shown as the dates of its first and last Game.
+_Avoid_: Slate, round, gameweek
+
+**Game Status**:
+Where a player's Game stands as of the last update: Upcoming (not kicked off), Live (in progress) or Final (finished).
+_Avoid_: Game state, phase, not started / in progress / completed
+
+**Expected Points**:
+The mean of a player's Score Distribution for a Game that has not kicked off, frozen at kickoff.
+_Avoid_: Projection, projected points, EV
+
+**Points So Far**:
+The fantasy points a player has actually scored in a Live or Final Game under the chosen Scoring Rules.
+_Avoid_: Actual points, live points, current score
+
+**Projected Total**:
+A Live player's Points So Far plus the share of his Expected Points still to play.
+_Avoid_: Live projection, final projection
+
+**Week Points**:
+The single number the Leaderboard ranks by: Points So Far when Final, the Projected Total when Live, Expected Points when Upcoming.
+_Avoid_: Score, total, fantasy points (alone)
