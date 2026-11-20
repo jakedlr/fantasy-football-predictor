@@ -4,7 +4,7 @@
  * isolates are slower, so `calibration` repeats the S10.1 probe (694 rows parsed and summed: 4–5 ms
  * of CPU on Cloudflare, research/leaderboard-live-spike.md) to scale the numbers.
  *
- *   npx vitest run test/worker/cpu.bench.test.ts
+ *   npx vitest run test/worker/cpu.bench.test.ts --silent=false
  *
  * The assertion is loose, to catch a blow-up (an accidental O(n²)) rather than to time CI machines.
  */
