@@ -119,9 +119,11 @@ describe("stats run", () => {
     expect(lb.updatedAt).toBe("2026-11-20T02:45:00Z");
     expect(lb.week.number).toBe(11);
     expect(lb.games).toHaveLength(13);
-    // Every QB/RB/WR/TE row is in the Live Game; K and DEF rows wait for Sprint 11.
-    const offense = sleeperLive.filter((r) => ["QB", "RB", "WR", "TE"].includes((r as { player: { position: string } }).player.position));
-    expect(lb.players).toHaveLength(offense.length);
+    // Every row is in the Live Game: 46 QB/RB/WR/TE, both kickers and both D/STs.
+    expect(lb.players).toHaveLength(sleeperLive.length);
+    expect(lb.players.filter((p) => p.position === "K" || p.position === "D/ST").map((p) => p.id)).toEqual(["dst:HOU", "dst:IND", "sleeper:12185", "sleeper:3451"]);
+    // Texans D/ST: 1 sack, 1 INT, a blocked kick, 3 allowed (4), 125 yards (3).
+    expect(lb.players.find((p) => p.id === "dst:HOU")!.points.ppr).toEqual({ week: 12, soFar: 12, expected: null });
     expect(new Set(lb.players.map((p) => p.gameId))).toEqual(new Set(["401873066"]));
     // C.J. Stroud: 134 pass yards, 2 pass TDs, 1 INT, 4 rush yards. Sleeper's pts_ppr is 12.76 with
     // −1 per INT; ours takes −2.
