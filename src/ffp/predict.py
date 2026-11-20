@@ -52,13 +52,22 @@ from ffp.players import (
     team_code_from_book_name,
 )
 from ffp.report import PlayerResult, SkippedPlayer, StatDetail, chances
-from ffp.scoring import ScoringRules
+from ffp.scoring import (
+    DST_STATS,
+    KICKER_STATS,
+    SCORING_STATS,
+    SLEEPER_FG_BUCKETS,
+    ScoringRules,
+    score,
+    score_dst,
+    score_kicker,
+)
 from ffp.simulate import DEFAULT_SAMPLES, DEFAULT_SEED, ScoreDistribution, simulate_scores
 from ffp.sources import draftkings, fanduel
 from ffp.td_share import TdHistory, rushing_td_share
 from ffp import gamelines
 from ffp.dst import dst_scores
-from ffp.kicker import kicker_scores
+from ffp.kicker import KickerSamples, kicker_scores
 
 log = logging.getLogger(__name__)
 
@@ -531,6 +540,7 @@ def predict(
     chance_thresholds: Sequence[float] = (),
     recent_games: Mapping[str, RecentGames] | None = None,
     jobs: int | None = 1,
+    also_score: Sequence[ScoringRules] = (),
 ) -> tuple[list[PlayerResult], list[SkippedPlayer]]:
     """A Score Distribution for each target with Prop Markets in its Game.
 
@@ -555,8 +565,12 @@ def predict(
     (`on_fair_points`) and log records are replayed here as each player lands, in target order, so a
     crash keeps what came before it. One player to fit is predicted in process (a worker start costs
     about a second), and so are D/STs, kickers and skips.
+
+    Each result has its Score Distribution's `mean`, the mean of each Scoring Stat in its draws
+    (`stat_means`), and `expected`: Expected Points by Scoring Rules name, under `rules` and each of
+    `also_score`, the same draws scored again (S11.2: one fit and simulation per player).
     """
-    context = _Context(books, rules, correlation, chance_thresholds)
+    context = _Context(books, rules, correlation, chance_thresholds, tuple(also_score))
     task = {id(t): (t, (td_history or {}).get(t.player.gsis_id), (recent_games or {}).get(t.player.gsis_id))
             for t in targets}
     # Only players with markets to fit are worth a worker: a D/ST, a kicker or a skip is near instant.
@@ -621,6 +635,7 @@ class _Context:
     rules: ScoringRules
     correlation: str | None
     chance_thresholds: Sequence[float]
+    also_score: Sequence[ScoringRules] = ()
 
 
 class _Records(logging.Handler):
@@ -637,7 +652,7 @@ class _Records(logging.Handler):
 def _predict_target(context: "_Context", target: Target, td_history, recent, report):
     books, rules = context.books, context.rules
     if target.player.position in TEAM_POSITIONS:
-        return _team_result(target, books, rules, context.chance_thresholds)
+        return _team_result(target, books, rules, context.chance_thresholds, context.also_score)
     priced, by_stat = _markets_for(target, books)
     # A Usage Stat alone (a carries line) is nothing to score: the player has no markets.
     if not has_scoring_markets(by_stat):
@@ -646,7 +661,7 @@ def _predict_target(context: "_Context", target: Target, td_history, recent, rep
     fitted = fit_player(target.player.position, by_stat, share, on_fair_points=report, recent=recent)
     if not fitted.dists:
         return SkippedPlayer(target.name, f"could not fit any of its markets ({'; '.join(fitted.errors)})")
-    return _player_result(target, fitted, rules, context.correlation, context.chance_thresholds)
+    return _player_result(target, fitted, rules, context.correlation, context.chance_thresholds, context.also_score)
 
 
 _WORKER_CONTEXT: "_Context | None" = None
@@ -881,10 +896,12 @@ def score_player(
 
 
 def _player_result(
-    target: Target, fitted: Fitted, rules: ScoringRules, correlation: str | None, chance_thresholds: Sequence[float] = ()
+    target: Target, fitted: Fitted, rules: ScoringRules, correlation: str | None, chance_thresholds: Sequence[float] = (),
+    also_score: Sequence[ScoringRules] = (),
 ) -> PlayerResult:
     position = target.player.position
     scores = score_player(position, fitted, rules, correlation)
+    samples = scores.samples
     game = target.game
     return PlayerResult(
         player=target.name,
@@ -896,7 +913,42 @@ def _player_result(
         flags=fitted.flags,
         stats=fitted.details,
         chances=chances(scores, chance_thresholds),
+        mean=scores.mean,
+        expected=_expected(scores, [score(samples, r) for r in also_score], rules, also_score),
+        stat_means={stat: _mean(samples[stat]) for stat in SCORING_STATS if stat in samples},
+        player_id=target.player.gsis_id,
     )
+
+
+def _mean(values) -> float:
+    return float(np.mean(np.asarray(values, dtype=float), axis=0))
+
+
+def _expected(scores: ScoreDistribution, others: Sequence, rules: ScoringRules,
+              also_score: Sequence[ScoringRules]) -> dict[str, float]:
+    """Expected Points by Scoring Rules name: the run's own (the Score Distribution's mean), then the
+    same draws scored under each of `also_score`."""
+    return {rules.name: scores.mean, **{r.name: _mean(points) for r, points in zip(also_score, others)}}
+
+
+def kicker_stat_means(k: KickerSamples) -> dict[str, float]:
+    """A kicker's mean PATs made and missed, FGs missed, and FGs made in each of Sleeper's distance
+    buckets (SLEEPER_FG_BUCKETS), from his draws."""
+    means = {stat: _mean(values) for stat, values in k.stat_line().items() if stat in KICKER_STATS}
+    yards = k.fg_made_yards  # NaN where no FG was made: NaN compares False, so it falls in no bucket
+    for bucket, (lo, hi) in SLEEPER_FG_BUCKETS.items():
+        inside = (yards >= lo) if hi is None else (yards >= lo) & (yards <= hi)
+        means[bucket] = _mean(inside.sum(axis=1))
+    return means
+
+
+# What a D/ST allowed, as its draws carry it: the inputs to the Points and Yards Allowed tiers.
+DST_ALLOWED = ("points_allowed_all", "opponent_defensive_tds_points", "opponent_return_tds_points", "yards_allowed")
+
+
+def dst_stat_means(drawn: Mapping[str, np.ndarray]) -> dict[str, float]:
+    """A D/ST's mean counts (DST_STATS) and what it allowed (DST_ALLOWED), from its Analog Game draws."""
+    return {stat: _mean(drawn[stat]) for stat in (*DST_STATS, *DST_ALLOWED) if stat in drawn}
 
 
 # --- Kickers and D/ST (Sprint 6) -----------------------------------------------------
@@ -918,7 +970,7 @@ def _game_lines(target: Target, books: Sequence[BookOdds]):
 
 
 def _team_result(target: Target, books: Sequence[BookOdds], rules: ScoringRules,
-                 chance_thresholds: Sequence[float]) -> PlayerResult | SkippedPlayer:
+                 chance_thresholds: Sequence[float], also_score: Sequence[ScoringRules] = ()) -> PlayerResult | SkippedPlayer:
     """A kicker's or D/ST's Score Distribution from its Game Lines (and, for a D/ST, the opponent's
     team total and its own TD prices), or why there is none."""
     position, team, game = target.player.position, target.player.team, target.game
@@ -936,6 +988,8 @@ def _team_result(target: Target, books: Sequence[BookOdds], rules: ScoringRules,
         stats = {"fg_attempts": _sample_detail(k.fga, totals.sources),
                  "fg_made": _sample_detail(np.sum(~np.isnan(k.fg_made_yards), axis=1), totals.sources),
                  "pat_made": _sample_detail(k.pat_made, totals.sources)}
+        others = [score_kicker(k.stat_line(), r) for r in also_score]
+        stat_means = kicker_stat_means(k)
     else:
         opp_points = gamelines.team_markets(markets, opponent, TEAM_POINTS)
         tds = gamelines.team_markets(markets, team, DST_TDS)
@@ -950,10 +1004,13 @@ def _team_result(target: Target, books: Sequence[BookOdds], rules: ScoringRules,
                  "sacks": _sample_detail(drawn["sacks"], totals.sources),
                  "interceptions": _sample_detail(drawn["interceptions"], totals.sources),
                  "dst_tds": _sample_detail(drawn["dst_tds"], _books(tds) or totals.sources, _rungs(tds))}
+        others = [score_dst(drawn, r) for r in also_score]
+        stat_means = dst_stat_means(drawn)
     return PlayerResult(
         player=target.name, team=team, game=f"{game.away} @ {game.home}", kickoff=game.kickoff,
         position="D/ST" if position == DST else position, percentiles=scores.percentiles(), flags=flags,
-        stats=stats, chances=chances(scores, chance_thresholds),
+        stats=stats, chances=chances(scores, chance_thresholds), mean=scores.mean,
+        expected=_expected(scores, others, rules, also_score), stat_means=stat_means, player_id=target.player.gsis_id,
     )
 
 

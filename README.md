@@ -92,8 +92,8 @@ Options:
 
 Output:
 
-- **`OUTPUT.md`:** a percentile table, flags and assumptions, plus a chance table when `--chance` is given.
-- **`output.json`:** the same, plus per-stat detail (mean, median, books used, Rung count). For a kicker the detail is FG attempts, FGs made and PATs made; for a D/ST it is Points Allowed, sacks, interceptions and D/ST TDs.
+- **`OUTPUT.md`:** a percentile table with each player's Mean (the Score Distribution's mean, his Expected Points; not P50, since Score Distributions are right-skewed), flags and assumptions, plus a chance table when `--chance` is given.
+- **`output.json`:** the same (the Mean as `mean`), plus per-stat detail (mean, median, books used, Rung count). For a kicker the detail is FG attempts, FGs made and PATs made; for a D/ST it is Points Allowed, sacks, interceptions and D/ST TDs.
 
 A kicker is always flagged `from game lines`. A D/ST with no team total or TD price is flagged `from game lines (no team total or D/ST TD market)`. When no book lists the Game's spread and total, both use nflverse's schedule lines and say so.
 

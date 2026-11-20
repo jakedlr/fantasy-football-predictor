@@ -33,6 +33,14 @@ SCORING_STATS = (
 
 # A kicker's per-unit Scoring Stats; FGs made score by distance (`fg_made_by_distance` tiers).
 KICKER_STATS = ("pat_made", "pat_missed", "fg_missed")
+# Sleeper's FGs-made buckets (`fgm_20_29`, ...): bucket -> (min, max) yards, max inclusive, None for no
+# max. The Leaderboard's live kicker stats come in these (site/contracts/scoring-rules.json), and so do
+# the kicker statMeans `ffp slate` sends it. `fgm_50p` is the sum of the last two and
+# `fgm`/`fgm_yds`/`fgm_lng` are totals, so they are not buckets.
+SLEEPER_FG_BUCKETS = {
+    "fgm_0_19": (0, 19), "fgm_20_29": (20, 29), "fgm_30_39": (30, 39),
+    "fgm_40_49": (40, 49), "fgm_50_59": (50, 59), "fgm_60p": (60, None),
+}
 # A D/ST's per-unit Scoring Stats. Its Points Allowed and Yards Allowed score by tier.
 DST_STATS = (
     "sacks",

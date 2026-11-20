@@ -390,3 +390,11 @@ def test_a_failed_odds_run_lets_the_history_download_finish_before_exiting(tmp_p
     input_md.write_text("Zay Flowers\n")
     assert main(["predict", str(input_md), "--now", BEFORE_MNF, "--output-dir", str(tmp_path), "--no-snapshot"]) == 1
     assert done == [1]
+
+
+def test_each_player_s_mean_is_in_both_outputs(tmp_path):
+    # S11.2: the Score Distribution's mean (Expected Points) next to the Score Percentiles.
+    markdown, data = run_predict(tmp_path, ["Zay Flowers", "Ravens D/ST"])
+    for player in data["players"]:
+        assert player["percentiles"]["P5"] <= player["mean"] <= player["percentiles"]["P95"]
+    assert "| P95 | Mean | Flags |" in markdown
