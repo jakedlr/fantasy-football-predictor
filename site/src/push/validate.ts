@@ -45,7 +45,7 @@ export function leaderboardId(p: Pick<PushPlayer, "position" | "team" | "sleeper
 
 export function validatePush(value: unknown): Checked {
   if (!schemaValidate(value)) {
-    // Only the first error is kept, e.g. `/players/1/statMeans: must match propertyNames`.
+    // Only the first error is kept, e.g. `/players/1/statMeans: must NOT have additional properties`.
     const error = schemaValidate.errors?.[0];
     return { ok: false, reason: short(error ? `${error.instancePath || "/"}: ${error.message ?? error.keyword}` : "does not match the schema") };
   }

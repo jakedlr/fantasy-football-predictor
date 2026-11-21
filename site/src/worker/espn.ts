@@ -42,8 +42,15 @@ export function groupAt(now: Date): ProjectionGroup {
   return PROJECTION_GROUPS[Math.min(2, Math.floor(now.getUTCMinutes() / 20))]!;
 }
 
-/** ESPN's id for a week's projected line: statSourceId 1, statSplitTypeId 1, season, week. */
-const lineId = (week: Week) => `11${week.season}${week.number}`;
+/**
+ * ESPN's id for a week's projected line: statSourceId 1, statSplitTypeId 1, season, week. Only
+ * Week 11 ("11202611") is recorded (research/leaderboard-live-spike.md, "ESPN projections"), so
+ * whether ESPN writes weeks 1–9 unpadded ("1120261") or padded ("11202601") is unknown. The id
+ * only filters and sorts the request; parseProjections picks the line by its statSourceId,
+ * statSplitTypeId, seasonId and scoringPeriodId fields. If it's wrong, the run writes no players
+ * for its group, and refresh.ts `runEspn` logs a warning while Games are Upcoming.
+ */
+export const lineId = (week: Pick<Week, "season" | "number">) => `11${week.season}${week.number}`;
 
 /** The URL and `x-fantasy-filter` header for one group's projections in a regular-season week. */
 export function projectionsRequest(week: Week, group: ProjectionGroup): { url: string; filter: string } {

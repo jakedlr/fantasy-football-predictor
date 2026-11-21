@@ -47,7 +47,7 @@ describe.each([
     const parseSleeper = time(RUNS, () => JSON.parse(sunday.sleeperText));
     const raw = JSON.parse(sunday.sleeperText) as unknown[];
     const convert = time(RUNS, () => sleeperStatsToPlayers(raw));
-    const players = [...sleeperStatsToPlayers(raw).players, ...sunday.kAndDst];
+    const players = sleeperStatsToPlayers(raw).players;
     const stores = time(RUNS, () => [
       readStore<ExpectedStore>("expected", sunday.expectedText, "generatedAt", log),
       readStore<EspnStore>("espn", sunday.espnText, "fetchedAt", log),

@@ -49,23 +49,42 @@ export interface PushAuth {
   maxSkewSeconds: number;
 }
 
+/** The signature headers once their format and the timestamp's skew have been checked. */
+export interface SignedHeaders {
+  timestamp: string;
+  /** The signature's 64 hex digits. */
+  hex: string;
+}
+
 /**
- * True if the timestamp is within maxSkewSeconds of now either way and the signature is the
- * HMAC-SHA256, under the secret's UTF-8 bytes, of `timestamp + "." + body`. crypto.subtle.verify
- * compares in constant time. Callers answer every false the same way, so nothing tells a sender
- * which part failed.
+ * The cheap checks, made before the body is read: both headers present and well formed, and the
+ * timestamp within maxSkewSeconds of now either way. null if any fails.
+ */
+export function checkHeaders(auth: Pick<PushAuth, "timestamp" | "signature" | "now" | "maxSkewSeconds">): SignedHeaders | null {
+  const { timestamp, signature } = auth;
+  if (timestamp === null || signature === null || !TIMESTAMP.test(timestamp)) return null;
+  if (Math.abs(auth.now.getTime() / 1000 - Number(timestamp)) > auth.maxSkewSeconds) return null;
+  const hex = SIGNATURE.exec(signature)?.[1];
+  return hex === undefined ? null : { timestamp, hex };
+}
+
+/**
+ * True if the headers pass `checkHeaders` and the signature is the HMAC-SHA256, under the
+ * secret's UTF-8 bytes, of `timestamp + "." + body`. crypto.subtle.verify compares in constant
+ * time. Callers answer every false the same way, so nothing tells a sender which part failed.
  */
 export async function verifyPush(auth: PushAuth): Promise<boolean> {
-  const { timestamp, signature } = auth;
-  if (timestamp === null || signature === null || !TIMESTAMP.test(timestamp)) return false;
-  if (Math.abs(auth.now.getTime() / 1000 - Number(timestamp)) > auth.maxSkewSeconds) return false;
-  const hex = SIGNATURE.exec(signature)?.[1];
-  if (hex === undefined) return false;
+  const headers = checkHeaders(auth);
+  return headers !== null && verifySignature(auth.secret, headers, auth.body);
+}
+
+/** The HMAC check alone, for headers `checkHeaders` already passed. */
+export async function verifySignature(secret: string, { timestamp, hex }: SignedHeaders, body: Uint8Array): Promise<boolean> {
   const prefix = enc.encode(`${timestamp}.`);
-  const signed = new Uint8Array(prefix.byteLength + auth.body.byteLength);
+  const signed = new Uint8Array(prefix.byteLength + body.byteLength);
   signed.set(prefix, 0);
-  signed.set(auth.body, prefix.byteLength);
-  return crypto.subtle.verify("HMAC", await hmacKey(auth.secret), fromHex(hex), signed);
+  signed.set(body, prefix.byteLength);
+  return crypto.subtle.verify("HMAC", await hmacKey(secret), fromHex(hex), signed);
 }
 
 let cached: { secret: string; key: Promise<CryptoKey> } | null = null;

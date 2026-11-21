@@ -94,6 +94,21 @@ describe("ESPN projections run", () => {
     expect(logs.join("\n")).toMatch(/no idmap yet/);
   });
 
+  // E.g. ESPN numbering a single-digit week's projected line differently from `11${season}${week}`.
+  it("warns when it writes no players for its group while Games are Upcoming", async () => {
+    const { deps, logs } = setup({ [ESPN_PROJECTIONS_HOST]: { players: [] } });
+    expect(await runEspn(deps)).toEqual({ result: "written" });
+    expect(logs.join("\n")).toMatch(/warning: 0 players written for QB, TE while 1[0-9]? Games are Upcoming; 0 projections parsed \(line id 11202611\)/);
+  });
+
+  it("doesn't warn about an empty group once no Game is Upcoming", async () => {
+    const done = structuredClone(upcoming);
+    for (const g of done.games) g.status = "final";
+    const { deps, logs } = setup({ [ESPN_PROJECTIONS_HOST]: { players: [] } }, { [KEYS.scoreboard]: JSON.stringify(done) });
+    await runEspn(deps);
+    expect(logs.join("\n")).not.toMatch(/warning/);
+  });
+
   it("does nothing in the postseason: ESPN's fantasy game has no playoff weeks", async () => {
     const { deps, kv, net } = setup({ [ESPN_PROJECTIONS_HOST]: qbTe }, { [KEYS.scoreboard]: JSON.stringify(postseason) });
     expect(await runEspn(deps)).toEqual({ result: "unchanged" });

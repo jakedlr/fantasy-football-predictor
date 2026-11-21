@@ -7,7 +7,7 @@ const runtime1 = cjs(runtime1NS);
 "use strict";
 export const validate = validate20;
 export default validate20;
-const schema31 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ffp-leaderboard.pages.dev/schema/expected-points.schema.json","title":"Expected Points push","description":"What the home machine's ffp run POSTs to /api/expected-points: each priced player's Expected Points and per-Scoring-Stat means for an NFL Week's Games that haven't kicked off, plus the Sleeper-to-ESPN id map for the ESPN projection fallback. Signed as in site/contracts/push-signature.json. Terms as in GLOSSARY.md.","type":"object","required":["schemaVersion","generatedAt","season","seasonType","week","players","idMap"],"additionalProperties":false,"properties":{"schemaVersion":{"const":1},"generatedAt":{"type":"string","format":"date-time","pattern":"Z$"},"season":{"type":"integer","minimum":2000},"week":{"type":"integer","minimum":1,"maximum":23,"description":"ESPN's and Sleeper's numbering: regular season 1–18, postseason 1 (Wild Card) to 4 (Super Bowl)."},"players":{"type":"array","items":{"type":"object","required":["sleeperId","gsisId","espnId","name","team","position","kickoff","statMeans","expected"],"additionalProperties":false,"properties":{"sleeperId":{"type":"string","pattern":"^(\\d+|[A-Z]{2,3})$","description":"Sleeper player id (the team for a D/ST), mapped on the home machine: Sleeper's player list by gsis_id, else nflverse's roster sleeper_id, else a unique name + team match. The Worker never downloads that list (14.7 MB)."},"gsisId":{"type":["string","null"],"description":"nflverse gsis_id; null for a D/ST."},"espnId":{"type":["string","null"],"pattern":"^\\d+$","description":"ESPN player id from Sleeper's player list, else nflverse's roster; null if unmapped or a D/ST."},"name":{"type":"string","minLength":1},"team":{"type":"string","pattern":"^[A-Z]{2,3}$"},"position":{"enum":["QB","RB","WR","TE","K","D/ST"]},"kickoff":{"type":"string","format":"date-time","pattern":"Z$","description":"The Game's kickoff. The push only lists players whose Game hasn't kicked off at generatedAt; /api/expected-points keeps an earlier push's entry for a player whose Game has kicked off (frozen at kickoff)."},"statMeans":{"description":"Mean of each Scoring Stat for the whole Game. QB/RB/WR/TE: ffp.scoring's offensive stats. K: pat_made, pat_missed, fg_missed and FGs made by Sleeper's distance buckets (fgm_0_19 … fgm_60p, as site/contracts/scoring-rules.json sleeperFgBuckets). D/ST: ffp.scoring's D/ST counts plus points_allowed_all, opponent_defensive_tds_points, opponent_return_tds_points and yards_allowed. A missing stat is 0. The Projected Total is current + mean × fraction of the Game left, per stat, then scored.","type":"object","propertyNames":{"enum":["passing_yards","passing_tds","passing_interceptions","passing_2pt","rushing_yards","rushing_tds","rushing_2pt","receptions","receiving_yards","receiving_tds","receiving_2pt","fumbles_lost","pat_made","pat_missed","fg_missed","fgm_0_19","fgm_20_29","fgm_30_39","fgm_40_49","fgm_50_59","fgm_60p","sacks","interceptions","fumble_recoveries","forced_fumbles","safeties","blocked_kicks","interception_return_tds","fumble_return_tds","kickoff_return_tds","punt_return_tds","blocked_kick_return_tds","points_allowed_all","opponent_defensive_tds_points","opponent_return_tds_points","yards_allowed"]},"additionalProperties":{"type":"number","minimum":0}},"expected":{"description":"Expected Points (the Score Distribution's mean) by Scoring Rules name; every Leaderboard Scoring Rules option (ppr, half-ppr, standard, espn-league).","type":"object","required":["ppr","half-ppr","standard","espn-league"],"additionalProperties":false,"properties":{"ppr":{"type":"number","minimum":-100,"maximum":150},"half-ppr":{"type":"number","minimum":-100,"maximum":150},"standard":{"type":"number","minimum":-100,"maximum":150},"espn-league":{"type":"number","minimum":-100,"maximum":150}}}}},"maxItems":1500},"seasonType":{"enum":["regular","postseason"]},"idMap":{"description":"Sleeper player id → ESPN player id, for every QB/RB/WR/TE/K on a team that plays this NFL Week (priced or not), from Sleeper's player list, else nflverse's roster. The Worker joins ESPN's projections to Sleeper ids through it.","type":"object","maxProperties":3000,"propertyNames":{"pattern":"^\\d+$"},"additionalProperties":{"type":"string","pattern":"^\\d+$"}}}};
+const schema31 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ffp-leaderboard.pages.dev/schema/expected-points.schema.json","title":"Expected Points push","description":"What the home machine's ffp run POSTs to /api/expected-points: each priced player's Expected Points and per-Scoring-Stat means for an NFL Week's Games that haven't kicked off, plus the Sleeper-to-ESPN id map for the ESPN projection fallback. Signed as in site/contracts/push-signature.json. Terms as in GLOSSARY.md.","type":"object","required":["schemaVersion","generatedAt","season","seasonType","week","players","idMap"],"additionalProperties":false,"properties":{"schemaVersion":{"const":1},"generatedAt":{"type":"string","format":"date-time","pattern":"Z$"},"season":{"type":"integer","minimum":2000},"week":{"type":"integer","minimum":1,"maximum":23,"description":"ESPN's numbering: regular season 1–18, postseason from 1 (Wild Card) to the Super Bowl, which is 4, or 5 in a season with a Pro Bowl week (2025)."},"players":{"type":"array","items":{"type":"object","required":["sleeperId","gsisId","espnId","name","team","position","kickoff","statMeans","expected"],"additionalProperties":false,"properties":{"sleeperId":{"type":"string","pattern":"^(\\d+|[A-Z]{2,3})$","description":"Sleeper player id (the team for a D/ST), mapped on the home machine: Sleeper's player list by gsis_id, else nflverse's roster sleeper_id, else a unique name + team match. The Worker never downloads that list (14.7 MB)."},"gsisId":{"type":["string","null"],"description":"nflverse gsis_id; null for a D/ST."},"espnId":{"type":["string","null"],"pattern":"^\\d+$","description":"ESPN player id from Sleeper's player list, else nflverse's roster; null if unmapped or a D/ST."},"name":{"type":"string","minLength":1,"maxLength":64},"team":{"type":"string","pattern":"^[A-Z]{2,3}$"},"position":{"enum":["QB","RB","WR","TE","K","D/ST"]},"kickoff":{"type":"string","format":"date-time","pattern":"Z$","description":"The Game's kickoff. The push only lists players whose Game hasn't kicked off at generatedAt; /api/expected-points keeps an earlier push's entry for a player whose Game has kicked off (frozen at kickoff)."},"statMeans":{"description":"Mean of each Scoring Stat for the whole Game. QB/RB/WR/TE: ffp.scoring's offensive stats. K: pat_made, pat_missed, fg_missed and FGs made by Sleeper's distance buckets (fgm_0_19 … fgm_60p, as site/contracts/scoring-rules.json sleeperFgBuckets). D/ST: ffp.scoring's D/ST counts plus points_allowed_all, opponent_defensive_tds_points, opponent_return_tds_points and yards_allowed. A missing stat is 0. The Projected Total is current + mean × fraction of the Game left, per stat, then scored. Bounded well above any real Game: yards and yards_allowed at 1,000, points_allowed_all and the opponent_*_points at 150, every count at 50.","type":"object","properties":{"passing_yards":{"type":"number","minimum":0,"maximum":1000},"passing_tds":{"type":"number","minimum":0,"maximum":50},"passing_interceptions":{"type":"number","minimum":0,"maximum":50},"passing_2pt":{"type":"number","minimum":0,"maximum":50},"rushing_yards":{"type":"number","minimum":0,"maximum":1000},"rushing_tds":{"type":"number","minimum":0,"maximum":50},"rushing_2pt":{"type":"number","minimum":0,"maximum":50},"receptions":{"type":"number","minimum":0,"maximum":50},"receiving_yards":{"type":"number","minimum":0,"maximum":1000},"receiving_tds":{"type":"number","minimum":0,"maximum":50},"receiving_2pt":{"type":"number","minimum":0,"maximum":50},"fumbles_lost":{"type":"number","minimum":0,"maximum":50},"pat_made":{"type":"number","minimum":0,"maximum":50},"pat_missed":{"type":"number","minimum":0,"maximum":50},"fg_missed":{"type":"number","minimum":0,"maximum":50},"fgm_0_19":{"type":"number","minimum":0,"maximum":50},"fgm_20_29":{"type":"number","minimum":0,"maximum":50},"fgm_30_39":{"type":"number","minimum":0,"maximum":50},"fgm_40_49":{"type":"number","minimum":0,"maximum":50},"fgm_50_59":{"type":"number","minimum":0,"maximum":50},"fgm_60p":{"type":"number","minimum":0,"maximum":50},"sacks":{"type":"number","minimum":0,"maximum":50},"interceptions":{"type":"number","minimum":0,"maximum":50},"fumble_recoveries":{"type":"number","minimum":0,"maximum":50},"forced_fumbles":{"type":"number","minimum":0,"maximum":50},"safeties":{"type":"number","minimum":0,"maximum":50},"blocked_kicks":{"type":"number","minimum":0,"maximum":50},"interception_return_tds":{"type":"number","minimum":0,"maximum":50},"fumble_return_tds":{"type":"number","minimum":0,"maximum":50},"kickoff_return_tds":{"type":"number","minimum":0,"maximum":50},"punt_return_tds":{"type":"number","minimum":0,"maximum":50},"blocked_kick_return_tds":{"type":"number","minimum":0,"maximum":50},"points_allowed_all":{"type":"number","minimum":0,"maximum":150},"opponent_defensive_tds_points":{"type":"number","minimum":0,"maximum":150},"opponent_return_tds_points":{"type":"number","minimum":0,"maximum":150},"yards_allowed":{"type":"number","minimum":0,"maximum":1000}},"additionalProperties":false},"expected":{"description":"Expected Points (the Score Distribution's mean) by Scoring Rules name; every Leaderboard Scoring Rules option (ppr, half-ppr, standard, espn-league).","type":"object","required":["ppr","half-ppr","standard","espn-league"],"additionalProperties":false,"properties":{"ppr":{"type":"number","minimum":-100,"maximum":150},"half-ppr":{"type":"number","minimum":-100,"maximum":150},"standard":{"type":"number","minimum":-100,"maximum":150},"espn-league":{"type":"number","minimum":-100,"maximum":150}}}}},"maxItems":1500},"seasonType":{"enum":["regular","postseason"]},"idMap":{"description":"Sleeper player id → ESPN player id, for every QB/RB/WR/TE/K on a team that plays this NFL Week (priced or not), from Sleeper's player list, else nflverse's roster. The Worker joins ESPN's projections to Sleeper ids through it.","type":"object","maxProperties":3000,"propertyNames":{"pattern":"^\\d+$"},"additionalProperties":{"type":"string","pattern":"^\\d+$"}}}};
 const formats0 = runtime0.fullFormats["date-time"];
 const pattern4 = new RegExp("Z$", "u");
 const pattern5 = new RegExp("^(\\d+|[A-Z]{2,3})$", "u");
@@ -225,9 +225,15 @@ let data9 = data5.name;
 const _errs20 = errors;
 if(errors === _errs20){
 if(typeof data9 === "string"){
+if(func2(data9) > 64){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/name",schemaPath:"#/properties/players/items/properties/name/maxLength",keyword:"maxLength",params:{limit: 64},message:"must NOT have more than 64 characters"}];
+return false;
+}
+else {
 if(func2(data9) < 1){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/name",schemaPath:"#/properties/players/items/properties/name/minLength",keyword:"minLength",params:{limit: 1},message:"must NOT have fewer than 1 characters"}];
 return false;
+}
 }
 }
 else {
@@ -309,52 +315,1019 @@ let data13 = data5.statMeans;
 const _errs27 = errors;
 if(errors === _errs27){
 if(data13 && typeof data13 == "object" && !Array.isArray(data13)){
-for(const key2 in data13){
 const _errs29 = errors;
-if(!((((((((((((((((((((((((((((((((((((key2 === "passing_yards") || (key2 === "passing_tds")) || (key2 === "passing_interceptions")) || (key2 === "passing_2pt")) || (key2 === "rushing_yards")) || (key2 === "rushing_tds")) || (key2 === "rushing_2pt")) || (key2 === "receptions")) || (key2 === "receiving_yards")) || (key2 === "receiving_tds")) || (key2 === "receiving_2pt")) || (key2 === "fumbles_lost")) || (key2 === "pat_made")) || (key2 === "pat_missed")) || (key2 === "fg_missed")) || (key2 === "fgm_0_19")) || (key2 === "fgm_20_29")) || (key2 === "fgm_30_39")) || (key2 === "fgm_40_49")) || (key2 === "fgm_50_59")) || (key2 === "fgm_60p")) || (key2 === "sacks")) || (key2 === "interceptions")) || (key2 === "fumble_recoveries")) || (key2 === "forced_fumbles")) || (key2 === "safeties")) || (key2 === "blocked_kicks")) || (key2 === "interception_return_tds")) || (key2 === "fumble_return_tds")) || (key2 === "kickoff_return_tds")) || (key2 === "punt_return_tds")) || (key2 === "blocked_kick_return_tds")) || (key2 === "points_allowed_all")) || (key2 === "opponent_defensive_tds_points")) || (key2 === "opponent_return_tds_points")) || (key2 === "yards_allowed"))){
-const err0 = {instancePath:instancePath+"/players/" + i0+"/statMeans",schemaPath:"#/properties/players/items/properties/statMeans/propertyNames/enum",keyword:"enum",params:{allowedValues: schema31.properties.players.items.properties.statMeans.propertyNames.enum},message:"must be equal to one of the allowed values",propertyName:key2};
-if(vErrors === null){
-vErrors = [err0];
-}
-else {
-vErrors.push(err0);
-}
-errors++;
-}
-var valid3 = _errs29 === errors;
-if(!valid3){
-const err1 = {instancePath:instancePath+"/players/" + i0+"/statMeans",schemaPath:"#/properties/players/items/properties/statMeans/propertyNames",keyword:"propertyNames",params:{propertyName: key2},message:"property name must be valid"};
-if(vErrors === null){
-vErrors = [err1];
-}
-else {
-vErrors.push(err1);
-}
-errors++;
-validate20.errors = vErrors;
+for(const key2 in data13){
+if(!(func1.call(schema31.properties.players.items.properties.statMeans.properties, key2))){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans",schemaPath:"#/properties/players/items/properties/statMeans/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key2},message:"must NOT have additional properties"}];
 return false;
 break;
 }
+}
+if(_errs29 === errors){
+if(data13.passing_yards !== undefined){
+let data14 = data13.passing_yards;
+const _errs30 = errors;
+if(errors === _errs30){
+if((typeof data14 == "number") && (isFinite(data14))){
+if(data14 > 1000 || isNaN(data14)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_yards/maximum",keyword:"maximum",params:{comparison: "<=", limit: 1000},message:"must be <= 1000"}];
+return false;
+}
+else {
+if(data14 < 0 || isNaN(data14)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_yards/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_yards/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs30 === errors;
+}
+else {
+var valid3 = true;
 }
 if(valid3){
-for(const key3 in data13){
-let data14 = data13[key3];
-const _errs31 = errors;
-if(errors === _errs31){
-if((typeof data14 == "number") && (isFinite(data14))){
-if(data14 < 0 || isNaN(data14)){
-validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/" + key3.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/players/items/properties/statMeans/additionalProperties/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+if(data13.passing_tds !== undefined){
+let data15 = data13.passing_tds;
+const _errs32 = errors;
+if(errors === _errs32){
+if((typeof data15 == "number") && (isFinite(data15))){
+if(data15 > 50 || isNaN(data15)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
 return false;
+}
+else {
+if(data15 < 0 || isNaN(data15)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
 }
 }
 else {
-validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/" + key3.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/players/items/properties/statMeans/additionalProperties/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
 return false;
 }
 }
-var valid4 = _errs31 === errors;
-if(!valid4){
-break;
+var valid3 = _errs32 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.passing_interceptions !== undefined){
+let data16 = data13.passing_interceptions;
+const _errs34 = errors;
+if(errors === _errs34){
+if((typeof data16 == "number") && (isFinite(data16))){
+if(data16 > 50 || isNaN(data16)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_interceptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_interceptions/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data16 < 0 || isNaN(data16)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_interceptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_interceptions/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_interceptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_interceptions/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs34 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.passing_2pt !== undefined){
+let data17 = data13.passing_2pt;
+const _errs36 = errors;
+if(errors === _errs36){
+if((typeof data17 == "number") && (isFinite(data17))){
+if(data17 > 50 || isNaN(data17)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_2pt/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data17 < 0 || isNaN(data17)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_2pt/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/passing_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/passing_2pt/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs36 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.rushing_yards !== undefined){
+let data18 = data13.rushing_yards;
+const _errs38 = errors;
+if(errors === _errs38){
+if((typeof data18 == "number") && (isFinite(data18))){
+if(data18 > 1000 || isNaN(data18)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_yards/maximum",keyword:"maximum",params:{comparison: "<=", limit: 1000},message:"must be <= 1000"}];
+return false;
+}
+else {
+if(data18 < 0 || isNaN(data18)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_yards/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_yards/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs38 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.rushing_tds !== undefined){
+let data19 = data13.rushing_tds;
+const _errs40 = errors;
+if(errors === _errs40){
+if((typeof data19 == "number") && (isFinite(data19))){
+if(data19 > 50 || isNaN(data19)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data19 < 0 || isNaN(data19)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs40 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.rushing_2pt !== undefined){
+let data20 = data13.rushing_2pt;
+const _errs42 = errors;
+if(errors === _errs42){
+if((typeof data20 == "number") && (isFinite(data20))){
+if(data20 > 50 || isNaN(data20)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_2pt/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data20 < 0 || isNaN(data20)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_2pt/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/rushing_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/rushing_2pt/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs42 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.receptions !== undefined){
+let data21 = data13.receptions;
+const _errs44 = errors;
+if(errors === _errs44){
+if((typeof data21 == "number") && (isFinite(data21))){
+if(data21 > 50 || isNaN(data21)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/receptions/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data21 < 0 || isNaN(data21)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/receptions/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/receptions/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs44 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.receiving_yards !== undefined){
+let data22 = data13.receiving_yards;
+const _errs46 = errors;
+if(errors === _errs46){
+if((typeof data22 == "number") && (isFinite(data22))){
+if(data22 > 1000 || isNaN(data22)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_yards/maximum",keyword:"maximum",params:{comparison: "<=", limit: 1000},message:"must be <= 1000"}];
+return false;
+}
+else {
+if(data22 < 0 || isNaN(data22)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_yards/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_yards",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_yards/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs46 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.receiving_tds !== undefined){
+let data23 = data13.receiving_tds;
+const _errs48 = errors;
+if(errors === _errs48){
+if((typeof data23 == "number") && (isFinite(data23))){
+if(data23 > 50 || isNaN(data23)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data23 < 0 || isNaN(data23)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs48 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.receiving_2pt !== undefined){
+let data24 = data13.receiving_2pt;
+const _errs50 = errors;
+if(errors === _errs50){
+if((typeof data24 == "number") && (isFinite(data24))){
+if(data24 > 50 || isNaN(data24)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_2pt/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data24 < 0 || isNaN(data24)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_2pt/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/receiving_2pt",schemaPath:"#/properties/players/items/properties/statMeans/properties/receiving_2pt/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs50 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fumbles_lost !== undefined){
+let data25 = data13.fumbles_lost;
+const _errs52 = errors;
+if(errors === _errs52){
+if((typeof data25 == "number") && (isFinite(data25))){
+if(data25 > 50 || isNaN(data25)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumbles_lost",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumbles_lost/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data25 < 0 || isNaN(data25)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumbles_lost",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumbles_lost/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumbles_lost",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumbles_lost/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs52 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.pat_made !== undefined){
+let data26 = data13.pat_made;
+const _errs54 = errors;
+if(errors === _errs54){
+if((typeof data26 == "number") && (isFinite(data26))){
+if(data26 > 50 || isNaN(data26)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/pat_made",schemaPath:"#/properties/players/items/properties/statMeans/properties/pat_made/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data26 < 0 || isNaN(data26)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/pat_made",schemaPath:"#/properties/players/items/properties/statMeans/properties/pat_made/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/pat_made",schemaPath:"#/properties/players/items/properties/statMeans/properties/pat_made/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs54 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.pat_missed !== undefined){
+let data27 = data13.pat_missed;
+const _errs56 = errors;
+if(errors === _errs56){
+if((typeof data27 == "number") && (isFinite(data27))){
+if(data27 > 50 || isNaN(data27)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/pat_missed",schemaPath:"#/properties/players/items/properties/statMeans/properties/pat_missed/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data27 < 0 || isNaN(data27)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/pat_missed",schemaPath:"#/properties/players/items/properties/statMeans/properties/pat_missed/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/pat_missed",schemaPath:"#/properties/players/items/properties/statMeans/properties/pat_missed/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs56 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fg_missed !== undefined){
+let data28 = data13.fg_missed;
+const _errs58 = errors;
+if(errors === _errs58){
+if((typeof data28 == "number") && (isFinite(data28))){
+if(data28 > 50 || isNaN(data28)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fg_missed",schemaPath:"#/properties/players/items/properties/statMeans/properties/fg_missed/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data28 < 0 || isNaN(data28)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fg_missed",schemaPath:"#/properties/players/items/properties/statMeans/properties/fg_missed/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fg_missed",schemaPath:"#/properties/players/items/properties/statMeans/properties/fg_missed/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs58 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fgm_0_19 !== undefined){
+let data29 = data13.fgm_0_19;
+const _errs60 = errors;
+if(errors === _errs60){
+if((typeof data29 == "number") && (isFinite(data29))){
+if(data29 > 50 || isNaN(data29)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_0_19",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_0_19/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data29 < 0 || isNaN(data29)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_0_19",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_0_19/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_0_19",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_0_19/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs60 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fgm_20_29 !== undefined){
+let data30 = data13.fgm_20_29;
+const _errs62 = errors;
+if(errors === _errs62){
+if((typeof data30 == "number") && (isFinite(data30))){
+if(data30 > 50 || isNaN(data30)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_20_29",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_20_29/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data30 < 0 || isNaN(data30)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_20_29",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_20_29/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_20_29",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_20_29/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs62 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fgm_30_39 !== undefined){
+let data31 = data13.fgm_30_39;
+const _errs64 = errors;
+if(errors === _errs64){
+if((typeof data31 == "number") && (isFinite(data31))){
+if(data31 > 50 || isNaN(data31)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_30_39",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_30_39/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data31 < 0 || isNaN(data31)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_30_39",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_30_39/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_30_39",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_30_39/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs64 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fgm_40_49 !== undefined){
+let data32 = data13.fgm_40_49;
+const _errs66 = errors;
+if(errors === _errs66){
+if((typeof data32 == "number") && (isFinite(data32))){
+if(data32 > 50 || isNaN(data32)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_40_49",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_40_49/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data32 < 0 || isNaN(data32)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_40_49",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_40_49/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_40_49",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_40_49/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs66 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fgm_50_59 !== undefined){
+let data33 = data13.fgm_50_59;
+const _errs68 = errors;
+if(errors === _errs68){
+if((typeof data33 == "number") && (isFinite(data33))){
+if(data33 > 50 || isNaN(data33)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_50_59",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_50_59/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data33 < 0 || isNaN(data33)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_50_59",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_50_59/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_50_59",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_50_59/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs68 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fgm_60p !== undefined){
+let data34 = data13.fgm_60p;
+const _errs70 = errors;
+if(errors === _errs70){
+if((typeof data34 == "number") && (isFinite(data34))){
+if(data34 > 50 || isNaN(data34)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_60p",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_60p/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data34 < 0 || isNaN(data34)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_60p",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_60p/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fgm_60p",schemaPath:"#/properties/players/items/properties/statMeans/properties/fgm_60p/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs70 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.sacks !== undefined){
+let data35 = data13.sacks;
+const _errs72 = errors;
+if(errors === _errs72){
+if((typeof data35 == "number") && (isFinite(data35))){
+if(data35 > 50 || isNaN(data35)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/sacks",schemaPath:"#/properties/players/items/properties/statMeans/properties/sacks/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data35 < 0 || isNaN(data35)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/sacks",schemaPath:"#/properties/players/items/properties/statMeans/properties/sacks/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/sacks",schemaPath:"#/properties/players/items/properties/statMeans/properties/sacks/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs72 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.interceptions !== undefined){
+let data36 = data13.interceptions;
+const _errs74 = errors;
+if(errors === _errs74){
+if((typeof data36 == "number") && (isFinite(data36))){
+if(data36 > 50 || isNaN(data36)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/interceptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/interceptions/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data36 < 0 || isNaN(data36)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/interceptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/interceptions/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/interceptions",schemaPath:"#/properties/players/items/properties/statMeans/properties/interceptions/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs74 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fumble_recoveries !== undefined){
+let data37 = data13.fumble_recoveries;
+const _errs76 = errors;
+if(errors === _errs76){
+if((typeof data37 == "number") && (isFinite(data37))){
+if(data37 > 50 || isNaN(data37)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumble_recoveries",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumble_recoveries/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data37 < 0 || isNaN(data37)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumble_recoveries",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumble_recoveries/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumble_recoveries",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumble_recoveries/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs76 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.forced_fumbles !== undefined){
+let data38 = data13.forced_fumbles;
+const _errs78 = errors;
+if(errors === _errs78){
+if((typeof data38 == "number") && (isFinite(data38))){
+if(data38 > 50 || isNaN(data38)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/forced_fumbles",schemaPath:"#/properties/players/items/properties/statMeans/properties/forced_fumbles/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data38 < 0 || isNaN(data38)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/forced_fumbles",schemaPath:"#/properties/players/items/properties/statMeans/properties/forced_fumbles/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/forced_fumbles",schemaPath:"#/properties/players/items/properties/statMeans/properties/forced_fumbles/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs78 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.safeties !== undefined){
+let data39 = data13.safeties;
+const _errs80 = errors;
+if(errors === _errs80){
+if((typeof data39 == "number") && (isFinite(data39))){
+if(data39 > 50 || isNaN(data39)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/safeties",schemaPath:"#/properties/players/items/properties/statMeans/properties/safeties/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data39 < 0 || isNaN(data39)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/safeties",schemaPath:"#/properties/players/items/properties/statMeans/properties/safeties/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/safeties",schemaPath:"#/properties/players/items/properties/statMeans/properties/safeties/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs80 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.blocked_kicks !== undefined){
+let data40 = data13.blocked_kicks;
+const _errs82 = errors;
+if(errors === _errs82){
+if((typeof data40 == "number") && (isFinite(data40))){
+if(data40 > 50 || isNaN(data40)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/blocked_kicks",schemaPath:"#/properties/players/items/properties/statMeans/properties/blocked_kicks/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data40 < 0 || isNaN(data40)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/blocked_kicks",schemaPath:"#/properties/players/items/properties/statMeans/properties/blocked_kicks/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/blocked_kicks",schemaPath:"#/properties/players/items/properties/statMeans/properties/blocked_kicks/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs82 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.interception_return_tds !== undefined){
+let data41 = data13.interception_return_tds;
+const _errs84 = errors;
+if(errors === _errs84){
+if((typeof data41 == "number") && (isFinite(data41))){
+if(data41 > 50 || isNaN(data41)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/interception_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/interception_return_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data41 < 0 || isNaN(data41)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/interception_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/interception_return_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/interception_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/interception_return_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs84 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.fumble_return_tds !== undefined){
+let data42 = data13.fumble_return_tds;
+const _errs86 = errors;
+if(errors === _errs86){
+if((typeof data42 == "number") && (isFinite(data42))){
+if(data42 > 50 || isNaN(data42)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumble_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumble_return_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data42 < 0 || isNaN(data42)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumble_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumble_return_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/fumble_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/fumble_return_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs86 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.kickoff_return_tds !== undefined){
+let data43 = data13.kickoff_return_tds;
+const _errs88 = errors;
+if(errors === _errs88){
+if((typeof data43 == "number") && (isFinite(data43))){
+if(data43 > 50 || isNaN(data43)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/kickoff_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/kickoff_return_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data43 < 0 || isNaN(data43)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/kickoff_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/kickoff_return_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/kickoff_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/kickoff_return_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs88 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.punt_return_tds !== undefined){
+let data44 = data13.punt_return_tds;
+const _errs90 = errors;
+if(errors === _errs90){
+if((typeof data44 == "number") && (isFinite(data44))){
+if(data44 > 50 || isNaN(data44)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/punt_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/punt_return_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data44 < 0 || isNaN(data44)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/punt_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/punt_return_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/punt_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/punt_return_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs90 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.blocked_kick_return_tds !== undefined){
+let data45 = data13.blocked_kick_return_tds;
+const _errs92 = errors;
+if(errors === _errs92){
+if((typeof data45 == "number") && (isFinite(data45))){
+if(data45 > 50 || isNaN(data45)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/blocked_kick_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/blocked_kick_return_tds/maximum",keyword:"maximum",params:{comparison: "<=", limit: 50},message:"must be <= 50"}];
+return false;
+}
+else {
+if(data45 < 0 || isNaN(data45)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/blocked_kick_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/blocked_kick_return_tds/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/blocked_kick_return_tds",schemaPath:"#/properties/players/items/properties/statMeans/properties/blocked_kick_return_tds/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs92 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.points_allowed_all !== undefined){
+let data46 = data13.points_allowed_all;
+const _errs94 = errors;
+if(errors === _errs94){
+if((typeof data46 == "number") && (isFinite(data46))){
+if(data46 > 150 || isNaN(data46)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/points_allowed_all",schemaPath:"#/properties/players/items/properties/statMeans/properties/points_allowed_all/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
+return false;
+}
+else {
+if(data46 < 0 || isNaN(data46)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/points_allowed_all",schemaPath:"#/properties/players/items/properties/statMeans/properties/points_allowed_all/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/points_allowed_all",schemaPath:"#/properties/players/items/properties/statMeans/properties/points_allowed_all/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs94 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.opponent_defensive_tds_points !== undefined){
+let data47 = data13.opponent_defensive_tds_points;
+const _errs96 = errors;
+if(errors === _errs96){
+if((typeof data47 == "number") && (isFinite(data47))){
+if(data47 > 150 || isNaN(data47)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/opponent_defensive_tds_points",schemaPath:"#/properties/players/items/properties/statMeans/properties/opponent_defensive_tds_points/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
+return false;
+}
+else {
+if(data47 < 0 || isNaN(data47)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/opponent_defensive_tds_points",schemaPath:"#/properties/players/items/properties/statMeans/properties/opponent_defensive_tds_points/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/opponent_defensive_tds_points",schemaPath:"#/properties/players/items/properties/statMeans/properties/opponent_defensive_tds_points/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs96 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.opponent_return_tds_points !== undefined){
+let data48 = data13.opponent_return_tds_points;
+const _errs98 = errors;
+if(errors === _errs98){
+if((typeof data48 == "number") && (isFinite(data48))){
+if(data48 > 150 || isNaN(data48)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/opponent_return_tds_points",schemaPath:"#/properties/players/items/properties/statMeans/properties/opponent_return_tds_points/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
+return false;
+}
+else {
+if(data48 < 0 || isNaN(data48)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/opponent_return_tds_points",schemaPath:"#/properties/players/items/properties/statMeans/properties/opponent_return_tds_points/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/opponent_return_tds_points",schemaPath:"#/properties/players/items/properties/statMeans/properties/opponent_return_tds_points/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs98 === errors;
+}
+else {
+var valid3 = true;
+}
+if(valid3){
+if(data13.yards_allowed !== undefined){
+let data49 = data13.yards_allowed;
+const _errs100 = errors;
+if(errors === _errs100){
+if((typeof data49 == "number") && (isFinite(data49))){
+if(data49 > 1000 || isNaN(data49)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/yards_allowed",schemaPath:"#/properties/players/items/properties/statMeans/properties/yards_allowed/maximum",keyword:"maximum",params:{comparison: "<=", limit: 1000},message:"must be <= 1000"}];
+return false;
+}
+else {
+if(data49 < 0 || isNaN(data49)){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/yards_allowed",schemaPath:"#/properties/players/items/properties/statMeans/properties/yards_allowed/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"}];
+return false;
+}
+}
+}
+else {
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/statMeans/yards_allowed",schemaPath:"#/properties/players/items/properties/statMeans/properties/yards_allowed/type",keyword:"type",params:{type: "number"},message:"must be number"}];
+return false;
+}
+}
+var valid3 = _errs100 === errors;
+}
+else {
+var valid3 = true;
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
 }
 }
 }
@@ -371,36 +1344,36 @@ var valid2 = true;
 }
 if(valid2){
 if(data5.expected !== undefined){
-let data15 = data5.expected;
-const _errs33 = errors;
-if(errors === _errs33){
-if(data15 && typeof data15 == "object" && !Array.isArray(data15)){
+let data50 = data5.expected;
+const _errs102 = errors;
+if(errors === _errs102){
+if(data50 && typeof data50 == "object" && !Array.isArray(data50)){
 let missing2;
-if(((((data15.ppr === undefined) && (missing2 = "ppr")) || ((data15["half-ppr"] === undefined) && (missing2 = "half-ppr"))) || ((data15.standard === undefined) && (missing2 = "standard"))) || ((data15["espn-league"] === undefined) && (missing2 = "espn-league"))){
+if(((((data50.ppr === undefined) && (missing2 = "ppr")) || ((data50["half-ppr"] === undefined) && (missing2 = "half-ppr"))) || ((data50.standard === undefined) && (missing2 = "standard"))) || ((data50["espn-league"] === undefined) && (missing2 = "espn-league"))){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected",schemaPath:"#/properties/players/items/properties/expected/required",keyword:"required",params:{missingProperty: missing2},message:"must have required property '"+missing2+"'"}];
 return false;
 }
 else {
-const _errs35 = errors;
-for(const key4 in data15){
-if(!((((key4 === "ppr") || (key4 === "half-ppr")) || (key4 === "standard")) || (key4 === "espn-league"))){
-validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected",schemaPath:"#/properties/players/items/properties/expected/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key4},message:"must NOT have additional properties"}];
+const _errs104 = errors;
+for(const key3 in data50){
+if(!((((key3 === "ppr") || (key3 === "half-ppr")) || (key3 === "standard")) || (key3 === "espn-league"))){
+validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected",schemaPath:"#/properties/players/items/properties/expected/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key3},message:"must NOT have additional properties"}];
 return false;
 break;
 }
 }
-if(_errs35 === errors){
-if(data15.ppr !== undefined){
-let data16 = data15.ppr;
-const _errs36 = errors;
-if(errors === _errs36){
-if((typeof data16 == "number") && (isFinite(data16))){
-if(data16 > 150 || isNaN(data16)){
+if(_errs104 === errors){
+if(data50.ppr !== undefined){
+let data51 = data50.ppr;
+const _errs105 = errors;
+if(errors === _errs105){
+if((typeof data51 == "number") && (isFinite(data51))){
+if(data51 > 150 || isNaN(data51)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/ppr",schemaPath:"#/properties/players/items/properties/expected/properties/ppr/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
 return false;
 }
 else {
-if(data16 < -100 || isNaN(data16)){
+if(data51 < -100 || isNaN(data51)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/ppr",schemaPath:"#/properties/players/items/properties/expected/properties/ppr/minimum",keyword:"minimum",params:{comparison: ">=", limit: -100},message:"must be >= -100"}];
 return false;
 }
@@ -411,23 +1384,23 @@ validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/ppr"
 return false;
 }
 }
-var valid5 = _errs36 === errors;
+var valid4 = _errs105 === errors;
 }
 else {
-var valid5 = true;
+var valid4 = true;
 }
-if(valid5){
-if(data15["half-ppr"] !== undefined){
-let data17 = data15["half-ppr"];
-const _errs38 = errors;
-if(errors === _errs38){
-if((typeof data17 == "number") && (isFinite(data17))){
-if(data17 > 150 || isNaN(data17)){
+if(valid4){
+if(data50["half-ppr"] !== undefined){
+let data52 = data50["half-ppr"];
+const _errs107 = errors;
+if(errors === _errs107){
+if((typeof data52 == "number") && (isFinite(data52))){
+if(data52 > 150 || isNaN(data52)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/half-ppr",schemaPath:"#/properties/players/items/properties/expected/properties/half-ppr/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
 return false;
 }
 else {
-if(data17 < -100 || isNaN(data17)){
+if(data52 < -100 || isNaN(data52)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/half-ppr",schemaPath:"#/properties/players/items/properties/expected/properties/half-ppr/minimum",keyword:"minimum",params:{comparison: ">=", limit: -100},message:"must be >= -100"}];
 return false;
 }
@@ -438,23 +1411,23 @@ validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/half
 return false;
 }
 }
-var valid5 = _errs38 === errors;
+var valid4 = _errs107 === errors;
 }
 else {
-var valid5 = true;
+var valid4 = true;
 }
-if(valid5){
-if(data15.standard !== undefined){
-let data18 = data15.standard;
-const _errs40 = errors;
-if(errors === _errs40){
-if((typeof data18 == "number") && (isFinite(data18))){
-if(data18 > 150 || isNaN(data18)){
+if(valid4){
+if(data50.standard !== undefined){
+let data53 = data50.standard;
+const _errs109 = errors;
+if(errors === _errs109){
+if((typeof data53 == "number") && (isFinite(data53))){
+if(data53 > 150 || isNaN(data53)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/standard",schemaPath:"#/properties/players/items/properties/expected/properties/standard/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
 return false;
 }
 else {
-if(data18 < -100 || isNaN(data18)){
+if(data53 < -100 || isNaN(data53)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/standard",schemaPath:"#/properties/players/items/properties/expected/properties/standard/minimum",keyword:"minimum",params:{comparison: ">=", limit: -100},message:"must be >= -100"}];
 return false;
 }
@@ -465,23 +1438,23 @@ validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/stan
 return false;
 }
 }
-var valid5 = _errs40 === errors;
+var valid4 = _errs109 === errors;
 }
 else {
-var valid5 = true;
+var valid4 = true;
 }
-if(valid5){
-if(data15["espn-league"] !== undefined){
-let data19 = data15["espn-league"];
-const _errs42 = errors;
-if(errors === _errs42){
-if((typeof data19 == "number") && (isFinite(data19))){
-if(data19 > 150 || isNaN(data19)){
+if(valid4){
+if(data50["espn-league"] !== undefined){
+let data54 = data50["espn-league"];
+const _errs111 = errors;
+if(errors === _errs111){
+if((typeof data54 == "number") && (isFinite(data54))){
+if(data54 > 150 || isNaN(data54)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/espn-league",schemaPath:"#/properties/players/items/properties/expected/properties/espn-league/maximum",keyword:"maximum",params:{comparison: "<=", limit: 150},message:"must be <= 150"}];
 return false;
 }
 else {
-if(data19 < -100 || isNaN(data19)){
+if(data54 < -100 || isNaN(data54)){
 validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/espn-league",schemaPath:"#/properties/players/items/properties/expected/properties/espn-league/minimum",keyword:"minimum",params:{comparison: ">=", limit: -100},message:"must be >= -100"}];
 return false;
 }
@@ -492,10 +1465,10 @@ validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected/espn
 return false;
 }
 }
-var valid5 = _errs42 === errors;
+var valid4 = _errs111 === errors;
 }
 else {
-var valid5 = true;
+var valid4 = true;
 }
 }
 }
@@ -508,7 +1481,7 @@ validate20.errors = [{instancePath:instancePath+"/players/" + i0+"/expected",sch
 return false;
 }
 }
-var valid2 = _errs33 === errors;
+var valid2 = _errs102 === errors;
 }
 else {
 var valid2 = true;
@@ -548,50 +1521,50 @@ var valid0 = true;
 }
 if(valid0){
 if(data.seasonType !== undefined){
-let data20 = data.seasonType;
-const _errs44 = errors;
-if(!((data20 === "regular") || (data20 === "postseason"))){
+let data55 = data.seasonType;
+const _errs113 = errors;
+if(!((data55 === "regular") || (data55 === "postseason"))){
 validate20.errors = [{instancePath:instancePath+"/seasonType",schemaPath:"#/properties/seasonType/enum",keyword:"enum",params:{allowedValues: schema31.properties.seasonType.enum},message:"must be equal to one of the allowed values"}];
 return false;
 }
-var valid0 = _errs44 === errors;
+var valid0 = _errs113 === errors;
 }
 else {
 var valid0 = true;
 }
 if(valid0){
 if(data.idMap !== undefined){
-let data21 = data.idMap;
-const _errs45 = errors;
-if(errors === _errs45){
-if(data21 && typeof data21 == "object" && !Array.isArray(data21)){
-if(Object.keys(data21).length > 3000){
+let data56 = data.idMap;
+const _errs114 = errors;
+if(errors === _errs114){
+if(data56 && typeof data56 == "object" && !Array.isArray(data56)){
+if(Object.keys(data56).length > 3000){
 validate20.errors = [{instancePath:instancePath+"/idMap",schemaPath:"#/properties/idMap/maxProperties",keyword:"maxProperties",params:{limit: 3000},message:"must NOT have more than 3000 properties"}];
 return false;
 }
 else {
-for(const key5 in data21){
-const _errs47 = errors;
-if(typeof key5 === "string"){
-if(!pattern6.test(key5)){
-const err2 = {instancePath:instancePath+"/idMap",schemaPath:"#/properties/idMap/propertyNames/pattern",keyword:"pattern",params:{pattern: "^\\d+$"},message:"must match pattern \""+"^\\d+$"+"\"",propertyName:key5};
+for(const key4 in data56){
+const _errs116 = errors;
+if(typeof key4 === "string"){
+if(!pattern6.test(key4)){
+const err0 = {instancePath:instancePath+"/idMap",schemaPath:"#/properties/idMap/propertyNames/pattern",keyword:"pattern",params:{pattern: "^\\d+$"},message:"must match pattern \""+"^\\d+$"+"\"",propertyName:key4};
 if(vErrors === null){
-vErrors = [err2];
+vErrors = [err0];
 }
 else {
-vErrors.push(err2);
+vErrors.push(err0);
 }
 errors++;
 }
 }
-var valid6 = _errs47 === errors;
-if(!valid6){
-const err3 = {instancePath:instancePath+"/idMap",schemaPath:"#/properties/idMap/propertyNames",keyword:"propertyNames",params:{propertyName: key5},message:"property name must be valid"};
+var valid5 = _errs116 === errors;
+if(!valid5){
+const err1 = {instancePath:instancePath+"/idMap",schemaPath:"#/properties/idMap/propertyNames",keyword:"propertyNames",params:{propertyName: key4},message:"property name must be valid"};
 if(vErrors === null){
-vErrors = [err3];
+vErrors = [err1];
 }
 else {
-vErrors.push(err3);
+vErrors.push(err1);
 }
 errors++;
 validate20.errors = vErrors;
@@ -599,24 +1572,24 @@ return false;
 break;
 }
 }
-if(valid6){
-for(const key6 in data21){
-let data22 = data21[key6];
-const _errs49 = errors;
-if(errors === _errs49){
-if(typeof data22 === "string"){
-if(!pattern6.test(data22)){
-validate20.errors = [{instancePath:instancePath+"/idMap/" + key6.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/idMap/additionalProperties/pattern",keyword:"pattern",params:{pattern: "^\\d+$"},message:"must match pattern \""+"^\\d+$"+"\""}];
+if(valid5){
+for(const key5 in data56){
+let data57 = data56[key5];
+const _errs118 = errors;
+if(errors === _errs118){
+if(typeof data57 === "string"){
+if(!pattern6.test(data57)){
+validate20.errors = [{instancePath:instancePath+"/idMap/" + key5.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/idMap/additionalProperties/pattern",keyword:"pattern",params:{pattern: "^\\d+$"},message:"must match pattern \""+"^\\d+$"+"\""}];
 return false;
 }
 }
 else {
-validate20.errors = [{instancePath:instancePath+"/idMap/" + key6.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/idMap/additionalProperties/type",keyword:"type",params:{type: "string"},message:"must be string"}];
+validate20.errors = [{instancePath:instancePath+"/idMap/" + key5.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/idMap/additionalProperties/type",keyword:"type",params:{type: "string"},message:"must be string"}];
 return false;
 }
 }
-var valid7 = _errs49 === errors;
-if(!valid7){
+var valid6 = _errs118 === errors;
+if(!valid6){
 break;
 }
 }
@@ -628,7 +1601,7 @@ validate20.errors = [{instancePath:instancePath+"/idMap",schemaPath:"#/propertie
 return false;
 }
 }
-var valid0 = _errs45 === errors;
+var valid0 = _errs114 === errors;
 }
 else {
 var valid0 = true;

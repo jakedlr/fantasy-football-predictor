@@ -1,4 +1,5 @@
-# The Pages project: the page in public/ and the Functions in functions/ (/api/leaderboard).
+# The Pages project: the page in public/ and the Functions in functions/ (/api/leaderboard and
+# /api/expected-points, whose LEADERBOARD_PUSH_SECRET is a Pages secret, not set here).
 # Deploy from site/: npm run deploy:pages. The account comes from CLOUDFLARE_ACCOUNT_ID in the
 # environment, never from this file. The cron Worker has its own config in worker/wrangler.toml.
 name = "ffp-leaderboard"
