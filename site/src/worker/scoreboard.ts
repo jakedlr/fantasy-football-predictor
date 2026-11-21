@@ -15,7 +15,12 @@ export type GameStatus = "upcoming" | "live" | "final";
 export interface Week {
   season: number;
   seasonType: "regular" | "postseason";
-  /** ESPN's number within the season type: postseason weeks restart at 1 (Wild Card). */
+  /**
+   * The week within the season type. Postseason weeks are numbered by round, 1 (Wild Card) to 4
+   * (Super Bowl), as ffp numbers them: ESPN's calendar numbers the Super Bowl 5 in a season with a
+   * Pro Bowl week (2025; that week itself is refused, below) and gives it one two-week entry, 4, in
+   * a season without one (2026), so ESPN's "Super Bowl" entry becomes 4.
+   */
   number: number;
   start: string;
   end: string;
@@ -81,6 +86,9 @@ const SEASON_TYPES: Readonly<Record<number, Week["seasonType"]>> = { 2: "regular
 const CLOCK = /^\d{1,2}:\d{2}$/;
 const SCORE = /^\d+$/;
 
+/** The Super Bowl's postseason round. */
+const SUPER_BOWL_ROUND = 4;
+
 export function parseScoreboard(json: unknown): Scoreboard {
   const root = object(json, "response");
   const seasonObj = object(root.season, "season");
@@ -93,6 +101,7 @@ export function parseScoreboard(json: unknown): Scoreboard {
   }
   const { start, end, label } = calendarWeek(root.leagues, typeId, number);
   if (/pro bowl/i.test(label)) throw new ScoreboardError(`week ${number} is the Pro Bowl`, "out-of-season");
+  const round = seasonType === "postseason" && /super bowl/i.test(label) ? SUPER_BOWL_ROUND : number;
 
   const events = array(root.events, "events");
   const games: Game[] = [];
@@ -108,7 +117,7 @@ export function parseScoreboard(json: unknown): Scoreboard {
   }
   if (firstKickoff === undefined || lastKickoff === undefined) throw new ScoreboardError("no Games this week");
 
-  return { week: { season, seasonType, number, start, end, firstKickoff, lastKickoff }, games };
+  return { week: { season, seasonType, number: round, start, end, firstKickoff, lastKickoff }, games };
 }
 
 /** ESPN's start and end for this week, from leagues[0].calendar (the season type's entries). */

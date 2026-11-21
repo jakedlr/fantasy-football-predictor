@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "generatedAt": "2026-11-22T17:50:00Z",
   "season": 2026,
+  "seasonType": "regular",
   "week": 12,
   "players": [
     {"sleeperId": "11635", "gsisId": "00-0039999", "espnId": "4361370", "name": "Example Receiver", "team": "BAL", "position": "WR",
@@ -9,9 +10,17 @@
      "statMeans": {"receptions": 5.4, "receiving_yards": 68.2, "receiving_tds": 0.41, "rushing_yards": 1.3,
                    "fumbles_lost": 0.03, "receiving_2pt": 0.02},
      "expected": {"ppr": 16.2, "half-ppr": 13.5, "standard": 10.8, "espn-league": 16.2}},
+    {"sleeperId": "6789", "gsisId": "00-0036000", "espnId": "4360000", "name": "Example Kicker", "team": "CIN", "position": "K",
+     "kickoff": "2026-11-22T18:00:00Z",
+     "statMeans": {"pat_made": 2.4, "pat_missed": 0.1, "fg_missed": 0.3, "fgm_20_29": 0.5, "fgm_30_39": 0.6,
+                   "fgm_40_49": 0.5, "fgm_50_59": 0.2, "fgm_60p": 0.01},
+     "expected": {"ppr": 8.1, "half-ppr": 8.1, "standard": 8.1, "espn-league": 8.6}},
     {"sleeperId": "BAL", "gsisId": null, "espnId": null, "name": "Ravens D/ST", "team": "BAL", "position": "D/ST",
      "kickoff": "2026-11-22T18:00:00Z",
-     "statMeans": {"sacks": 2.6, "interceptions": 0.9},
-     "expected": {"ppr": 7.4, "half-ppr": 7.4, "standard": 7.4, "espn-league": 7.4}}
-  ]
+     "statMeans": {"sacks": 2.6, "interceptions": 0.9, "fumble_recoveries": 0.6, "forced_fumbles": 0.8,
+                   "safeties": 0.03, "interception_return_tds": 0.08, "fumble_return_tds": 0.04,
+                   "points_allowed_all": 21.3, "opponent_defensive_tds_points": 0.5, "yards_allowed": 318.4},
+     "expected": {"ppr": 7.4, "half-ppr": 7.4, "standard": 7.4, "espn-league": 6.9}}
+  ],
+  "idMap": {"11635": "4361370", "6789": "4360000", "8150": "4430000", "4227": "4229999"}
 }

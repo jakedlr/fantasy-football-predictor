@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -55,6 +56,62 @@ describe("expected-points.schema.json", () => {
     expect(validate(example)).toBe(false);
   });
 
+  it("rejects a Scoring Stat mean outside ffp.scoring's keys and Sleeper's FG buckets", () => {
+    const example = read("schema/examples/expected-points.json");
+    example.players[1].statMeans.fgm_50p = 0.2;
+    expect(validate(example)).toBe(false);
+  });
+
+  // Caps well above any real Game, so a leaked secret can't push absurd means into the Projected Total.
+  it.each<[string, number, number]>([
+    ["receiving_yards", 1000, 1000.01],
+    ["passing_yards", 1000, 1001],
+    ["yards_allowed", 1000, 1001],
+    ["points_allowed_all", 150, 151],
+    ["opponent_defensive_tds_points", 150, 151],
+    ["opponent_return_tds_points", 150, 151],
+    ["receptions", 50, 51],
+    ["sacks", 50, 51],
+    ["fgm_60p", 50, 51],
+  ])("caps the statMeans value of %s at %d", (stat, max, over) => {
+    const example = read("schema/examples/expected-points.json");
+    example.players[0].statMeans = { [stat]: max };
+    expect(validate(example), JSON.stringify(validate.errors)).toBe(true);
+    example.players[0].statMeans = { [stat]: over };
+    expect(validate(example)).toBe(false);
+  });
+
+  it("caps every statMeans key, yards at 1,000, points at 150 and counts at 50", () => {
+    const schema = read("schema/expected-points.schema.json");
+    const statMeans = schema.properties.players.items.properties.statMeans;
+    expect(statMeans.additionalProperties).toBe(false);
+    for (const [key, spec] of Object.entries<{ type: string; minimum: number; maximum: number }>(statMeans.properties)) {
+      const max = /yards/.test(key) ? 1000 : /points/.test(key) ? 150 : 50;
+      expect(spec, key).toEqual({ type: "number", minimum: 0, maximum: max });
+    }
+    expect(Object.keys(statMeans.properties)).toHaveLength(36);
+  });
+
+  it("caps a name at 64 characters", () => {
+    const example = read("schema/examples/expected-points.json");
+    example.players[0].name = "x".repeat(64);
+    expect(validate(example)).toBe(true);
+    example.players[0].name = "x".repeat(65);
+    expect(validate(example)).toBe(false);
+  });
+
+  it("requires Expected Points under every Leaderboard Scoring Rules option", () => {
+    const example = read("schema/examples/expected-points.json");
+    delete example.players[0].expected["espn-league"];
+    expect(validate(example)).toBe(false);
+  });
+
+  it("requires the Sleeper-to-ESPN id map", () => {
+    const example = read("schema/examples/expected-points.json");
+    delete example.idMap;
+    expect(validate(example)).toBe(false);
+  });
+
   it("rejects a push without Expected Points", () => {
     const example = read("schema/examples/expected-points.json");
     example.players[0].expected = {};
@@ -78,5 +135,13 @@ describe("the two examples", () => {
       }
     }
     expect(matched).toBeGreaterThan(0);
+  });
+});
+
+describe("push-signature.json", () => {
+  it("is HMAC-SHA256 of timestamp + '.' + body under the secret's UTF-8 bytes", () => {
+    const { vector } = read("contracts/push-signature.json");
+    const hex = createHmac("sha256", vector.secret).update(`${vector.timestamp}.${vector.body}`).digest("hex");
+    expect(`sha256=${hex}`).toBe(vector.signature);
   });
 });

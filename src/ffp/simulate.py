@@ -1,7 +1,7 @@
 """Monte Carlo: Stat Distributions x Scoring Rules -> Score Distribution -> Score Percentiles."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -40,9 +40,12 @@ def sample_stats(
 
 @dataclass(frozen=True)
 class ScoreDistribution:
-    """A player's Score Distribution, held as Monte Carlo samples of fantasy points."""
+    """A player's Score Distribution, held as Monte Carlo samples of fantasy points. `samples`, when
+    kept, is the stat line each point total was scored from (Scoring Stat -> one value per sample), so
+    the same draws can be scored again under other Scoring Rules (S11.2)."""
 
     points: np.ndarray
+    samples: Mapping[str, np.ndarray] | None = field(default=None, compare=False, repr=False)
 
     def percentile(self, k: float) -> float:
         """Score Percentile Pₖ: the smallest sample x with P(points <= x) >= k%.
@@ -154,4 +157,4 @@ def simulate_scores(
     Distribution count as 0.
     """
     samples = sample_joint(stat_dists, n, np.random.default_rng(seed), corr)
-    return ScoreDistribution(np.asarray(score(samples, rules), dtype=float))
+    return ScoreDistribution(np.asarray(score(samples, rules), dtype=float), samples)

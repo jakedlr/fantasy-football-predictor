@@ -9,19 +9,14 @@ writes `site/contracts/scoring-rules.json` and `site/contracts/scoring-cases.jso
 import json
 from pathlib import Path
 
-from ffp.scoring import load_rules, score, score_dst, score_kicker
+from ffp.scoring import SLEEPER_FG_BUCKETS, load_rules, score, score_dst, score_kicker
 
 OUT = Path(__file__).resolve().parents[1] / "site" / "contracts"
 # The Leaderboard's Scoring Rules toggle, default first (PLAN, Leaderboard site).
 LEADERBOARD_RULES = ("ppr", "half-ppr", "standard", "espn-league")
 _SCORERS = {"offense": score, "kicker": score_kicker, "dst": score_dst}
-# Sleeper's FGs-made buckets (`fgm_20_29`, ...). The TypeScript port scores each kick at its bucket's
-# min, exact while no bucket straddles a tier edge (tests/test_scoring_contract.py). `fgm_50p` is
-# the sum of the last two and `fgm`/`fgm_yds`/`fgm_lng` are totals, so they are not buckets.
-SLEEPER_FG_BUCKETS = {
-    "fgm_0_19": (0, 19), "fgm_20_29": (20, 29), "fgm_30_39": (30, 39),
-    "fgm_40_49": (40, 49), "fgm_50_59": (50, 59), "fgm_60p": (60, None),
-}
+# Sleeper's FGs-made buckets (ffp.scoring.SLEEPER_FG_BUCKETS). The TypeScript port scores each kick at
+# its bucket's min, exact while no bucket straddles a tier edge (tests/test_scoring_contract.py).
 FG_EDGES = (19, 39, 40, 49, 50, 59, 60, 64)
 
 

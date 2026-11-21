@@ -18,6 +18,7 @@
         "P75": 13.37,
         "P95": 20.71
       },
+      "mean": 9.87,
       "flags": [
         "incomplete: missing receptions"
       ],
@@ -45,6 +46,7 @@
         "P75": 18.49,
         "P95": 27.93
       },
+      "mean": 13.96,
       "flags": [],
       "stats": {
         "receptions": {

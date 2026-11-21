@@ -39,6 +39,13 @@ class PlayerResult:
     flags: list[str] = field(default_factory=list)  # e.g. "incomplete: missing receptions"
     stats: dict[str, StatDetail] = field(default_factory=dict)  # Scoring Stat -> detail
     chances: dict[float, float] = field(default_factory=dict)  # N -> chance of N or more points, when asked for
+    mean: float | None = None  # the Score Distribution's mean (Expected Points) under the run's Scoring Rules
+    # S11.2: Expected Points by Scoring Rules name, the same draws scored under each (the run's own included).
+    expected: dict[str, float] = field(default_factory=dict)
+    # S11.2: each Scoring Stat's mean in the draws (QB/RB/WR/TE: ffp.scoring's offensive stats; K: its
+    # counts and FGs made by SLEEPER_FG_BUCKETS; D/ST: its counts and what it allowed). Missing ones are 0.
+    stat_means: dict[str, float] = field(default_factory=dict)
+    player_id: str | None = None  # the Player's gsis_id ("DST-BAL" for a D/ST)
 
 
 @dataclass(frozen=True)
@@ -55,12 +62,13 @@ def _row(cells: Sequence[str]) -> str:
 
 def _percentile_table(results: Sequence[PlayerResult]) -> list[str]:
     lines = [
-        _row(["Player", "Pos", "Game", *(f"P{k}" for k in PERCENTILE_KS), "Flags"]),
-        "|---|---|---|" + "---:|" * len(PERCENTILE_KS) + "---|",
+        _row(["Player", "Pos", "Game", *(f"P{k}" for k in PERCENTILE_KS), "Mean", "Flags"]),
+        "|---|---|---|" + "---:|" * (len(PERCENTILE_KS) + 1) + "---|",
     ]
     for r in results:
         values = [f"{r.percentiles[k]:.1f}" for k in PERCENTILE_KS]
-        lines.append(_row([r.player, r.position, r.game, *values, "; ".join(r.flags)]))
+        mean = "" if r.mean is None else f"{r.mean:.1f}"
+        lines.append(_row([r.player, r.position, r.game, *values, mean, "; ".join(r.flags)]))
     return lines
 
 
@@ -99,7 +107,8 @@ def write_markdown(
         f"Generated {generated_at.isoformat()} · Scoring Rules: {rules_name}",
         "",
         "Pₖ is a Score Percentile: the player has a k% chance of scoring Pₖ points or fewer. "
-        "P5 is the floor, P95 the ceiling. Each player's next Game, at the prop prices "
+        "P5 is the floor, P95 the ceiling. Mean is the Score Distribution's mean, the "
+        "Expected Points. Each player's next Game, at the prop prices "
         "current when this was generated.",
         "",
     ]
@@ -120,6 +129,7 @@ def _player_json(r: PlayerResult) -> dict:
         "kickoff": r.kickoff,
         "position": r.position,
         "percentiles": {f"P{k}": v for k, v in r.percentiles.items()},
+        **({"mean": r.mean} if r.mean is not None else {}),
         "flags": list(r.flags),
         "stats": {stat: asdict(detail) for stat, detail in r.stats.items()},
         **({"chance_of_at_least": {f"{t:g}": p for t, p in r.chances.items()}} if r.chances else {}),

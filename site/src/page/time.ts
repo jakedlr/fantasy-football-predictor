@@ -50,7 +50,8 @@ export function isDelayed(updatedAt: string, now: number): boolean {
   return now - Date.parse(updatedAt) > DELAYED_AFTER_MS;
 }
 
-const POSTSEASON = ["Wild Card", "Divisional round", "Conference championships", "Pro Bowl week", "Super Bowl"];
+/** Postseason weeks by round (scoreboard.ts numbers them 1 to 4, the Super Bowl 4). */
+const POSTSEASON = ["Wild Card", "Divisional round", "Conference championships", "Super Bowl"];
 
 /** "Week 12", or the postseason round's name. */
 export function weekTitle(week: Pick<Week, "seasonType" | "number">): string {

@@ -116,22 +116,34 @@ _Avoid_: Rankings, standings, board
 
 **NFL Week**:
 One numbered week of the NFL season, bounded by ESPN's week start and end times (Wednesday to Wednesday), shown as the dates of its first and last Game.
-_Avoid_: Slate, round, gameweek
+_Avoid_: Slate, round, gameweek (`ffp slate` is only a command name)
 
 **Game Status**:
 Where a player's Game stands as of the last update: Upcoming (not kicked off), Live (in progress) or Final (finished).
 _Avoid_: Game state, phase, not started / in progress / completed
 
 **Expected Points**:
-The mean of a player's Score Distribution for a Game that has not kicked off, frozen at kickoff.
+The mean of a player's Score Distribution for a Game that has not kicked off, frozen at kickoff. On the Leaderboard, a player `ffp` doesn't price takes an ESPN Projection instead.
 _Avoid_: Projection, projected points, EV
+
+**ESPN Projection**:
+ESPN's weekly projected stat line for a player, rescored under the Leaderboard's Scoring Rules: the fallback for Expected Points, regular season only.
+_Avoid_: Fallback, ESPN points
+
+**Expected Points Push**:
+What the home machine sends the Leaderboard: each priced player's Expected Points and per-Scoring-Stat means for the NFL Week's Games that haven't kicked off, signed with the shared secret.
+_Avoid_: Upload, sync, export
+
+**Kickoff Window**:
+Kickoffs within 30 minutes of each other (Sunday's 4:05 and 4:25 Games), which share one Expected Points Push 10 minutes before the first.
+_Avoid_: Slot, time slot
 
 **Points So Far**:
 The fantasy points a player has actually scored in a Live or Final Game under the chosen Scoring Rules.
 _Avoid_: Actual points, live points, current score
 
 **Projected Total**:
-A Live player's Points So Far plus the share of his Expected Points still to play.
+A Live player's final points as now projected: each Scoring Stat so far plus its pregame mean times the share of the Game left, then scored, so tiers stay right; a D/ST's tier points move from their expected value at kickoff to the tier reached.
 _Avoid_: Live projection, final projection
 
 **Week Points**:

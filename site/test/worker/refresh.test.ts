@@ -6,12 +6,14 @@ import {
   HEARTBEAT_MINUTES,
   KEYS,
   runScoreboard,
+  readStore,
   runStats,
   SCOREBOARD_URL,
   sleeperStatsUrl,
   USER_AGENT,
   type RunDeps,
 } from "../../src/worker/refresh.js";
+import type { ExpectedStore } from "../../src/worker/kv.js";
 import { parseScoreboard } from "../../src/worker/scoreboard.js";
 import { fakeClock, fakeFetch, FakeKV, readJson, type Route } from "../helpers/fakes.js";
 
@@ -119,9 +121,15 @@ describe("stats run", () => {
     expect(lb.updatedAt).toBe("2026-11-20T02:45:00Z");
     expect(lb.week.number).toBe(11);
     expect(lb.games).toHaveLength(13);
-    // Every QB/RB/WR/TE row is in the Live Game; K and DEF rows wait for Sprint 11.
+    // Every player in the Live Game who has recorded a Scoring Stat. With no Expected Points in KV,
+    // the 30 QB/RB/WR/TE rows with only gms_active-style keys (backups who haven't touched the ball)
+    // aren't listed; both kickers and both D/STs are.
     const offense = sleeperLive.filter((r) => ["QB", "RB", "WR", "TE"].includes((r as { player: { position: string } }).player.position));
-    expect(lb.players).toHaveLength(offense.length);
+    expect(offense).toHaveLength(46);
+    expect(lb.players).toHaveLength(16 + 4);
+    expect(lb.players.filter((p) => p.position === "K" || p.position === "D/ST").map((p) => p.id)).toEqual(["dst:HOU", "dst:IND", "sleeper:12185", "sleeper:3451"]);
+    // Texans D/ST: 1 sack, 1 INT, a blocked kick, 3 allowed (4), 125 yards (3).
+    expect(lb.players.find((p) => p.id === "dst:HOU")!.points.ppr).toEqual({ week: 12, soFar: 12, expected: null });
     expect(new Set(lb.players.map((p) => p.gameId))).toEqual(new Set(["401873066"]));
     // C.J. Stroud: 134 pass yards, 2 pass TDs, 1 INT, 4 rush yards. Sleeper's pts_ppr is 12.76 with
     // −1 per INT; ours takes −2.
@@ -131,8 +139,8 @@ describe("stats run", () => {
     expect(Object.keys(stroud.points)).toEqual(lb.scoringRules);
   });
 
-  it("gives players of an Upcoming Game 0 Week Points, and leaves out teams on bye", async () => {
-    const row = (id: string, team: string) => ({ player_id: id, team, stats: { gms_active: 1 }, player: { first_name: "A", last_name: id, position: "WR" } });
+  it("gives players of an Upcoming Game 0 Week Points without Expected Points, and leaves out teams on bye", async () => {
+    const row = (id: string, team: string) => ({ player_id: id, team, stats: { rec: 0 }, player: { first_name: "A", last_name: id, position: "WR" } });
     // KC plays later in Week 11; ATL is on bye.
     const { deps, kv } = setup({ [SLEEPER]: [...sleeperLive, row("1", "KC"), row("2", "ATL")] }, withScoreboard());
     await runStats(deps);
@@ -214,6 +222,97 @@ describe("stats run", () => {
     }
     expect(kv.writes.length).toBeLessThanOrEqual(2 * 288);
     expect(kv.writes.length).toBeLessThan(1000);
+  });
+
+  describe("with Expected Points in KV", () => {
+    const week = { season: 2026, seasonType: "regular", week: 11 };
+    const stroud = {
+      name: "C.J. Stroud", team: "HOU", position: "QB", kickoff: "2026-11-20T01:15:00Z",
+      statMeans: { passing_yards: 240, passing_tds: 1.6 },
+      expected: { ppr: 18, "half-ppr": 18, standard: 18, "espn-league": 15 },
+    };
+    const backup = { ...stroud, name: "Davis Mills", statMeans: { passing_yards: 20 }, expected: { ppr: 1.2, "half-ppr": 1.2, standard: 1.2, "espn-league": 1 } };
+    const expectedText = JSON.stringify({ schemaVersion: 1, ...week, generatedAt: "2026-11-20T00:50:00Z", players: { "sleeper:9758": stroud } });
+    const espnText = JSON.stringify({ schemaVersion: 1, ...week, fetchedAt: "2026-11-20T00:40:00Z", players: { "sleeper:9758": { ...stroud, expected: { ppr: 1 } }, "sleeper:7585": backup } });
+
+    const kvWith = (stores: Record<string, string>) => new FakeKV({ [KEYS.scoreboard]: JSON.stringify(parseScoreboard(espnLive)), ...stores });
+
+    it("reads KV expected and espn and ranks Live players by the Projected Total", async () => {
+      const { deps, kv } = setup({ [SLEEPER]: sleeperLive }, kvWith({ [KEYS.expected]: expectedText, [KEYS.espn]: espnText }));
+      expect(await runStats(deps)).toEqual({ result: "written" });
+      const lb = stored(kv);
+      expect(validate(lb), JSON.stringify(validate.errors)).toBe(true);
+      expect(lb.expectedPointsAsOf).toBe("2026-11-20T00:50:00Z");
+      const s = lb.players.find((p) => p.id === "sleeper:9758")!;
+      expect(s.expectedSource).toBe("ffp");
+      // Q3 14:12: f = (852 + 900) / 3600. 134 + 240f yards, 2 + 1.6f TDs, 1 INT, 4 rush yards → 19.55.
+      expect(s.points.ppr).toEqual({ week: 19.55, soFar: 11.76, expected: 18 });
+      // Davis Mills has an empty line but ESPN's projection gives him Expected Points of 1.2: listed.
+      expect(lb.players.find((p) => p.id === "sleeper:7585")).toMatchObject({ expectedSource: "espn", points: { ppr: { soFar: 0, expected: 1.2 } } });
+      expect(kv.reads.map((r) => r.key).sort()).toEqual([KEYS.espn, KEYS.expected, KEYS.leaderboard, KEYS.scoreboard].sort());
+    });
+
+    it.each([
+      ["not JSON", "{oops"],
+      ["not an object", "[]"],
+      ["no players", JSON.stringify({ schemaVersion: 1, ...week, generatedAt: "2026-11-20T00:50:00Z" })],
+      ["another schema version", JSON.stringify({ schemaVersion: 2, ...week, generatedAt: "2026-11-20T00:50:00Z", players: {} })],
+      ["a bad week", JSON.stringify({ schemaVersion: 1, ...week, week: "11", generatedAt: "2026-11-20T00:50:00Z", players: {} })],
+    ])("ignores a KV expected that is %s, with a log, and still writes", async (_what, text) => {
+      const { deps, kv, logs } = setup({ [SLEEPER]: sleeperLive }, kvWith({ [KEYS.expected]: text, [KEYS.espn]: espnText }));
+      expect(await runStats(deps)).toEqual({ result: "written" });
+      expect(logs.join("\n")).toMatch(/KV expected.*ignored/);
+      const lb = stored(kv);
+      expect(lb.expectedPointsAsOf).toBeNull();
+      // ESPN's store still counts.
+      expect(lb.players.find((p) => p.id === "sleeper:9758")!.expectedSource).toBe("espn");
+    });
+
+    it("ignores a bad KV espn the same way", async () => {
+      const { deps, kv, logs } = setup({ [SLEEPER]: sleeperLive }, kvWith({ [KEYS.expected]: expectedText, [KEYS.espn]: '{"schemaVersion":1}' }));
+      expect(await runStats(deps)).toEqual({ result: "written" });
+      expect(logs.join("\n")).toMatch(/KV espn.*ignored/);
+      expect(stored(kv).players.find((p) => p.id === "sleeper:7585")).toBeUndefined();
+    });
+
+    it("drops a malformed player entry, with a log, and keeps the rest of the store", async () => {
+      const players = {
+        "sleeper:9758": stroud,
+        "sleeper:7585": { ...backup, expected: null },
+        "sleeper:1": { ...backup, position: "LB" },
+        "sleeper:2": { ...backup, statMeans: { passing_yards: "20" } },
+        "bogus": backup,
+      };
+      const text = JSON.stringify({ schemaVersion: 1, ...week, generatedAt: "2026-11-20T00:50:00Z", players });
+      const { deps, kv, logs } = setup({ [SLEEPER]: sleeperLive }, kvWith({ [KEYS.expected]: text }));
+      expect(await runStats(deps)).toEqual({ result: "written" });
+      expect(logs.join("\n")).toMatch(/KV expected: 4 malformed player entries ignored/);
+      const lb = stored(kv);
+      expect(validate(lb), JSON.stringify(validate.errors)).toBe(true);
+      expect(lb.players.find((p) => p.id === "sleeper:9758")!.expectedSource).toBe("ffp");
+      expect(lb.players.map((p) => p.id)).not.toContain("sleeper:7585");
+    });
+
+    it("parses an unchanged store once per isolate, and still logs a bad one on every run", () => {
+      const logs: string[] = [];
+      const log = (m: string) => logs.push(m);
+      const a = readStore<ExpectedStore>(KEYS.expected, expectedText, "generatedAt", log);
+      // A new string with the same text, as each KV read returns.
+      const b = readStore<ExpectedStore>(KEYS.expected, `${expectedText} `.trimEnd(), "generatedAt", log);
+      expect(a).not.toBeNull();
+      expect(b).toBe(a);
+      expect(readStore(KEYS.espn, expectedText, "fetchedAt", log)).toBeNull(); // keyed by KV key too
+      readStore(KEYS.expected, "{oops", "generatedAt", log);
+      readStore(KEYS.expected, "{oops", "generatedAt", log);
+      expect(logs.filter((m) => m.includes("isn't JSON"))).toHaveLength(2);
+    });
+
+    it("runs as before with neither store in KV, without a log", async () => {
+      const { deps, kv, logs } = setup({ [SLEEPER]: sleeperLive }, kvWith({}));
+      expect(await runStats(deps)).toEqual({ result: "written" });
+      expect(logs).toEqual([]);
+      expect(stored(kv).expectedPointsAsOf).toBeNull();
+    });
   });
 
   it("writes the Leaderboard as serialize() lays it out, so updatedAtOf can read it", async () => {

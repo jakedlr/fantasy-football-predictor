@@ -219,7 +219,7 @@ finish() {
 #
 # Writes (both gitignored):
 #   site/.cloudflare-ids.env  account id, Pages project and KV namespace ids (not secret)
-#   .env.leaderboard          the home machine's KV push token and ntfy topic (mode 600)
+#   .env.leaderboard          the home machine's push secret (LEADERBOARD_PUSH_SECRET) and ntfy topic (mode 600)
 
 PAGES_PROJECT="ffp-leaderboard"
 PAGES_BRANCH="main"
@@ -592,7 +592,8 @@ else
   NEW_SECRET=1
   write_env LEADERBOARD_PUSH_SECRET "$PUSH_SECRET"
 fi
-# The deploy job (Sprint 10) hands it to the site with `wrangler pages secret put`.
+# The deploy job (deploy.yml) hands it to the Pages project with `wrangler pages secret put`
+# before each Pages deploy, so a new secret reaches /api/expected-points at the next deploy.
 if (( NEW_SECRET == 0 )) && gh_secret_exists LEADERBOARD_PUSH_SECRET; then
   ok "GitHub secret LEADERBOARD_PUSH_SECRET already set"
 else

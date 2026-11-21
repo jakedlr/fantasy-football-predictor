@@ -19,6 +19,7 @@ RESULTS = [
         kickoff="2026-11-17T01:15:00Z",
         position="WR",
         percentiles={5: 1.23, 25: 5.51, 50: 9.14, 75: 13.37, 95: 20.71},
+        mean=9.87,
         flags=["incomplete: missing receptions"],
         stats={"receiving_yards": StatDetail(mean=58.3, p50=55.0, books=["draftkings"], rungs=7)},
     ),
@@ -29,6 +30,7 @@ RESULTS = [
         kickoff="2026-11-17T01:15:00Z",
         position="WR",
         percentiles={5: 3.04, 25: 8.86, 50: 13.12, 75: 18.49, 95: 27.93},
+        mean=13.96,
         flags=[],
         stats={
             "receptions": StatDetail(mean=5.2, p50=5.0, books=["draftkings", "fanduel"], rungs=9),
