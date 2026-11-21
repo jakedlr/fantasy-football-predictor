@@ -189,7 +189,9 @@ function num(stats: Stats, key: string): number {
  * A DEF row's D/ST line, before the opponent's TDs are known. `points_allowed_all` starts at
  * Sleeper's `pts_allow`: every point the opponent scored, less 6 per INT or fumble return TD (the
  * try after it stays in). That held for all 28 teams in Week 10 against nflverse, and for 27 of 29
- * teams' season totals. `addOpponentTds` adds the 6s back. No `pts_allow` yet means 0 allowed.
+ * teams' season totals. `addOpponentTds` adds the 6s back. Points and Yards Allowed are set only
+ * when Sleeper sent them, so a DEF row with no stats yet is an empty line ("no stat recorded",
+ * leaderboard.ts); the scorer reads a missing points_allowed_all as 0.
  */
 function dstStatLine(stats: Stats): DstStatLine {
   const line: DstStatLine = {};
@@ -198,8 +200,9 @@ function dstStatLine(stats: Stats): DstStatLine {
       const value = stats[key];
       if (typeof value === "number") line[stat] = (line[stat] ?? 0) + value;
     }
+    const allowed = stats.pts_allow;
+    if (typeof allowed === "number") line.points_allowed_all = allowed;
   }
-  line.points_allowed_all = num(stats, "pts_allow");
   return line;
 }
 

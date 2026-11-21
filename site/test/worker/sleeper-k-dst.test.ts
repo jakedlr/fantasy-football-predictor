@@ -115,7 +115,7 @@ describe("sleeperStatsToPlayers: a DEF row", () => {
       team: "BAL",
       position: "D/ST",
       sleeperGameId: "202611010",
-      stats: { sacks: 2, points_allowed_all: 0 },
+      stats: { sacks: 2 },
     });
   });
 
@@ -175,11 +175,23 @@ describe("sleeperStatsToPlayers: a DEF row", () => {
     expect(dsts([defRow("BAL", "", { pts_allow: 7 })])[0]!.stats).toEqual({ points_allowed_all: 7 });
   });
 
-  it("gives a D/ST with no stats yet 0 Points Allowed (the top tier, as the scorer would)", () => {
-    expect(dsts([defRow("BAL", "LAC", {}), defRow("LAC", "BAL", null as unknown as Record<string, unknown>)]).map((d) => d.stats)).toEqual([
-      { points_allowed_all: 0 },
-      { points_allowed_all: 0 },
-    ]);
+  // An empty line means "no stat recorded" (leaderboard.ts), so the D/ST is listed only with
+  // Expected Points; the scorer reads a missing points_allowed_all as 0.
+  it("gives a D/ST with no stats yet an empty stat line", () => {
+    const empty = dsts([defRow("BAL", "LAC", {}), defRow("LAC", "BAL", null as unknown as Record<string, unknown>)]);
+    expect(empty.map((d) => d.stats)).toEqual([{}, {}]);
+    const zero = scoreDst({ points_allowed_all: 0 }, ppr);
+    expect(empty.map((d) => scoreDst(d.stats, ppr))).toEqual([zero, zero]);
+  });
+
+  it("sets Points and Yards Allowed only when Sleeper sent them", () => {
+    expect(dsts([defRow("BAL", "LAC", { sack: 1 })])[0]!.stats).toEqual({ sacks: 1 });
+    expect(dsts([defRow("BAL", "LAC", { pts_allow: 0, yds_allow: 0 })])[0]!.stats).toEqual({ points_allowed_all: 0, yards_allowed: 0 });
+  });
+
+  it("still adds back an opponent's defensive TD to a D/ST whose pts_allow hasn't come yet", () => {
+    const rows = [defRow("LAC", "BAL", { def_td: 1 }, "Chargers"), defRow("BAL", "LAC", {})];
+    expect(dsts(rows).find((d) => d.team === "BAL")!.stats).toEqual({ points_allowed_all: 6, opponent_defensive_tds_points: 6 });
   });
 
   it("falls back to the team as the name when Sleeper gives no nickname", () => {
