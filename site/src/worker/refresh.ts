@@ -43,7 +43,7 @@
  * describes is ignored with a log (the Leaderboard is built without it), and a malformed player
  * entry is dropped with a log; neither fails the run.
  */
-import { buildEspnStore, EspnProjectionsError, groupAt, instant as espnInstant, parseProjections, projectionsRequest } from "./espn.js";
+import { buildEspnStore, EspnProjectionsError, groupAt, instant as espnInstant, lineId, parseProjections, projectionsRequest } from "./espn.js";
 import { KEYS, updatedAtOf, type EspnStore, type ExpectedStore, type IdMapStore, type KV } from "./kv.js";
 import { buildLeaderboard, sameContent, serialize } from "./leaderboard.js";
 import { parseScoreboard, type Scoreboard, type Week } from "./scoreboard.js";
@@ -212,6 +212,13 @@ export async function runEspn(deps: RunDeps): Promise<Outcome> {
       `ESPN projections run (${group.positions.join(", ")}): ${counts.written} players, ${counts.unmapped} unmapped` +
         `${idmap === null ? " (no idmap yet)" : ""}, ${counts.noGame} not playing`,
     );
+    const upcoming = scoreboard.games.filter((g) => g.status === "upcoming").length;
+    if (counts.written === 0 && upcoming > 0) {
+      deps.log(
+        `ESPN projections run: warning: 0 players written for ${group.positions.join(", ")} while ${upcoming} Games are Upcoming; ` +
+          `${projections.length} projections parsed (line id ${lineId(scoreboard.week)})`,
+      );
+    }
 
     if (JSON.stringify(store) === storedText) return "unchanged";
     store.fetchedAt = espnInstant(now);
