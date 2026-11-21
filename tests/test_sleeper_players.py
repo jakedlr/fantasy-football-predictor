@@ -96,6 +96,7 @@ def test_failing_ids_a_player_is_matched_by_name_and_team(ids):
     assert ids.lookup(entry("00-0040727", "Tre Harris", "WR", "LAC"))[0] == "12509"  # Sleeper: "Tre' Harris"
     assert ids.lookup(entry("00-0049999", "Not Listed", "WR", "LAC")) == (None, None)
     assert ids.lookup(entry("x", "Zay Flowers", "WR", "LAC")) == (None, None)  # another team's
+    assert ids.lookup(entry("x", "Zay Flowers", "TE", "BAL")) == (None, None)  # another position's
 
 
 def test_a_rams_player_is_matched_on_sleeper_s_lar(ids):
@@ -146,3 +147,28 @@ def test_the_roster_keeps_nflverse_s_sleeper_and_espn_ids():
     assert (zay.sleeper_id, zay.espn_id) == ("9997", "4429615")
     assert (tre.sleeper_id, tre.espn_id) == (None, None)
     assert (herbert.sleeper_id, herbert.espn_id) == (None, None)
+
+
+def listed(player_id, name, position, team, gsis_id=None, espn_id=None):
+    return sleeper.SleeperPlayer(player_id, name, position, team, gsis_id, espn_id)
+
+
+def test_ids_sent_as_floats_or_padded_text_are_cleaned():
+    payload = {"1": {"player_id": "1", "full_name": "A B", "position": "WR", "team": "BAL", "espn_id": 4429615.0,
+                     "gsis_id": " 00-0000001 "},
+               "2": {"player_id": "2", "full_name": "C D", "position": "WR", "team": "BAL", "espn_id": "nan"}}
+    players = {p.player_id: p for p in sleeper.parse_players(payload)}
+    assert players["1"].espn_id == "4429615" and players["1"].gsis_id == "00-0000001"
+    assert players["2"].espn_id is None
+
+
+def test_a_malformed_espn_id_falls_back_to_the_roster_s_or_none():
+    ids = sleeper.SleeperIds([listed("10", "A B", "WR", "BAL", gsis_id="g1", espn_id="abc"),
+                              listed("11", "C D", "WR", "BAL", gsis_id="g2", espn_id="4429615.0"),
+                              listed("12", "E F", "WR", "BAL", gsis_id="g3", espn_id="12 34")])
+    assert ids.lookup(entry("g1", "A B", "WR", "BAL", espn_id="777")) == ("10", "777")
+    assert ids.lookup(entry("g1", "A B", "WR", "BAL")) == ("10", None)
+    assert ids.lookup(entry("g2", "C D", "WR", "BAL")) == ("11", "4429615")
+    assert ids.lookup(entry("g3", "E F", "WR", "BAL", espn_id="4429615.0")) == ("12", "4429615")
+    assert ids.lookup(entry("g3", "E F", "WR", "BAL", espn_id="x1")) == ("12", None)
+    assert ids.id_map({"BAL"}, roster=[]) == {"11": "4429615"}

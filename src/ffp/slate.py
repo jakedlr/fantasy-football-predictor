@@ -7,7 +7,9 @@ as site/schema/expected-points.schema.json for `ffp push` to send (ADR 0006).
 
 The NFL Week is ESPN's (PLAN, "Leaderboard site"): it starts on the first Wednesday, 3 AM Eastern,
 after the previous week's last kickoff. Postseason weeks are numbered as ESPN and Sleeper number
-them (Wild Card 1 ... Super Bowl 4); nflverse numbers them 19-22.
+them, by date: 1 for the Wild Card week, plus one for each calendar week since (Wednesday 3 AM
+Eastern to Wednesday). So the Super Bowl is 5 when ESPN counts a Pro Bowl week before it (2025's
+postseason) and 4 when there is none (2026's); nflverse numbers the four rounds 19-22 either way.
 """
 
 import argparse
@@ -40,7 +42,7 @@ from ffp.players import (
     team_code_from_book_name,
 )
 from ffp.report import PlayerResult, SkippedPlayer
-from ffp.scoring import load_rules
+from ffp.scoring import BUNDLED_RULES_DIR, PRESETS, ScoringRules, load_rules
 from ffp.sources import sleeper
 
 log = logging.getLogger(__name__)
@@ -54,6 +56,7 @@ SLEEPER_FIXTURE = "sleeper_players_nfl.json"  # a --fixtures directory's Sleeper
 
 NO_KICKER = "no active or practice-squad kicker on the team's roster"
 NO_SLEEPER_ID = "no Sleeper id (not in Sleeper's player list)"
+SAME_SLEEPER_ID = "Sleeper id already taken by another player in the push"
 NOT_ON_A_ROSTER = "Book name not a QB/RB/WR/TE on either team's roster"
 TWO_ON_A_ROSTER = "Book name shared by two QB/RB/WR/TE on the Game's teams"
 
@@ -69,13 +72,17 @@ class NflWeek:
     season: int
     week: int  # nflverse's number: postseason weeks are 19 on
     games: tuple[ScheduledGame, ...]
+    postseason_week: int | None = None  # ESPN's number for a postseason week (current_week sets it)
 
     @property
     def label(self) -> tuple[str, int]:
-        """(seasonType, week) as ESPN and Sleeper number it: postseason weeks restart at 1."""
+        """(seasonType, week) as ESPN and Sleeper number it: postseason weeks restart at 1 and count
+        calendar weeks from the Wild Card week, a Pro Bowl week included."""
         if self.week <= REGULAR_WEEKS:
             return "regular", self.week
-        return "postseason", self.week - REGULAR_WEEKS
+        if self.postseason_week is None:
+            raise ValueError(f"postseason week {self.week} has no ESPN number (use current_week)")
+        return "postseason", self.postseason_week
 
     @property
     def number(self) -> int:
@@ -101,6 +108,23 @@ def _week_start_after(moment: datetime) -> datetime:
     return start.replace(tzinfo=None).replace(tzinfo=_EASTERN).astimezone(timezone.utc)
 
 
+def _week_start_of(moment: datetime) -> datetime:
+    """The last Wednesday, 3 AM Eastern, at or before `moment`: the start of its calendar week."""
+    local = moment.astimezone(_EASTERN)
+    weekday, hour = _WEEK_STARTS
+    start = local.replace(hour=hour, minute=0, second=0, microsecond=0) - timedelta(days=(local.weekday() - weekday) % 7)
+    if start > local:
+        start -= timedelta(days=7)
+    return start.replace(tzinfo=None).replace(tzinfo=_EASTERN).astimezone(timezone.utc)
+
+
+def postseason_number(wild_card_kickoff: str, kickoff: str) -> int:
+    """ESPN's postseason week number for a Game at `kickoff`: 1 + the whole calendar weeks (Wednesday
+    3 AM Eastern boundaries) since the Wild Card Game at `wild_card_kickoff`."""
+    first, this = (_week_start_of(parse_utc(k)).astimezone(_EASTERN).date() for k in (wild_card_kickoff, kickoff))
+    return 1 + (this - first).days // 7
+
+
 def current_week(schedule: Iterable[ScheduledGame], now: datetime) -> NflWeek:
     """The NFL Week under way at `now`: each week starts on the first Wednesday, 3 AM Eastern, after the
     previous week's last kickoff (the first week has no start). Before every week has started, the first
@@ -117,7 +141,11 @@ def current_week(schedule: Iterable[ScheduledGame], now: datetime) -> NflWeek:
         if _week_start_after(last) <= now:
             chosen = week
     games = tuple(sorted(by_week[chosen], key=lambda g: g.kickoff))
-    return NflWeek(games[0].season, chosen, games)
+    postseason = None
+    if chosen > REGULAR_WEEKS:
+        wild_card = min(w for w in weeks if w > REGULAR_WEEKS)
+        postseason = postseason_number(min(g.kickoff for g in by_week[wild_card]), games[0].kickoff)
+    return NflWeek(games[0].season, chosen, games, postseason)
 
 
 # --- the players --------------------------------------------------------------------
@@ -142,7 +170,8 @@ def slate_targets(games: Sequence[ScheduledGame], books: Sequence[pipeline.BookO
                 unresolved.setdefault(market.player, found)
             elif found.gsis_id not in targets:
                 targets[found.gsis_id] = pipeline.Target(found.name, found, game)
-    for name in [n for n in unresolved if any(t.name == n for t in targets.values())]:
+    resolved = {name_key(t.name) for t in targets.values()}
+    for name in [n for n in unresolved if name_key(n) in resolved]:
         del unresolved[name]  # another Book's spelling of him resolved
     if unresolved:
         for why in sorted(set(unresolved.values())):
@@ -202,16 +231,24 @@ def stat_means(means: Mapping[str, float]) -> dict[str, float]:
     return {stat: max(0.0, round(float(v), 4)) for stat, v in means.items()}
 
 
+def leaderboard_rules() -> list[ScoringRules]:
+    """The Leaderboard's Scoring Rules, in LEADERBOARD_RULES order: the presets, and the bundled
+    ffp/rules/ files, never a same-named file in ./scoring/ (the push must score what the site says)."""
+    return [PRESETS[name] if name in PRESETS else load_rules(BUNDLED_RULES_DIR / f"{name}.json")
+            for name in LEADERBOARD_RULES]
+
+
 def _dst_name(team: str) -> str:
     return f"{TEAMS[team][1]} D/ST"
 
 
 def push_players(results: Sequence[PlayerResult], targets: Sequence[pipeline.Target],
                  roster: Sequence[RosterEntry], ids: sleeper.SleeperIds) -> tuple[list[dict], list[SkippedPlayer]]:
-    """Each result as a push player, keyed by Sleeper id; those without one are left out (and returned)."""
+    """Each result as a push player, keyed by Sleeper id; those without one, or whose Sleeper id an
+    earlier result already has (the push keys players by it), are left out, logged and returned."""
     by_id = {t.player.gsis_id: t for t in targets}
     entries = {e.gsis_id: e for e in roster}
-    players, missing = [], []
+    players, missing, taken = [], [], {}
     for r in results:
         target = by_id[r.player_id]
         player = target.player
@@ -223,6 +260,12 @@ def push_players(results: Sequence[PlayerResult], targets: Sequence[pipeline.Tar
         if sleeper_id is None:
             missing.append(SkippedPlayer(player.name, NO_SLEEPER_ID))
             continue
+        if sleeper_id in taken:
+            log.warning("left out, %s: %s (%s), Sleeper id %s, kept for %s", SAME_SLEEPER_ID, player.name,
+                        gsis_id, sleeper_id, taken[sleeper_id])
+            missing.append(SkippedPlayer(player.name, SAME_SLEEPER_ID))
+            continue
+        taken[sleeper_id] = f"{name} ({gsis_id})" if gsis_id else name
         players.append({
             "sleeperId": sleeper_id, "gsisId": gsis_id, "espnId": espn_id, "name": name,
             "team": sleeper.team_code(player.team), "position": "D/ST" if player.position == DST else player.position,
@@ -230,8 +273,9 @@ def push_players(results: Sequence[PlayerResult], targets: Sequence[pipeline.Tar
             "statMeans": stat_means(r.stat_means),
             "expected": {rules: round(r.expected[rules], 4) for rules in LEADERBOARD_RULES},
         })
-    if missing:
-        log.warning("%d players left out with no Sleeper id: %s", len(missing), ", ".join(s.name for s in missing))
+    unknown = [s.name for s in missing if s.reason == NO_SLEEPER_ID]
+    if unknown:
+        log.warning("%d players left out with no Sleeper id: %s", len(unknown), ", ".join(unknown))
     return players, missing
 
 
@@ -357,16 +401,17 @@ def run(args: argparse.Namespace) -> int:
         return 1
     td_history, recent_games = history.result() if history is not None else ({}, {})
 
-    rules = [load_rules(name) for name in LEADERBOARD_RULES]
+    rules = leaderboard_rules()
     results, unfitted = pipeline.predict(
         targets, books, rules[0], on_fair_points=cli._fair_points_saver(snapshot), td_history=td_history,
         recent_games=recent_games, jobs=args.jobs, also_score=rules[1:],
     )
     players, missing = push_players(results, targets, roster, ids)
     id_map = ids.id_map(week.teams, roster)
-    # The prices' time: the real clock, or --now when replaying (/api/expected-points refuses a
-    # generatedAt more than 5 minutes ahead, and freezes players whose kickoff is at or before it).
-    push = build_push(week, players, id_map, args.now or datetime.now(timezone.utc))
+    # generatedAt is the run's start, `now`: the time that picked the unstarted Games (the real clock,
+    # or --now when replaying), so no Game in the push kicked off before it. /api/expected-points
+    # refuses a generatedAt more than 5 minutes ahead, and freezes players whose kickoff is at or before it.
+    push = build_push(week, players, id_map, now)
     output = args.output or args.output_dir / DEFAULT_OUTPUT
     try:
         size = write_push(push, output)

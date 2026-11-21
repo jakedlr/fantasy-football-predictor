@@ -219,7 +219,7 @@ finish() {
 #
 # Writes (both gitignored):
 #   site/.cloudflare-ids.env  account id, Pages project and KV namespace ids (not secret)
-#   .env.leaderboard          the home machine's KV push token and ntfy topic (mode 600)
+#   .env.leaderboard          the home machine's push secret (LEADERBOARD_PUSH_SECRET) and ntfy topic (mode 600)
 
 PAGES_PROJECT="ffp-leaderboard"
 PAGES_BRANCH="main"

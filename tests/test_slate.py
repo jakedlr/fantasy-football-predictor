@@ -61,12 +61,27 @@ def test_the_week_s_games_and_those_that_have_not_kicked_off():
 def test_postseason_weeks_are_numbered_as_espn_and_sleeper_number_them():
     playoffs = [game(18, "BAL", "PIT", "2027-01-10T18:00:00Z"), game(19, "BUF", "HOU", "2027-01-16T21:30:00Z"),
                 game(20, "BUF", "KC", "2027-01-23T21:30:00Z"), game(21, "KC", "BAL", "2027-01-31T20:00:00Z"),
-                game(22, "BAL", "SF", "2027-02-14T23:30:00Z")]
+                game(22, "BAL", "SF", "2027-02-07T23:30:00Z")]
     assert slate.current_week(playoffs, utc("2027-01-11T12:00:00Z")).label == ("regular", 18)
     assert slate.current_week(playoffs, utc("2027-01-14T12:00:00Z")).label == ("postseason", 1)  # Wild Card
     assert slate.current_week(playoffs, utc("2027-01-28T12:00:00Z")).label == ("postseason", 3)
-    # The Super Bowl week starts the Wednesday after the conference games (ESPN: Feb 3), its number 4.
+    # 2026 has no Pro Bowl week: the Super Bowl week starts the Wednesday after the conference games
+    # (ESPN: Feb 3), and is postseason week 4.
     assert slate.current_week(playoffs, utc("2027-02-04T12:00:00Z")).label == ("postseason", 4)
+
+
+def test_a_pro_bowl_week_counts_in_the_postseason_numbering():
+    # 2025's postseason: Wild Card weekend Jan 10, 2026, conference games Jan 25, the Super Bowl Feb 8 after
+    # ESPN's Pro Bowl week, so ESPN numbers it 5 (nflverse: week 22).
+    playoffs = [game(18, "BAL", "PIT", "2026-01-04T18:00:00Z", season=2025),
+                game(19, "BUF", "JAX", "2026-01-10T21:30:00Z", season=2025),
+                game(20, "BUF", "DEN", "2026-01-17T21:30:00Z", season=2025),
+                game(21, "NE", "DEN", "2026-01-25T20:00:00Z", season=2025),
+                game(22, "NE", "SEA", "2026-02-08T23:30:00Z", season=2025)]
+    assert slate.current_week(playoffs, utc("2026-01-08T12:00:00Z")).label == ("postseason", 1)
+    assert slate.current_week(playoffs, utc("2026-01-27T12:00:00Z")).label == ("postseason", 3)
+    assert slate.current_week(playoffs, utc("2026-02-05T12:00:00Z")).label == ("postseason", 5)
+    assert slate.current_week(playoffs, utc("2026-01-30T12:00:00Z")).label == ("postseason", 5)  # Pro Bowl week
 
 
 # --- the players -------------------------------------------------------------------
@@ -145,6 +160,22 @@ def test_a_name_on_both_teams_is_told_apart_by_the_book_s_team(nflverse):
     assert zay.player.gsis_id == "00-0099999"
 
 
+def test_a_name_another_book_s_spelling_resolved_is_not_reported_skipped(nflverse):
+    from ffp.players import RosterEntry
+
+    roster = [*nflverse[0], RosterEntry("00-0099999", "Zay Flowers", "WR", "LAC", "ACT", 10)]
+    dk_game = Game("g1", "LA Chargers", "BAL Ravens", "2026-11-17T01:15:00Z", "draftkings", False)
+    fd_game = Game("f1", "Los Angeles Chargers", "Baltimore Ravens", "2026-11-17T01:15:00Z", "fanduel", False)
+    line = MainLine(30.5, -110, -110, "draftkings")
+    dk = PropMarket("Zay Flowers", "receiving_yards", "g1", "draftkings", line, (), "BAL Ravens")
+    fd = PropMarket("Zay Flowers Jr.", "receiving_yards", "f1", "fanduel", line, (), None)  # no team: two Zays
+    targets, skipped = slate.slate_targets(fixture_week(nflverse).upcoming(BEFORE_MNF),
+                                           [BookOdds("draftkings", [dk_game], [dk]),
+                                            BookOdds("fanduel", [fd_game], [fd])], roster)
+    assert "00-0039064" in {t.player.gsis_id for t in targets}
+    assert not [s for s in skipped if "Zay" in s.name]
+
+
 # --- the push file -----------------------------------------------------------------
 
 
@@ -207,6 +238,24 @@ def test_without_now_generated_at_is_the_real_clock(tmp_path, monkeypatch):
     assert abs((datetime.now(timezone.utc) - generated).total_seconds()) < 60
 
 
+def test_generated_at_is_the_run_s_start_the_time_that_picked_the_games(tmp_path, monkeypatch):
+    import ffp.slate
+
+    start = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+    clock = iter([start, *(start.replace(hour=13 + i) for i in range(5))])  # each later call an hour on
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(clock)
+
+    monkeypatch.setattr(ffp.slate, "datetime", Clock)
+    monkeypatch.setattr(ffp.slate, "current_week", lambda schedule, now: ffp.slate.NflWeek(2026, 10, ()))
+    monkeypatch.setattr(ffp.slate.pipeline, "load_fixture_nflverse", lambda fixtures, season: ([], []))
+    assert main(["slate", "--fixtures", str(FIXTURES), "--output-dir", str(tmp_path)]) == 0
+    assert json.loads((tmp_path / "expected-points.json").read_text())["generatedAt"] == "2026-11-16T12:00:00Z"
+
+
 def test_an_unwritable_output_exits_1(tmp_path):
     blocker = tmp_path / "file"
     blocker.write_text("")
@@ -267,3 +316,37 @@ def test_both_books_failing_writes_nothing_and_exits_1(tmp_path, monkeypatch):
 def test_stat_means_are_never_negative():
     # The schema's minimum is 0: a fitted mean a hair below it (rushing yards for a QB who kneels) is 0.
     assert slate.stat_means({"rushing_yards": -0.4, "receptions": 5.25}) == {"rushing_yards": 0.0, "receptions": 5.25}
+
+
+def test_two_players_with_one_sleeper_id_keep_the_first_and_log_the_other(caplog):
+    from ffp.players import Player, RosterEntry
+    from ffp.predict import Target
+    from ffp.report import PlayerResult
+    from ffp.sources import sleeper
+
+    g = game(10, "LAC", "BAL", "2026-11-17T01:15:00Z")
+    roster = [RosterEntry("g1", "Al Pha", "WR", "BAL", "ACT", 10, sleeper_id="500"),
+              RosterEntry("g2", "Al Pha", "WR", "BAL", "ACT", 10, sleeper_id="500")]
+    targets = [Target(e.name, Player(e.gsis_id, e.name, e.position, e.team), g) for e in roster]
+    results = [PlayerResult(e.name, "BAL", "LAC @ BAL", g.kickoff, "WR", {}, player_id=e.gsis_id,
+                            expected={r: 1.0 for r in slate.LEADERBOARD_RULES}) for e in roster]
+    ids = sleeper.SleeperIds([sleeper.SleeperPlayer("500", "Al Pha", "WR", "BAL", None, None)])
+    with caplog.at_level(logging.WARNING):
+        players, skipped = slate.push_players(results, targets, roster, ids)
+    assert [(p["sleeperId"], p["gsisId"]) for p in players] == [("500", "g1")]
+    assert [(s.name, s.reason) for s in skipped] == [("Al Pha", slate.SAME_SLEEPER_ID)]
+    assert "Al Pha" in caplog.text and slate.SAME_SLEEPER_ID in caplog.text
+
+
+def test_the_leaderboard_rules_are_the_bundled_ones_whatever_is_in_scoring(tmp_path, monkeypatch):
+    from ffp.scoring import BUNDLED_RULES_DIR, PRESETS, load_rules
+
+    (tmp_path / "scoring").mkdir()
+    shadow = json.loads((BUNDLED_RULES_DIR / "espn-league.json").read_text())
+    shadow["offense"]["receptions"] = 9
+    (tmp_path / "scoring" / "espn-league.json").write_text(json.dumps(shadow))
+    monkeypatch.chdir(tmp_path)
+    assert load_rules("espn-league") != load_rules(BUNDLED_RULES_DIR / "espn-league.json")  # what ./scoring/ does
+    rules = slate.leaderboard_rules()
+    assert rules[:3] == [PRESETS["ppr"], PRESETS["half-ppr"], PRESETS["standard"]]
+    assert rules[3] == load_rules(BUNDLED_RULES_DIR / "espn-league.json")
