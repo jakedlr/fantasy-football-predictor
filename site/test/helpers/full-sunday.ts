@@ -1,12 +1,13 @@
 /**
  * A generated full Sunday for the stats run's CPU benchmark (test/worker/cpu.bench.test.ts):
  * 16 Games mid-slate (5 Final, 6 Live at different points, 5 Upcoming), Sleeper's response scaled
- * from the recorded Week 10 rows (each clone keeps a real row's full set of stats keys), and KV
- * `expected` and `espn` with about 1,000 entries each. Deterministic.
+ * from the recorded Week 10 rows (each clone keeps a real row's full set of stats keys; every
+ * team's K and DEF row is a recorded one from stats-week10-k-dst.json, so sleeperStatsToPlayers
+ * converts them as on a real Sunday), and KV `expected` and `espn` with about 1,000 entries each.
+ * `rows` counts all of Sleeper's rows, the 64 K and DEF ones included. Deterministic.
  */
 import type { EspnStore, Expectation, ExpectedStore } from "../../src/worker/kv.js";
 import type { Game, Scoreboard } from "../../src/worker/scoreboard.js";
-import type { SleeperPlayer } from "../../src/worker/sleeper.js";
 import { readJson } from "./fakes.js";
 
 const TEAMS = [
@@ -21,8 +22,6 @@ export interface FullSunday {
   sleeperText: string;
   expectedText: string;
   espnText: string;
-  /** Hand-made kickers and D/STs, until S11.1's rows replace them (sleeperStatsToPlayers skips K and DEF today). */
-  kAndDst: SleeperPlayer[];
 }
 
 export function fullSunday(rows = 2000, expectations = 1000): FullSunday {
@@ -45,7 +44,17 @@ export function fullSunday(rows = 2000, expectations = 1000): FullSunday {
   const recorded = readJson("test/fixtures/sleeper/stats-week10-final.json") as { player_id: string; team: string; stats: Record<string, number>; player: { position: string } }[];
   const offense = recorded.filter((r) => ["QB", "RB", "WR", "TE"].includes(r.player.position));
   const out: unknown[] = [];
-  for (let i = 0; i < rows; i++) {
+  // Every team's K and DEF, from the recorded Week 10 K and DEF rows (cycled over the 32 teams).
+  const kDef = readJson("test/fixtures/sleeper/stats-week10-k-dst.json") as { player_id: string; team: string; opponent: string; player: { position: string } }[];
+  const defs = kDef.filter((r) => r.player.position === "DEF");
+  const kickers = kDef.filter((r) => r.player.position === "K");
+  TEAMS.forEach((team, t) => {
+    const opponent = TEAMS[t ^ 1]!;
+    out.push({ ...defs[t % defs.length]!, player_id: team, team, opponent });
+    out.push({ ...kickers[t % kickers.length]!, player_id: String(90_000 + t), team, opponent });
+  });
+  const offenseRows = rows - out.length;
+  for (let i = 0; i < offenseRows; i++) {
     const base = offense[i % offense.length]!;
     const team = TEAMS[i % TEAMS.length]!;
     // About a third of Sleeper's rows are active players with no Scoring Stat (as in stats-live.json).
@@ -62,7 +71,6 @@ export function fullSunday(rows = 2000, expectations = 1000): FullSunday {
       expected: { ppr: 16.2, "half-ppr": 13.5, standard: 10.8, "espn-league": 16.2 },
     };
   }
-  const kAndDst: SleeperPlayer[] = [];
   for (const team of TEAMS) {
     players[`dst:${team}`] = {
       name: `${team} D/ST`, team, position: "D/ST", kickoff: "2026-11-22T18:00:00Z",
@@ -74,14 +82,10 @@ export function fullSunday(rows = 2000, expectations = 1000): FullSunday {
       statMeans: { pat_made: 2.4, pat_missed: 0.1, fg_missed: 0.3, fgm_20_29: 0.5, fgm_30_39: 0.6, fgm_40_49: 0.5, fgm_50_59: 0.2, fgm_60p: 0.01 },
       expected: { ppr: 8.1, "half-ppr": 8.1, standard: 8.1, "espn-league": 8.6 },
     };
-    kAndDst.push(
-      { kind: "dst", id: `dst:${team}`, name: `${team} D/ST`, team, position: "D/ST", sleeperGameId: null, stats: { sacks: 2, interceptions: 1, points_allowed_all: 13, yards_allowed: 240 } },
-      { kind: "kicker", id: `sleeper:${90_000 + TEAMS.indexOf(team)}`, name: `${team} Kicker`, team, position: "K", sleeperGameId: null, stats: { pat_made: 2, fgm_40_49: 1 } },
-    );
   }
   const week = { schemaVersion: 1 as const, season: 2026, seasonType: "regular" as const, week: 12 };
   const expected: ExpectedStore = { ...week, generatedAt: "2026-11-22T17:50:00Z", players };
   // ESPN projects about as many players, keyed the same way.
   const espn: EspnStore = { ...week, fetchedAt: "2026-11-22T17:40:00Z", players };
-  return { scoreboard, sleeperText: JSON.stringify(out), expectedText: JSON.stringify(expected), espnText: JSON.stringify(espn), kAndDst };
+  return { scoreboard, sleeperText: JSON.stringify(out), expectedText: JSON.stringify(expected), espnText: JSON.stringify(espn) };
 }
