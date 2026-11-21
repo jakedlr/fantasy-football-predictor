@@ -24,14 +24,20 @@
  * - `espn` is written only when a group's players changed: at worst 72 a day, never in the
  *   postseason.
  * - /api/expected-points (functions/api/expected-points.ts) writes `expected` once per accepted
- *   push and `idmap` only when it changed, at most once an hour. ffp pushes every 30 minutes on game
- *   days plus before each kickoff window: about 52 + a handful a day. The Function refuses a push
- *   under 5 minutes after the last (429), so whatever sends pushes, at most 288 + 24 = 312 a day.
- * - Worst case with ffp's schedule: 288 + 288 + 72 + ~60 ≈ 710 a day, against 1,000; a quiet day
- *   144 + 72 + a handful. A leaked push secret used at full rate could reach 648 + 312 = 960;
+ *   push and `idmap` only when it changed, at most once an hour. ffp pushes at :00 and :30 from
+ *   8 AM Eastern until a game day's last kickoff, plus before each kickoff window: on a Sunday about
+ *   25 pushes, plus at most 13 `idmap` writes. The Function refuses a push under 5 minutes after the
+ *   stored one (429) and one generated over 15 minutes before its own clock (400), so whatever sends
+ *   pushes and however it stamps them, at most 293 + 25 = 318 a calendar day (the Function's header
+ *   has the arithmetic).
+ * - Worst case with ffp's schedule: 288 + 288 + 72 + ~38 ≈ 686 a day, against 1,000; a quiet day
+ *   144 + 72 + a handful. A leaked push secret used at full rate could reach 648 + 318 = 966;
  *   rotating the secret (scripts/setup_cloudflare.sh, then a deploy) stops it.
  * KV reads: 1 per scoreboard run + 4 per stats run (`scoreboard`, `expected`, `espn`, `leaderboard`)
- * + 3 per ESPN run = 1,656 a day, plus 2 per push, against 100,000.
+ * + 3 per ESPN run = 1,656 a day, plus 3 per push and 1 per /api/leaderboard request, against
+ * 100,000. The page polls every 5 minutes while a Game is Live, about 130 times over a Sunday's
+ * Games, so the reads cap the Leaderboard at about 750 viewers watching all Sunday (the 100,000
+ * Function requests a day cap it about the same).
  *
  * The stats run reads KV `expected` and `espn` defensively: a store that isn't the shape kv.ts
  * describes is ignored with a log (the Leaderboard is built without it), and a malformed player

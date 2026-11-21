@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handlePush, MAX_BODY_BYTES, MAX_SKEW_SECONDS, onRequest, type PushEnv } from "../../functions/api/expected-points.js";
+import { handlePush, MAX_BODY_BYTES, MAX_PUSH_AGE_MS, MAX_SKEW_SECONDS, onRequest, type PushEnv } from "../../functions/api/expected-points.js";
 import { mergeExpected } from "../../src/push/merge.js";
 import type { Push, PushPlayer } from "../../src/push/validate.js";
 import { KEYS, type ExpectedStore, type IdMapStore } from "../../src/worker/kv.js";
@@ -86,6 +86,70 @@ describe("POST /api/expected-points", () => {
     expect((await pushAt(kv, "2026-11-22T16:05:00Z")).status).toBe(204);
   });
 
+  it("answers 400 to a push generated over 15 minutes before the server's now, writing nothing", async () => {
+    const kv = new FakeKV();
+    const now = new Date(Date.parse("2026-11-22T17:50:00Z") + MAX_PUSH_AGE_MS + 1000);
+    const res = await post(kv, example(), now);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/15 minutes/);
+    expect(kv.writes).toEqual([]);
+    expect((await post(kv, example(), new Date(Date.parse("2026-11-22T17:50:00Z") + MAX_PUSH_AGE_MS))).status).toBe(204);
+  });
+
+  it("refuses back-dated pushes after a quiet gap, so the 5-minute spacing runs on the server's clock", async () => {
+    const kv = new FakeKV();
+    await pushAt(kv, "2026-11-22T10:00:00Z");
+    const writes = kv.writes.length;
+    // Six hours later, a sender stamps pushes 10:05, 10:10, … to catch up: each is refused.
+    const now = new Date("2026-11-22T16:00:00Z");
+    for (const at of ["2026-11-22T10:05:00Z", "2026-11-22T12:00:00Z", "2026-11-22T15:40:00Z"]) {
+      expect((await post(kv, { ...example(), generatedAt: at }, now)).status).toBe(400);
+    }
+    expect(kv.writes.length).toBe(writes);
+    expect((await post(kv, { ...example(), generatedAt: "2026-11-22T15:50:00Z" }, now)).status).toBe(204);
+  });
+
+  describe("a push for a later NFL Week than KV scoreboard's", () => {
+    const board = (season: number, seasonType: "regular" | "postseason", number: number) =>
+      JSON.stringify({ week: { season, seasonType, number, start: "", end: "", firstKickoff: "", lastKickoff: "" }, games: [] });
+
+    // The example is 2026 regular week 12.
+    it.each([
+      ["a later week", board(2026, "regular", 13)],
+      ["the postseason", board(2026, "postseason", 1)],
+      ["a later season", board(2027, "regular", 1)],
+    ])("accepts a push for an earlier week than the scoreboard's (%s)", async (_what, b) => {
+      const kv = new FakeKV({ [KEYS.scoreboard]: b });
+      expect((await post(kv, example())).status).toBe(204);
+    });
+
+    it.each<[string, Partial<Push>, string]>([
+      ["a later week", { week: 13 }, board(2026, "regular", 12)],
+      ["the postseason while the scoreboard is on the regular season", { seasonType: "postseason", week: 1 }, board(2026, "regular", 18)],
+      ["a later season", { season: 2027, week: 1 }, board(2026, "postseason", 4)],
+    ])("answers 409 to %s, leaving the current week's expected alone", async (_what, change, b) => {
+      const kv = new FakeKV({ [KEYS.scoreboard]: b });
+      await post(kv, example());
+      const before = kv.data.get(KEYS.expected);
+      const writes = kv.writes.length;
+      const res = await post(kv, { ...example(), ...change, generatedAt: "2026-11-22T17:55:00Z" }, new Date("2026-11-22T17:56:00Z"));
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: string }).error).toMatch(/scoreboard/);
+      expect(kv.writes.length).toBe(writes);
+      expect(kv.data.get(KEYS.expected)).toBe(before);
+    });
+
+    it("accepts it once the scoreboard has rolled to that week", async () => {
+      const kv = new FakeKV({ [KEYS.scoreboard]: board(2026, "regular", 12) });
+      expect((await post(kv, example())).status).toBe(204);
+    });
+
+    it("accepts any week while there is no scoreboard in KV", async () => {
+      const kv = new FakeKV();
+      expect((await post(kv, { ...example(), week: 18 })).status).toBe(204);
+    });
+  });
+
   it("merges with the stored week: a player whose Game has kicked off stays frozen", async () => {
     const kv = new FakeKV();
     await post(kv, example());
@@ -153,12 +217,25 @@ describe("POST /api/expected-points", () => {
       expect(error).toHaveBeenCalled();
       expect(String(error.mock.calls[0])).toMatch(/LEADERBOARD_PUSH_SECRET/);
     });
+
+    // The header checks are cheap; reading up to 1 MB isn't, so they come first.
+    it.each<[string, Record<string, string>]>([
+      ["no headers", {}],
+      ["a malformed timestamp", { "X-FFP-Timestamp": "soon", "X-FFP-Signature": `sha256=${"0".repeat(64)}` }],
+      ["a stale timestamp", { "X-FFP-Timestamp": String(Math.floor(NOW.getTime() / 1000) - MAX_SKEW_SECONDS - 1), "X-FFP-Signature": `sha256=${"0".repeat(64)}` }],
+      ["a malformed signature", { "X-FFP-Timestamp": ts, "X-FFP-Signature": "sha256=XYZ" }],
+    ])("answers 401 to %s without reading the body", async (_what, headers) => {
+      const request = new Request(URL_, { method: "POST", body: "x".repeat(MAX_BODY_BYTES + 10), headers });
+      const res = await handlePush(request, env(new FakeKV()), NOW);
+      expect(res.status).toBe(401);
+      expect(request.bodyUsed).toBe(false);
+    });
   });
 
   describe("size", () => {
     it("answers 413 to a Content-Length over the cap", async () => {
       const kv = new FakeKV();
-      const request = new Request(URL_, { method: "POST", body: "{}", headers: { "Content-Length": String(MAX_BODY_BYTES + 1) } });
+      const request = signed("{}", { headers: { "Content-Length": String(MAX_BODY_BYTES + 1) } });
       expect((await handlePush(request, env(kv), NOW)).status).toBe(413);
     });
 
