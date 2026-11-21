@@ -15,12 +15,13 @@ date (`load_players`).
 import json
 import logging
 import os
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
-from ffp.players import DST, Player, RosterEntry, name_key
+from ffp.players import DST, Player, RosterEntry, _id, name_key
 
 log = logging.getLogger(__name__)
 
@@ -55,10 +56,19 @@ class SleeperPlayer:
 
 
 def _text(value) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
+    """A field as text, as `players._id` cleans an id column: stripped, 4429615.0 as "4429615", and
+    None when missing (None, NaN, "", "None", "nan", "null")."""
+    return _id(value)
+
+
+_ESPN_ID = re.compile(r"(\d+)(?:\.0+)?")
+
+
+def espn_id(value) -> str | None:
+    """An ESPN id as digits ("4429615", also from 4429615.0 or "4429615.0"); None when it's missing or
+    malformed (anything else is no use to the Leaderboard's ESPN fallback)."""
+    match = _ESPN_ID.fullmatch(_text(value) or "")
+    return match.group(1) if match else None
 
 
 def parse_players(payload: Mapping) -> list[SleeperPlayer]:
@@ -144,11 +154,12 @@ class SleeperIds:
         return found
 
     def lookup(self, entry: RosterEntry) -> tuple[str | None, str | None]:
-        """(Sleeper id, ESPN id) for a roster entry: the ESPN id is the list's, else the roster's."""
+        """(Sleeper id, ESPN id) for a roster entry: the ESPN id is the list's, else the roster's, each
+        kept only if it's digits (`espn_id`)."""
         found = self.find(entry)
         if found is None:
             return None, None
-        return found.player_id, found.espn_id or entry.espn_id
+        return found.player_id, espn_id(found.espn_id) or espn_id(entry.espn_id)
 
     def id_map(self, teams: Iterable[str], roster: Sequence[RosterEntry]) -> dict[str, str]:
         """Sleeper id -> ESPN id for every QB/RB/WR/TE/K the list has on `teams` (nflverse codes), priced
@@ -160,10 +171,10 @@ class SleeperIds:
         for p in self.players:
             if p.team not in wanted:
                 continue
-            espn = p.espn_id
+            espn = espn_id(p.espn_id)
             if espn is None:
                 entry = by_sleeper.get(p.player_id) or (by_gsis.get(p.gsis_id) if p.gsis_id else None)
-                espn = entry.espn_id if entry is not None else None
-            if espn is not None and espn.isdigit() and p.player_id.isdigit():
+                espn = espn_id(entry.espn_id) if entry is not None else None
+            if espn is not None and p.player_id.isdigit():
                 out[p.player_id] = espn
         return out
