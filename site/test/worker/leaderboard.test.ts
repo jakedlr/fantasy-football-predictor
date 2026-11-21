@@ -128,6 +128,13 @@ describe("buildLeaderboard", () => {
     // No "-0" in the JSON.
     expect(Object.is(round2(-0.001), 0)).toBe(true);
   });
+
+  it("scores a non-finite total as 0, never writing null into the Leaderboard", () => {
+    for (const x of [Infinity, -Infinity, NaN]) expect(round2(x)).toBe(0);
+    const lb = buildLeaderboard(scoreboard, [player({ stats: { rushing_yards: Number.MAX_VALUE, receiving_yards: Number.MAX_VALUE } })], UPDATED);
+    expect(serialize(lb)).not.toMatch(/null,"soFar"|"soFar":null|"week":null/);
+    expect(lb.players[0]!.points.ppr!.soFar).toBe(0);
+  });
 });
 
 describe("serialize, updatedAtOf and sameContent", () => {

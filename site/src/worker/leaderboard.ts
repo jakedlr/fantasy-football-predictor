@@ -63,9 +63,13 @@ export interface ExpectationStores {
   espn?: EspnStore | null;
 }
 
-/** Points to 2 decimals, which also clears float noise (0.1 × 3) and "-0". */
+/**
+ * Points to 2 decimals, which also clears float noise (0.1 × 3) and "-0". A non-finite total
+ * (an absurd stat line or mean) is 0: JSON would write it as null, which the schema refuses.
+ */
 export function round2(x: number): number {
-  return Math.round(x * 100) / 100 || 0;
+  const r = Math.round(x * 100) / 100;
+  return Number.isFinite(r) ? r || 0 : 0;
 }
 
 /** A player is listed with no stat recorded only if his Expected Points (default rules) reach this. */
