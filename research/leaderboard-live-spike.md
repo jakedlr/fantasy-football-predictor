@@ -279,3 +279,8 @@ Sleeper's 46 KB fixture parses at 2.3 ms/MB on the same machine; ESPN's prose-he
 **Postseason.** ESPN's fantasy game ends with the regular season, so the run does nothing in the postseason; players without a push have no Expected Points then.
 
 **Fixtures:** `site/test/fixtures/espn/projections-{qb-te,rb-k-dst,wr}.json`, the three group responses trimmed to 8–19 players each (the top 4 per position, the Thursday Game's teams, an Out player, a bye), with `outlooks`, `seasonOutlook`, `rankings` and `draftRanksByRankType` removed.
+
+## Postseason week numbers (PR 21 review, 2026-11-20)
+
+ESPN's scoreboard calendar numbers postseason weeks differently by season: 2025 had Wild Card 1, Divisional 2, Conference 3, Pro Bowl 4, Super Bowl 5; 2026 has 1, 2, 3 and one two-week "Super Bowl" entry, 4 (Feb 3–16, 2027), with no Pro Bowl week. Sleeper numbers by round: its `stats/nfl/2025/<week>?season_type=post` has the conference games (Jan 25, 2026) at week 3, the Super Bowl (NE–SEA, Feb 8) at week 4, and nothing at week 5. So the Leaderboard numbers postseason weeks by round, 1 to 4: `ffp slate` uses nflverse's week − 18, and the Worker maps ESPN's "Super Bowl" entry to 4.
+
