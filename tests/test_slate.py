@@ -302,3 +302,17 @@ def test_two_players_with_one_sleeper_id_keep_the_first_and_log_the_other(caplog
     assert [(p["sleeperId"], p["gsisId"]) for p in players] == [("500", "g1")]
     assert [(s.name, s.reason) for s in skipped] == [("Al Pha", slate.SAME_SLEEPER_ID)]
     assert "Al Pha" in caplog.text and slate.SAME_SLEEPER_ID in caplog.text
+
+
+def test_the_leaderboard_rules_are_the_bundled_ones_whatever_is_in_scoring(tmp_path, monkeypatch):
+    from ffp.scoring import BUNDLED_RULES_DIR, PRESETS, load_rules
+
+    (tmp_path / "scoring").mkdir()
+    shadow = json.loads((BUNDLED_RULES_DIR / "espn-league.json").read_text())
+    shadow["offense"]["receptions"] = 9
+    (tmp_path / "scoring" / "espn-league.json").write_text(json.dumps(shadow))
+    monkeypatch.chdir(tmp_path)
+    assert load_rules("espn-league") != load_rules(BUNDLED_RULES_DIR / "espn-league.json")  # what ./scoring/ does
+    rules = slate.leaderboard_rules()
+    assert rules[:3] == [PRESETS["ppr"], PRESETS["half-ppr"], PRESETS["standard"]]
+    assert rules[3] == load_rules(BUNDLED_RULES_DIR / "espn-league.json")

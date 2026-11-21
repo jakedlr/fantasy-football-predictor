@@ -42,7 +42,7 @@ from ffp.players import (
     team_code_from_book_name,
 )
 from ffp.report import PlayerResult, SkippedPlayer
-from ffp.scoring import load_rules
+from ffp.scoring import BUNDLED_RULES_DIR, PRESETS, ScoringRules, load_rules
 from ffp.sources import sleeper
 
 log = logging.getLogger(__name__)
@@ -230,6 +230,13 @@ def stat_means(means: Mapping[str, float]) -> dict[str, float]:
     return {stat: max(0.0, round(float(v), 4)) for stat, v in means.items()}
 
 
+def leaderboard_rules() -> list[ScoringRules]:
+    """The Leaderboard's Scoring Rules, in LEADERBOARD_RULES order: the presets, and the bundled
+    ffp/rules/ files, never a same-named file in ./scoring/ (the push must score what the site says)."""
+    return [PRESETS[name] if name in PRESETS else load_rules(BUNDLED_RULES_DIR / f"{name}.json")
+            for name in LEADERBOARD_RULES]
+
+
 def _dst_name(team: str) -> str:
     return f"{TEAMS[team][1]} D/ST"
 
@@ -393,7 +400,7 @@ def run(args: argparse.Namespace) -> int:
         return 1
     td_history, recent_games = history.result() if history is not None else ({}, {})
 
-    rules = [load_rules(name) for name in LEADERBOARD_RULES]
+    rules = leaderboard_rules()
     results, unfitted = pipeline.predict(
         targets, books, rules[0], on_fair_points=cli._fair_points_saver(snapshot), td_history=td_history,
         recent_games=recent_games, jobs=args.jobs, also_score=rules[1:],
