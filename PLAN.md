@@ -376,7 +376,7 @@ Parallel pieces: the Worker's ESPN scoreboard client (Game Status, NFL Week); Sl
 
 ## Sprint 11 — Complete Week Points
 
-Parallel pieces: K stats (Sleeper's distance buckets) and D/ST stats; `ffp --slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the signed push to `/api/expected-points`; ESPN projections as the fallback, with the Sleeper↔ESPN id map sent in the push (Sleeper's rows carry no ESPN id); the Projected Total per Scoring Stat.
+Parallel pieces: K stats (Sleeper's distance buckets) and D/ST stats; `ffp slate` with the mean in its output, frozen at kickoff, the Docker scheduler and the signed push to `/api/expected-points`; ESPN projections as the fallback, with the Sleeper↔ESPN id map sent in the push (Sleeper's rows carry no ESPN id); the Projected Total per Scoring Stat.
 
 **S11.0 Contracts** (main thread, first on `sprint-11`):
 - `site/schema/expected-points.schema.json`: the statMeans keys per position (K FGs by Sleeper's `fgm_*` buckets; D/ST counts plus Points and Yards Allowed), Expected Points under all four Scoring Rules options, `seasonType`, and `idMap` (Sleeper id → ESPN id for every QB/RB/WR/TE/K on a team that plays).
@@ -392,7 +392,7 @@ Stories, one worktree each:
 - **S11.5 ESPN projection fallback** (Worker): a third cron trigger. It reads ESPN's weekly projections, rescores them, joins them through `idmap` and writes KV `espn` only when it changes. First it measures whether the response fits 10 ms of CPU. **Built 2026-11-20:** all six positions in one response are 2.9 MB, so the cron (`9,29,49 * * * *`) takes one group per run (QB+TE, RB+K+D/ST, WR; 0.7–0.9 MB each, each group hourly), at most 72 KV writes a day. D/ST Expected Points score the Points and Yards Allowed tiers from ESPN's tier probabilities. Nothing in the postseason: ESPN's fantasy game has no playoff weeks (research/leaderboard-live-spike.md, "ESPN projections").
 - **S11.6 Week Points** (Worker): the stats run merges `expected` and `espn` into the Leaderboard. Upcoming players are listed from their Expected Points (≥ 1). Live players get the Projected Total per stat, using the fraction of the Game left from quarter and clock. The full-Sunday CPU is re-measured. Built 2026-11-20: "recorded a stat" means a non-empty Sleeper stat line (zeros count); a row with only `gms_active`-style keys is listed only with Expected Points ≥ 1 under PPR (in the Thursday recording, 30 of 46 offensive rows were such backups). `out` stays false: no input carries an in-game Out flag. CPU in `site/src/worker/README.md`.
 
-**Sprint 11 built 2026-11-20** (all six stories, merged on `sprint-11`): 1,213 pytest and 673 Vitest tests. A live `ffp slate` on Friday of Week 11 priced 371 players in 55–58 s (DraftKings 22 and FanDuel 61 requests), a 168 KB push that passes the schema. Open: the stats run's CPU on a full Sunday (about 7.5 ms on Node for a recorded full week; Cloudflare to confirm with `wrangler tail`), the ESPN run's per-group CPU (estimated 4–7 ms), and the first real push from Docker.
+**Sprint 11 built 2026-11-20** (all six stories, merged on `sprint-11`): 1,213 pytest and 673 Vitest tests. A live `ffp slate` on Friday of Week 11 priced 371 players in 55–58 s (DraftKings 22 and FanDuel 61 requests), a 168 KB push that passes the schema. Open: the stats run's CPU on a full Sunday. On Node it is about 7.5 ms for a recorded full week and about 10 ms for a generated 2,000-row Sunday; Cloudflare costs roughly 2–3 times Node plus 1–2 ms, so it is probably over 10 ms. If `wrangler tail` confirms it, ADR 0006's free fallback applies: split the stats across the 2 unused cron triggers. Also open: the ESPN run's per-group CPU (estimated 4–7 ms), and the first real push from Docker.
 
 ## Sprint 12 — Finish
 
@@ -406,6 +406,7 @@ Design review (Emil's skills, Laws of UX) of the page built in S10.5 (sorting, "
 - **Kalshi's D/ST TD Rungs** (KXNFLTD/KXNFLANYTD) against the model's P(D/ST TD ≥ 1): the pull maps D/ST targets but leaves their Rungs out (`dst_rung`; their KXNFLFFPTSLADDER markets `dst_mean`).
 
 - **`sleeper` preset 60+ yard FG:** `src/ffp/scoring.py` gives 6 points; Sleeper's stats endpoint (`pts_std`) gives 5 to all four 60+ yard FGs this season (found in S11.1). Check Sleeper's league defaults and fix the preset if they agree, since the Kalshi checks use it.
+- **Function request floods:** anyone can call `/api/expected-points` or `/api/leaderboard` and use up the free 100,000 Pages Function requests a day the page shares; pages.dev has no free rate limiting. Watch it; a custom domain with Cloudflare's free WAF rule is the free answer if it happens.
 - **Lint in CI** (ruff for `ffp`, a TypeScript linter for `site/`): promised for Sprint 10, not done.
 - **Game-line fallback** for Games without props: spread/total → implied team total × usage share. It doubles as the 2011–2025 backtest of the aggregation layer.
 - **Kalshi as a live Book** next to DraftKings and FanDuel (no key, no vig, deep Ladders).
