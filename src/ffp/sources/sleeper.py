@@ -5,8 +5,8 @@ fallback needs Sleeper id -> ESPN id. Sleeper's list (`PLAYERS_URL`, about 15 MB
 non-commercial use) carries both, but in November 2026 it had a gsis_id for only about a fifth of the
 rostered QB/RB/WR/TE/K and an espn_id for about a quarter. nflverse's weekly rosters carry Sleeper's
 and ESPN's ids for nearly all of them, so a Player's Sleeper id is, in order: the list's entry with his
-gsis_id; the roster's sleeper_id, if the list has it; the one list entry with his name, team and a
-fantasy position. His ESPN id is the list's, else the roster's.
+gsis_id; the roster's sleeper_id, if the list has it; the one list entry with his name, team and
+position (Sleeper's fantasy position). His ESPN id is the list's, else the roster's.
 
 The list is downloaded at most once a day and kept trimmed to the fields read here, under the day's
 date (`load_players`).
@@ -147,9 +147,8 @@ class SleeperIds:
         if found is None and entry.sleeper_id:
             found = self._by_id.get(entry.sleeper_id)
         if found is None:
-            same = self._by_name.get((name_key(entry.name), team_code(entry.team)), [])
-            if len(same) > 1:
-                same = [p for p in same if p.position == entry.position]
+            same = [p for p in self._by_name.get((name_key(entry.name), team_code(entry.team)), [])
+                    if p.position == entry.position]
             found = same[0] if len(same) == 1 else None
         return found
 

@@ -282,3 +282,23 @@ def test_both_books_failing_writes_nothing_and_exits_1(tmp_path, monkeypatch):
 def test_stat_means_are_never_negative():
     # The schema's minimum is 0: a fitted mean a hair below it (rushing yards for a QB who kneels) is 0.
     assert slate.stat_means({"rushing_yards": -0.4, "receptions": 5.25}) == {"rushing_yards": 0.0, "receptions": 5.25}
+
+
+def test_two_players_with_one_sleeper_id_keep_the_first_and_log_the_other(caplog):
+    from ffp.players import Player, RosterEntry
+    from ffp.predict import Target
+    from ffp.report import PlayerResult
+    from ffp.sources import sleeper
+
+    g = game(10, "LAC", "BAL", "2026-11-17T01:15:00Z")
+    roster = [RosterEntry("g1", "Al Pha", "WR", "BAL", "ACT", 10, sleeper_id="500"),
+              RosterEntry("g2", "Al Pha", "WR", "BAL", "ACT", 10, sleeper_id="500")]
+    targets = [Target(e.name, Player(e.gsis_id, e.name, e.position, e.team), g) for e in roster]
+    results = [PlayerResult(e.name, "BAL", "LAC @ BAL", g.kickoff, "WR", {}, player_id=e.gsis_id,
+                            expected={r: 1.0 for r in slate.LEADERBOARD_RULES}) for e in roster]
+    ids = sleeper.SleeperIds([sleeper.SleeperPlayer("500", "Al Pha", "WR", "BAL", None, None)])
+    with caplog.at_level(logging.WARNING):
+        players, skipped = slate.push_players(results, targets, roster, ids)
+    assert [(p["sleeperId"], p["gsisId"]) for p in players] == [("500", "g1")]
+    assert [(s.name, s.reason) for s in skipped] == [("Al Pha", slate.SAME_SLEEPER_ID)]
+    assert "Al Pha" in caplog.text and slate.SAME_SLEEPER_ID in caplog.text

@@ -56,6 +56,7 @@ SLEEPER_FIXTURE = "sleeper_players_nfl.json"  # a --fixtures directory's Sleeper
 
 NO_KICKER = "no active or practice-squad kicker on the team's roster"
 NO_SLEEPER_ID = "no Sleeper id (not in Sleeper's player list)"
+SAME_SLEEPER_ID = "Sleeper id already taken by another player in the push"
 NOT_ON_A_ROSTER = "Book name not a QB/RB/WR/TE on either team's roster"
 TWO_ON_A_ROSTER = "Book name shared by two QB/RB/WR/TE on the Game's teams"
 
@@ -235,10 +236,11 @@ def _dst_name(team: str) -> str:
 
 def push_players(results: Sequence[PlayerResult], targets: Sequence[pipeline.Target],
                  roster: Sequence[RosterEntry], ids: sleeper.SleeperIds) -> tuple[list[dict], list[SkippedPlayer]]:
-    """Each result as a push player, keyed by Sleeper id; those without one are left out (and returned)."""
+    """Each result as a push player, keyed by Sleeper id; those without one, or whose Sleeper id an
+    earlier result already has (the push keys players by it), are left out, logged and returned."""
     by_id = {t.player.gsis_id: t for t in targets}
     entries = {e.gsis_id: e for e in roster}
-    players, missing = [], []
+    players, missing, taken = [], [], {}
     for r in results:
         target = by_id[r.player_id]
         player = target.player
@@ -250,6 +252,12 @@ def push_players(results: Sequence[PlayerResult], targets: Sequence[pipeline.Tar
         if sleeper_id is None:
             missing.append(SkippedPlayer(player.name, NO_SLEEPER_ID))
             continue
+        if sleeper_id in taken:
+            log.warning("left out, %s: %s (%s), Sleeper id %s, kept for %s", SAME_SLEEPER_ID, player.name,
+                        gsis_id, sleeper_id, taken[sleeper_id])
+            missing.append(SkippedPlayer(player.name, SAME_SLEEPER_ID))
+            continue
+        taken[sleeper_id] = f"{name} ({gsis_id})" if gsis_id else name
         players.append({
             "sleeperId": sleeper_id, "gsisId": gsis_id, "espnId": espn_id, "name": name,
             "team": sleeper.team_code(player.team), "position": "D/ST" if player.position == DST else player.position,
@@ -257,8 +265,9 @@ def push_players(results: Sequence[PlayerResult], targets: Sequence[pipeline.Tar
             "statMeans": stat_means(r.stat_means),
             "expected": {rules: round(r.expected[rules], 4) for rules in LEADERBOARD_RULES},
         })
-    if missing:
-        log.warning("%d players left out with no Sleeper id: %s", len(missing), ", ".join(s.name for s in missing))
+    unknown = [s.name for s in missing if s.reason == NO_SLEEPER_ID]
+    if unknown:
+        log.warning("%d players left out with no Sleeper id: %s", len(unknown), ", ".join(unknown))
     return players, missing
 
 

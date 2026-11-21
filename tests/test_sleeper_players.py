@@ -96,6 +96,7 @@ def test_failing_ids_a_player_is_matched_by_name_and_team(ids):
     assert ids.lookup(entry("00-0040727", "Tre Harris", "WR", "LAC"))[0] == "12509"  # Sleeper: "Tre' Harris"
     assert ids.lookup(entry("00-0049999", "Not Listed", "WR", "LAC")) == (None, None)
     assert ids.lookup(entry("x", "Zay Flowers", "WR", "LAC")) == (None, None)  # another team's
+    assert ids.lookup(entry("x", "Zay Flowers", "TE", "BAL")) == (None, None)  # another position's
 
 
 def test_a_rams_player_is_matched_on_sleeper_s_lar(ids):
