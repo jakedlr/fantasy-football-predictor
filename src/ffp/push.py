@@ -36,7 +36,8 @@ TIMEOUT_SECONDS = 30
 RETRY_WAIT_SECONDS = 10
 
 # The schema lives with the site (site/schema/), two levels above this package in a checkout or an
-# editable install (the Docker image is one). FFP_SCHEMA overrides the path.
+# editable install. FFP_SCHEMA overrides the path: the Docker image `pip install .`s the package (not
+# editable, so that path doesn't exist there), copies the schema in and sets FFP_SCHEMA to it.
 _REPO_SCHEMA = Path(__file__).resolve().parents[2] / "site" / "schema" / "expected-points.schema.json"
 
 
