@@ -72,7 +72,8 @@
           },
           "name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 64
           },
           "team": {
             "type": "string",
@@ -95,52 +96,191 @@
             "description": "The Game's kickoff. The push only lists players whose Game hasn't kicked off at generatedAt; /api/expected-points keeps an earlier push's entry for a player whose Game has kicked off (frozen at kickoff)."
           },
           "statMeans": {
-            "description": "Mean of each Scoring Stat for the whole Game. QB/RB/WR/TE: ffp.scoring's offensive stats. K: pat_made, pat_missed, fg_missed and FGs made by Sleeper's distance buckets (fgm_0_19 \u2026 fgm_60p, as site/contracts/scoring-rules.json sleeperFgBuckets). D/ST: ffp.scoring's D/ST counts plus points_allowed_all, opponent_defensive_tds_points, opponent_return_tds_points and yards_allowed. A missing stat is 0. The Projected Total is current + mean \u00d7 fraction of the Game left, per stat, then scored.",
+            "description": "Mean of each Scoring Stat for the whole Game. QB/RB/WR/TE: ffp.scoring's offensive stats. K: pat_made, pat_missed, fg_missed and FGs made by Sleeper's distance buckets (fgm_0_19 \u2026 fgm_60p, as site/contracts/scoring-rules.json sleeperFgBuckets). D/ST: ffp.scoring's D/ST counts plus points_allowed_all, opponent_defensive_tds_points, opponent_return_tds_points and yards_allowed. A missing stat is 0. The Projected Total is current + mean \u00d7 fraction of the Game left, per stat, then scored. Bounded well above any real Game: yards and yards_allowed at 1,000, points_allowed_all and the opponent_*_points at 150, every count at 50.",
             "type": "object",
-            "propertyNames": {
-              "enum": [
-                "passing_yards",
-                "passing_tds",
-                "passing_interceptions",
-                "passing_2pt",
-                "rushing_yards",
-                "rushing_tds",
-                "rushing_2pt",
-                "receptions",
-                "receiving_yards",
-                "receiving_tds",
-                "receiving_2pt",
-                "fumbles_lost",
-                "pat_made",
-                "pat_missed",
-                "fg_missed",
-                "fgm_0_19",
-                "fgm_20_29",
-                "fgm_30_39",
-                "fgm_40_49",
-                "fgm_50_59",
-                "fgm_60p",
-                "sacks",
-                "interceptions",
-                "fumble_recoveries",
-                "forced_fumbles",
-                "safeties",
-                "blocked_kicks",
-                "interception_return_tds",
-                "fumble_return_tds",
-                "kickoff_return_tds",
-                "punt_return_tds",
-                "blocked_kick_return_tds",
-                "points_allowed_all",
-                "opponent_defensive_tds_points",
-                "opponent_return_tds_points",
-                "yards_allowed"
-              ]
+            "properties": {
+              "passing_yards": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "passing_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "passing_interceptions": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "passing_2pt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "rushing_yards": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "rushing_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "rushing_2pt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "receptions": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "receiving_yards": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "receiving_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "receiving_2pt": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fumbles_lost": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "pat_made": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "pat_missed": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fg_missed": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fgm_0_19": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fgm_20_29": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fgm_30_39": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fgm_40_49": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fgm_50_59": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fgm_60p": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "sacks": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "interceptions": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fumble_recoveries": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "forced_fumbles": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "safeties": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "blocked_kicks": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "interception_return_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "fumble_return_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "kickoff_return_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "punt_return_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "blocked_kick_return_tds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "points_allowed_all": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 150
+              },
+              "opponent_defensive_tds_points": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 150
+              },
+              "opponent_return_tds_points": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 150
+              },
+              "yards_allowed": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              }
             },
-            "additionalProperties": {
-              "type": "number",
-              "minimum": 0
-            }
+            "additionalProperties": false
           },
           "expected": {
             "description": "Expected Points (the Score Distribution's mean) by Scoring Rules name; every Leaderboard Scoring Rules option (ppr, half-ppr, standard, espn-league).",
