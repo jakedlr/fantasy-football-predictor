@@ -91,6 +91,18 @@ describe("parseScoreboard: the NFL Week", () => {
     expect(() => parseScoreboard(board)).toThrow(/Pro Bowl/);
   });
 
+  it("reads a Super Bowl week 4 in a season with no Pro Bowl week (ESPN's 2026 calendar)", () => {
+    const board = fixture("postseason");
+    const post = board.leagues[0].calendar.find((s: { value: string }) => s.value === "3");
+    post.entries = post.entries
+      .filter((e: { label: string }) => e.label !== "Pro Bowl")
+      .map((e: { label: string; value: string }) => (e.label === "Super Bowl" ? { ...e, value: "4" } : e));
+    board.week.number = 4;
+    const { week } = parseScoreboard(board);
+    expect(week.seasonType).toBe("postseason");
+    expect(week.number).toBe(4);
+  });
+
   it("refuses a week missing from ESPN's calendar", () => {
     const board = fixture("upcoming");
     board.week.number = 30;

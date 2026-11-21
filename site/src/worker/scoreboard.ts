@@ -15,7 +15,11 @@ export type GameStatus = "upcoming" | "live" | "final";
 export interface Week {
   season: number;
   seasonType: "regular" | "postseason";
-  /** ESPN's number within the season type: postseason weeks restart at 1 (Wild Card). */
+  /**
+   * ESPN's number within the season type, kept as ESPN gives it: postseason weeks restart at 1
+   * (Wild Card). The Super Bowl is 4, or 5 in a season with a Pro Bowl week (2025's calendar;
+   * that week itself is refused, below). ffp numbers postseason weeks by date, which agrees.
+   */
   number: number;
   start: string;
   end: string;

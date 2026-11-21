@@ -31,7 +31,7 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 23,
-      "description": "ESPN's and Sleeper's numbering: regular season 1\u201318, postseason 1 (Wild Card) to 4 (Super Bowl)."
+      "description": "ESPN's numbering: regular season 1\u201318, postseason from 1 (Wild Card) to the Super Bowl, which is 4, or 5 in a season with a Pro Bowl week (2025)."
     },
     "players": {
       "type": "array",
