@@ -181,7 +181,7 @@ The page (`site/public/`, script from `site/src/page/`) shows the NFL Week and i
 
 `npm run dev` serves a generated week of about 700 players. Name a scenario to see the other states: `node scripts/serve.mjs expected` (with Expected Points), `example` (the schema example), `delayed`, `empty`, `error` or `slow` (the skeleton); `curl localhost:8788/__scenario/<name>` switches while it runs. `public/app.js` is gitignored; the deploy job builds it.
 
-`POST /api/expected-points` (`site/functions/api/expected-points.ts`) takes `ffp`'s signed Expected Points push (ADR 0006). It answers 413 to a body over 1 MiB, 401 to a bad signature or a timestamp more than 5 minutes off (`site/contracts/push-signature.json`), 400 with a short reason to invalid JSON or a push failing `site/schema/expected-points.schema.json`, 409 to a push older than the stored one, 429 to one under 5 minutes after it, and 405 to anything but POST. Otherwise it merges the push into KV `expected` (a player whose Game has kicked off keeps his stored entry; a new NFL Week replaces the store), writes the ESPN-to-Sleeper id map to KV `idmap` when it changed (at most hourly), and answers 204. The schema is precompiled with Ajv's standalone code (`npm run build:validator`, into `site/src/push/expected-points.validate.js`), because Workers can't compile it at run time; a test fails while that file is stale. A 1,000-player push takes about 8 ms on Node and a real slate of about 370 players about 3 ms; Cloudflare is slower than Node, so check it with `wrangler tail` after the first real push.
+`POST /api/expected-points` (`site/functions/api/expected-points.ts`) takes `ffp`'s signed Expected Points push (ADR 0006). It checks the headers before reading the body (401 to a malformed signature or a timestamp more than 5 minutes off; `site/contracts/push-signature.json`), then answers 413 to a body over 1 MiB, 401 to a bad signature, 400 with a short reason to invalid JSON, a push failing `site/schema/expected-points.schema.json`, or a `generatedAt` more than 15 minutes old or 5 minutes ahead, 409 to a push older than the stored one or for a later NFL Week than the site's scoreboard, 429 to one under 5 minutes after the stored one, and 405 to anything but POST. A push costs 3 KV reads. Otherwise it merges the push into KV `expected` (a player whose Game has kicked off keeps his stored entry; a new NFL Week replaces the store), writes the ESPN-to-Sleeper id map to KV `idmap` when it changed (at most hourly), and answers 204. The schema is precompiled with Ajv's standalone code (`npm run build:validator`, into `site/src/push/expected-points.validate.js`), because Workers can't compile it at run time; a test fails while that file is stale. A 1,000-player push takes about 8 ms on Node and a real slate of about 370 players about 3 ms; Cloudflare is slower than Node, so check it with `wrangler tail` after the first real push.
 
 `site/contracts/` holds the Leaderboard's Scoring Rules and scored cases from `ffp.scoring`, which the TypeScript scorer must match (ADR 0005); `pytest` fails while they're stale. GitHub Actions runs `ci-python.yml` (pytest) and `ci-site.yml` (type-check, Vitest and the setup wizard's self-test) on every PR, each only when its files change.
 
@@ -285,13 +285,13 @@ It checks FILE against `site/schema/expected-points.schema.json` first and sends
 |---|---|---|
 | 204 | accepted (also a repeat of the push the site holds, same `generatedAt`) | exits 0 |
 | 429 | under 5 minutes after the last accepted push | prints "Skipped", exits 0, no retry |
-| 409 | older than the push the site holds | exits 1, no retry |
+| 409 | older than the push the site holds, or for a later NFL Week than the site's scoreboard (a Wednesday-morning push before ESPN rolls over) | exits 1, no retry |
 | 400 | invalid; the reason is in the reply | exits 1, no retry |
 | 401 | bad signature or timestamp (no detail given) | exits 1, no retry |
 | 413 | over 1 MiB (also refused before sending) | exits 1, no retry |
 | 5xx, network error | 500 means the site has no `LEADERBOARD_PUSH_SECRET` | one retry after 10 s, of the same body signed afresh; then exits 1 |
 
-The retry resends the same bytes, so if the first attempt was accepted but its answer lost, the site answers 204 again. The site rejects a timestamp more than 5 minutes off its clock, and a `generatedAt` more than 5 minutes in the future, so the machine's clock must be right.
+The retry resends the same bytes, so if the first attempt was accepted but its answer lost, the site answers 204 again. The site rejects a timestamp more than 5 minutes off its clock, and a `generatedAt` more than 5 minutes in the future or more than 15 minutes in the past, so the machine's clock must be right.
 
 `ffp schedule` runs `ffp slate --output-dir DIR` and then `ffp push DIR/expected-points.json`, each in its own process, on game days, until stopped:
 
