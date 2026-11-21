@@ -170,7 +170,8 @@ def slate_targets(games: Sequence[ScheduledGame], books: Sequence[pipeline.BookO
                 unresolved.setdefault(market.player, found)
             elif found.gsis_id not in targets:
                 targets[found.gsis_id] = pipeline.Target(found.name, found, game)
-    for name in [n for n in unresolved if any(t.name == n for t in targets.values())]:
+    resolved = {name_key(t.name) for t in targets.values()}
+    for name in [n for n in unresolved if name_key(n) in resolved]:
         del unresolved[name]  # another Book's spelling of him resolved
     if unresolved:
         for why in sorted(set(unresolved.values())):

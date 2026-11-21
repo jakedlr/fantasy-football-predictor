@@ -160,6 +160,22 @@ def test_a_name_on_both_teams_is_told_apart_by_the_book_s_team(nflverse):
     assert zay.player.gsis_id == "00-0099999"
 
 
+def test_a_name_another_book_s_spelling_resolved_is_not_reported_skipped(nflverse):
+    from ffp.players import RosterEntry
+
+    roster = [*nflverse[0], RosterEntry("00-0099999", "Zay Flowers", "WR", "LAC", "ACT", 10)]
+    dk_game = Game("g1", "LA Chargers", "BAL Ravens", "2026-11-17T01:15:00Z", "draftkings", False)
+    fd_game = Game("f1", "Los Angeles Chargers", "Baltimore Ravens", "2026-11-17T01:15:00Z", "fanduel", False)
+    line = MainLine(30.5, -110, -110, "draftkings")
+    dk = PropMarket("Zay Flowers", "receiving_yards", "g1", "draftkings", line, (), "BAL Ravens")
+    fd = PropMarket("Zay Flowers Jr.", "receiving_yards", "f1", "fanduel", line, (), None)  # no team: two Zays
+    targets, skipped = slate.slate_targets(fixture_week(nflverse).upcoming(BEFORE_MNF),
+                                           [BookOdds("draftkings", [dk_game], [dk]),
+                                            BookOdds("fanduel", [fd_game], [fd])], roster)
+    assert "00-0039064" in {t.player.gsis_id for t in targets}
+    assert not [s for s in skipped if "Zay" in s.name]
+
+
 # --- the push file -----------------------------------------------------------------
 
 
