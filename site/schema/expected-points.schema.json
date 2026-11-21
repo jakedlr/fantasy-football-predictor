@@ -31,7 +31,7 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 23,
-      "description": "ESPN's numbering: regular season 1\u201318, postseason from 1 (Wild Card) to the Super Bowl, which is 4, or 5 in a season with a Pro Bowl week (2025)."
+      "description": "Regular season 1\u201318 as ESPN numbers them; postseason by round, 1 (Wild Card) to 4 (Super Bowl), whatever ESPN's calendar numbers the Super Bowl week (5 in 2025, after a Pro Bowl week)."
     },
     "players": {
       "type": "array",

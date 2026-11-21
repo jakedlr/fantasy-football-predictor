@@ -18,6 +18,12 @@ EXAMPLE = ROOT / "site" / "schema" / "examples" / "expected-points.json"
 SECRET = "f" * 64
 
 
+@pytest.fixture(autouse=True)
+def _clock_at_the_example(monkeypatch):
+    """The example push was generated 2026-11-22T17:50Z; `ffp push` checks its age against the clock."""
+    monkeypatch.setattr(push, "_now", lambda: push.parse_instant("2026-11-22T17:52:00Z"))
+
+
 def test_signature_matches_the_contract_vector():
     v = CONTRACT["vector"]
     assert push.sign(v["secret"], v["timestamp"], v["body"].encode()) == v["signature"]
@@ -286,3 +292,20 @@ def test_cli_push_older_than_the_stored_one_fails(site_factory, monkeypatch, cap
     monkeypatch.setenv("LEADERBOARD_PUSH_SECRET", SECRET)
     assert main(["push", str(EXAMPLE), "--url", site.url]) == 1
     assert "409" in capsys.readouterr().err and len(site.requests) == 1
+
+
+def test_cli_push_refuses_a_push_too_old_for_the_site_without_sending(site_factory, monkeypatch, capsys):
+    # The site refuses a generatedAt over 15 minutes old (400); ffp push says so before sending.
+    site = site_factory()
+    monkeypatch.setenv("LEADERBOARD_PUSH_SECRET", SECRET)
+    monkeypatch.setattr(push, "_now", lambda: push.parse_instant("2026-11-22T18:05:00Z"))
+    assert main(["push", str(EXAMPLE), "--url", site.url]) == 1
+    assert site.requests == []
+    assert "15 minutes" in capsys.readouterr().err
+
+
+def test_cli_push_sends_a_push_just_inside_the_age_limit(site_factory, monkeypatch):
+    site = site_factory((204, ""))
+    monkeypatch.setenv("LEADERBOARD_PUSH_SECRET", SECRET)
+    monkeypatch.setattr(push, "_now", lambda: push.parse_instant("2026-11-22T18:03:00Z"))
+    assert main(["push", str(EXAMPLE), "--url", site.url]) == 0

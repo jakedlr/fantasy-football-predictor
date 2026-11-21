@@ -21,12 +21,25 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import cache
 from pathlib import Path
 
 DEFAULT_URL = "https://ffp-leaderboard.pages.dev/api/expected-points"
 SECRET_NAME = "LEADERBOARD_PUSH_SECRET"
+# The site refuses a generatedAt over 15 minutes before its clock (400). A push older than this is not
+# sent: it leaves room for the send, its one retry (about 70 s) and a little clock skew.
+SITE_MAX_AGE = timedelta(minutes=15)
+MAX_AGE = timedelta(minutes=13)
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def parse_instant(text: str) -> datetime:
+    """An RFC 3339 instant ending in Z, as the push's generatedAt."""
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
 DEFAULT_SECRET_FILE = Path(".env.leaderboard")
 TIMESTAMP_HEADER = "X-FFP-Timestamp"
 SIGNATURE_HEADER = "X-FFP-Signature"
@@ -207,6 +220,10 @@ def run(args: argparse.Namespace) -> int:
     if errors:
         shown = "\n  ".join(errors[:20]) + (f"\n  … and {len(errors) - 20} more" if len(errors) > 20 else "")
         return _fail(f"{args.file} fails site/schema/expected-points.schema.json, not sent:\n  {shown}")
+    age = _now() - parse_instant(payload["generatedAt"])
+    if age > MAX_AGE:
+        return _fail(f"{args.file} was generated {age.total_seconds() / 60:.0f} minutes ago; the site refuses a push "
+                     f"over {SITE_MAX_AGE.total_seconds() / 60:.0f} minutes old, so it was not sent")
     try:
         sent = send(body, args.url, load_secret())
     except PushError as error:

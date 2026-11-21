@@ -50,13 +50,8 @@ export function isDelayed(updatedAt: string, now: number): boolean {
   return now - Date.parse(updatedAt) > DELAYED_AFTER_MS;
 }
 
-/**
- * ESPN's postseason weeks. Its calendar differs by season: 2025 had a Pro Bowl week 4 and the
- * Super Bowl as week 5; 2026 has no Pro Bowl week, so the Super Bowl is week 4. The Worker never
- * serves a Pro Bowl week (scoreboard.ts refuses it by its calendar label), so 4 and 5 are both
- * the Super Bowl.
- */
-const POSTSEASON = ["Wild Card", "Divisional round", "Conference championships", "Super Bowl", "Super Bowl"];
+/** Postseason weeks by round (scoreboard.ts numbers them 1 to 4, the Super Bowl 4). */
+const POSTSEASON = ["Wild Card", "Divisional round", "Conference championships", "Super Bowl"];
 
 /** "Week 12", or the postseason round's name. */
 export function weekTitle(week: Pick<Week, "seasonType" | "number">): string {

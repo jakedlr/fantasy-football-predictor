@@ -53,13 +53,12 @@ describe("NFL Week header", () => {
   it("names regular weeks by number and postseason weeks by round", () => {
     expect(weekTitle(week)).toBe("Week 12");
     expect(weekTitle({ seasonType: "postseason", number: 1 })).toBe("Wild Card");
-    expect(weekTitle({ seasonType: "postseason", number: 5 })).toBe("Super Bowl");
+    expect(weekTitle({ seasonType: "postseason", number: 4 })).toBe("Super Bowl");
     expect(weekTitle({ seasonType: "postseason", number: 9 })).toBe("Postseason week 9");
   });
 
-  // ESPN's 2025 postseason had a Pro Bowl week 4 and the Super Bowl as week 5; 2026 has no Pro
-  // Bowl week, so the Super Bowl is week 4. The Worker never serves a Pro Bowl week.
-  it("calls postseason week 4 the Super Bowl, as in a season with no Pro Bowl week", () => {
+  // The Worker numbers postseason weeks by round, so the Super Bowl is 4 whatever ESPN's calendar says.
+  it("calls postseason round 4 the Super Bowl", () => {
     expect(weekTitle({ seasonType: "postseason", number: 3 })).toBe("Conference championships");
     expect(weekTitle({ seasonType: "postseason", number: 4 })).toBe("Super Bowl");
   });

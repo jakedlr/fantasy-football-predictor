@@ -6,10 +6,10 @@ per player), scored under every Leaderboard Scoring Rules option, keyed by Sleep
 as site/schema/expected-points.schema.json for `ffp push` to send (ADR 0006).
 
 The NFL Week is ESPN's (PLAN, "Leaderboard site"): it starts on the first Wednesday, 3 AM Eastern,
-after the previous week's last kickoff. Postseason weeks are numbered as ESPN and Sleeper number
-them, by date: 1 for the Wild Card week, plus one for each calendar week since (Wednesday 3 AM
-Eastern to Wednesday). So the Super Bowl is 5 when ESPN counts a Pro Bowl week before it (2025's
-postseason) and 4 when there is none (2026's); nflverse numbers the four rounds 19-22 either way.
+after the previous week's last kickoff. Postseason weeks are numbered by round, 1 (Wild Card) to
+4 (Super Bowl), nflverse's 19-22 less 18. ESPN's own calendar numbers the Super Bowl 5 in a season
+with a Pro Bowl week (2025) and gives it one two-week entry, 4, in a season without one (2026), so
+the site maps ESPN's "Super Bowl" entry to 4 (site/src/worker/scoreboard.ts).
 """
 
 import argparse
@@ -72,17 +72,14 @@ class NflWeek:
     season: int
     week: int  # nflverse's number: postseason weeks are 19 on
     games: tuple[ScheduledGame, ...]
-    postseason_week: int | None = None  # ESPN's number for a postseason week (current_week sets it)
 
     @property
     def label(self) -> tuple[str, int]:
-        """(seasonType, week) as ESPN and Sleeper number it: postseason weeks restart at 1 and count
-        calendar weeks from the Wild Card week, a Pro Bowl week included."""
+        """(seasonType, week) as the Leaderboard numbers it: postseason weeks by round, 1 (Wild Card)
+        to 4 (Super Bowl)."""
         if self.week <= REGULAR_WEEKS:
             return "regular", self.week
-        if self.postseason_week is None:
-            raise ValueError(f"postseason week {self.week} has no ESPN number (use current_week)")
-        return "postseason", self.postseason_week
+        return "postseason", self.week - REGULAR_WEEKS
 
     @property
     def number(self) -> int:
@@ -108,23 +105,6 @@ def _week_start_after(moment: datetime) -> datetime:
     return start.replace(tzinfo=None).replace(tzinfo=_EASTERN).astimezone(timezone.utc)
 
 
-def _week_start_of(moment: datetime) -> datetime:
-    """The last Wednesday, 3 AM Eastern, at or before `moment`: the start of its calendar week."""
-    local = moment.astimezone(_EASTERN)
-    weekday, hour = _WEEK_STARTS
-    start = local.replace(hour=hour, minute=0, second=0, microsecond=0) - timedelta(days=(local.weekday() - weekday) % 7)
-    if start > local:
-        start -= timedelta(days=7)
-    return start.replace(tzinfo=None).replace(tzinfo=_EASTERN).astimezone(timezone.utc)
-
-
-def postseason_number(wild_card_kickoff: str, kickoff: str) -> int:
-    """ESPN's postseason week number for a Game at `kickoff`: 1 + the whole calendar weeks (Wednesday
-    3 AM Eastern boundaries) since the Wild Card Game at `wild_card_kickoff`."""
-    first, this = (_week_start_of(parse_utc(k)).astimezone(_EASTERN).date() for k in (wild_card_kickoff, kickoff))
-    return 1 + (this - first).days // 7
-
-
 def current_week(schedule: Iterable[ScheduledGame], now: datetime) -> NflWeek:
     """The NFL Week under way at `now`: each week starts on the first Wednesday, 3 AM Eastern, after the
     previous week's last kickoff (the first week has no start). Before every week has started, the first
@@ -141,11 +121,7 @@ def current_week(schedule: Iterable[ScheduledGame], now: datetime) -> NflWeek:
         if _week_start_after(last) <= now:
             chosen = week
     games = tuple(sorted(by_week[chosen], key=lambda g: g.kickoff))
-    postseason = None
-    if chosen > REGULAR_WEEKS:
-        wild_card = min(w for w in weeks if w > REGULAR_WEEKS)
-        postseason = postseason_number(min(g.kickoff for g in by_week[wild_card]), games[0].kickoff)
-    return NflWeek(games[0].season, chosen, games, postseason)
+    return NflWeek(games[0].season, chosen, games)
 
 
 # --- the players --------------------------------------------------------------------

@@ -103,6 +103,14 @@ describe("parseScoreboard: the NFL Week", () => {
     expect(week.number).toBe(4);
   });
 
+  it("numbers postseason weeks by round: ESPN's Super Bowl week 5 (after a Pro Bowl week) is 4", () => {
+    const board = fixture("postseason");
+    board.week.number = 5;
+    const { week } = parseScoreboard(board);
+    expect(week.seasonType).toBe("postseason");
+    expect(week.number).toBe(4);
+  });
+
   it("refuses a week missing from ESPN's calendar", () => {
     const board = fixture("upcoming");
     board.week.number = 30;

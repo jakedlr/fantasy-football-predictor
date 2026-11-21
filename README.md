@@ -140,7 +140,7 @@ ffp slate --fixtures research/fixtures --now 2026-11-16T12:00:00Z   # offline, o
 
 What it does:
 
-- **The NFL Week** is ESPN's, as the Leaderboard's is: a week starts on the first Wednesday, 3 AM Eastern, after the previous week's last kickoff. Postseason weeks are numbered by date from the Wild Card week, as ESPN numbers them (Wild Card is week 1; the Super Bowl is week 4, or 5 in a season with a Pro Bowl week, as in 2025), with `seasonType` `postseason`.
+- **The NFL Week** is ESPN's, as the Leaderboard's is: a week starts on the first Wednesday, 3 AM Eastern, after the previous week's last kickoff. Postseason weeks are numbered by round, Wild Card 1 to Super Bowl 4, with `seasonType` `postseason`; the site maps ESPN's own calendar (which numbered the Super Bowl 5 in 2025, after a Pro Bowl week) to the same rounds. A `--now` replay can't be pushed: the site refuses a push generated more than 15 minutes ago.
 - **The players:** both Books' Prop Markets for every Game of the week that hasn't kicked off. Each Book name is matched to the roster by name and the Book's team, among the QB/RB/WR/TE of the Game's two teams. A name that matches nobody, or two players, is logged and left out. Each team adds its kicker (its active K on the nflverse roster, else its practice-squad one: midweek, a team that cut its kicker may have only one to elevate) and its D/ST. The fit, the simulation, the workers (`--jobs`) and the Pacing are `ffp predict`'s.
 - **Expected Points** is the Score Distribution's mean. The same 20,000 draws are scored under each Leaderboard Scoring Rules option (`ppr`, `half-ppr`, `standard`, `espn-league`), so a player is fitted and simulated once. Kickers and D/ST are scored on their draws, not their means, since their tiers aren't linear.
 - **`statMeans`**, each Scoring Stat's mean in the draws, let the Leaderboard project a Live player's total stat by stat. A QB, RB, WR or TE has `ffp.scoring`'s offensive stats, including the Base Rate stats (fumbles lost, 2-pt). A kicker has `pat_made`, `pat_missed`, `fg_missed` and FGs made by Sleeper's distance buckets (`fgm_0_19` … `fgm_60p`). A D/ST has its counts plus `points_allowed_all`, `opponent_defensive_tds_points`, `opponent_return_tds_points` and `yards_allowed`. A stat that is missing counts as 0. A mean below 0 is sent as 0, the schema's minimum.
@@ -279,13 +279,15 @@ ffp push expected-points.json                     # to https://ffp-leaderboard.p
 ffp push expected-points.json --url http://localhost:8788/api/expected-points
 ```
 
+It checks the file against the schema, and refuses to send one generated more than 13 minutes ago (the site refuses 15), exiting 1.
+
 It checks FILE against `site/schema/expected-points.schema.json` first and sends nothing if it fails. It then signs the body as `site/contracts/push-signature.json` says (ADR 0006): `X-FFP-Timestamp` and `X-FFP-Signature`, an HMAC-SHA256 under `LEADERBOARD_PUSH_SECRET`. The secret is read from the environment, else from `.env.leaderboard` in the current directory (written by the setup wizard); it is never printed. How it treats `/api/expected-points`'s answers:
 
 | Answer | Meaning | `ffp push` |
 |---|---|---|
 | 204 | accepted (also a repeat of the push the site holds, same `generatedAt`) | exits 0 |
 | 429 | under 5 minutes after the last accepted push | prints "Skipped", exits 0, no retry |
-| 409 | older than the push the site holds, or for a later NFL Week than the site's scoreboard (a Wednesday-morning push before ESPN rolls over) | exits 1, no retry |
+| 409 | older than the push the site holds, or for a later NFL Week than the site's scoreboard (a Wednesday-morning push before ESPN rolls over, or while the scoreboard run is failing) | exits 1, no retry |
 | 400 | invalid; the reason is in the reply | exits 1, no retry |
 | 401 | bad signature or timestamp (no detail given) | exits 1, no retry |
 | 413 | over 1 MiB (also refused before sending) | exits 1, no retry |
@@ -309,7 +311,7 @@ The run times, in US Eastern time:
 - On a game day: a run every 30 minutes on :00 and :30 from 08:00 until the day's last kickoff, plus one 10 minutes before each kickoff window. Kickoffs within 30 minutes of a window's first share it, so Sunday's 16:05 and 16:25 Games share one at 15:55. A :00/:30 run 10 minutes or less before or after a window's run is dropped, so runs stay more than 10 minutes apart (the site answers 429 to a push under 5 minutes after the last). The scheduler also waits at least 5 minutes after a run that succeeded before starting the next.
 - After the day's last kickoff nothing runs until the next game day (`ffp slate` leaves out Games that have kicked off).
 
-A typical Sunday (13:00, 16:05/16:25, 20:20): 08:00, 08:30, … 12:30, **12:50**, 13:30, … 15:30, **15:55**, 16:30, … 19:30, **20:10**. A run that fails (slate or push; slate gets 45 minutes, push 3) is logged and the scheduler waits for the next run time; it never retries at once. A run that takes longer than 30 minutes skips the run times it covered. Before each run the last `expected-points.json` is deleted, so a failed slate never pushes old numbers.
+A typical Sunday (13:00, 16:05/16:25, 20:20): 08:00, 08:30, … 12:30, **12:50**, 13:30, … 15:30, **15:55**, 16:30, … 19:30, **20:10**. A run that fails (slate or push; slate gets 10 minutes, push 3, so the push is never too old for the site's 15-minute limit) is logged and the scheduler waits for the next run time; it never retries at once. A run that takes longer than 30 minutes skips the run times it covered. Before each run the last `expected-points.json` is deleted, so a failed slate never pushes old numbers.
 
 ##### In Docker
 

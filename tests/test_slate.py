@@ -58,21 +58,22 @@ def test_the_week_s_games_and_those_that_have_not_kicked_off():
     assert week.teams == {"BUF", "HOU", "BAL", "CAR", "NYJ", "LAC", "CHI", "LA"}
 
 
-def test_postseason_weeks_are_numbered_as_espn_and_sleeper_number_them():
+def test_postseason_weeks_are_numbered_by_round():
+    # 2026's postseason: the Super Bowl is Feb 14, 2027, two weeks after the conference games (ESPN's
+    # calendar has one two-week "Super Bowl" entry, week 4, and no Pro Bowl week).
     playoffs = [game(18, "BAL", "PIT", "2027-01-10T18:00:00Z"), game(19, "BUF", "HOU", "2027-01-16T21:30:00Z"),
                 game(20, "BUF", "KC", "2027-01-23T21:30:00Z"), game(21, "KC", "BAL", "2027-01-31T20:00:00Z"),
-                game(22, "BAL", "SF", "2027-02-07T23:30:00Z")]
+                game(22, "BAL", "SF", "2027-02-14T23:30:00Z")]
     assert slate.current_week(playoffs, utc("2027-01-11T12:00:00Z")).label == ("regular", 18)
     assert slate.current_week(playoffs, utc("2027-01-14T12:00:00Z")).label == ("postseason", 1)  # Wild Card
     assert slate.current_week(playoffs, utc("2027-01-28T12:00:00Z")).label == ("postseason", 3)
-    # 2026 has no Pro Bowl week: the Super Bowl week starts the Wednesday after the conference games
-    # (ESPN: Feb 3), and is postseason week 4.
     assert slate.current_week(playoffs, utc("2027-02-04T12:00:00Z")).label == ("postseason", 4)
+    assert slate.current_week(playoffs, utc("2027-02-12T12:00:00Z")).label == ("postseason", 4)
 
 
-def test_a_pro_bowl_week_counts_in_the_postseason_numbering():
-    # 2025's postseason: Wild Card weekend Jan 10, 2026, conference games Jan 25, the Super Bowl Feb 8 after
-    # ESPN's Pro Bowl week, so ESPN numbers it 5 (nflverse: week 22).
+def test_the_super_bowl_is_round_4_even_after_a_pro_bowl_week():
+    # 2025's postseason: ESPN's calendar numbered the Super Bowl 5, after a Pro Bowl week. The site
+    # numbers postseason weeks by round (scoreboard.ts maps ESPN's "Super Bowl" entry to 4), so ffp does too.
     playoffs = [game(18, "BAL", "PIT", "2026-01-04T18:00:00Z", season=2025),
                 game(19, "BUF", "JAX", "2026-01-10T21:30:00Z", season=2025),
                 game(20, "BUF", "DEN", "2026-01-17T21:30:00Z", season=2025),
@@ -80,8 +81,7 @@ def test_a_pro_bowl_week_counts_in_the_postseason_numbering():
                 game(22, "NE", "SEA", "2026-02-08T23:30:00Z", season=2025)]
     assert slate.current_week(playoffs, utc("2026-01-08T12:00:00Z")).label == ("postseason", 1)
     assert slate.current_week(playoffs, utc("2026-01-27T12:00:00Z")).label == ("postseason", 3)
-    assert slate.current_week(playoffs, utc("2026-02-05T12:00:00Z")).label == ("postseason", 5)
-    assert slate.current_week(playoffs, utc("2026-01-30T12:00:00Z")).label == ("postseason", 5)  # Pro Bowl week
+    assert slate.current_week(playoffs, utc("2026-02-05T12:00:00Z")).label == ("postseason", 4)
 
 
 # --- the players -------------------------------------------------------------------

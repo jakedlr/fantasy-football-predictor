@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from ffp import schedule
+from ffp import push, schedule
 from ffp.schedule import next_run
 
 ET = ZoneInfo("America/New_York")
@@ -301,3 +301,9 @@ def test_a_run_that_ends_just_before_a_slot_waits_5_minutes_after_it_so_the_site
     schedule.serve(load_kickoffs=lambda now: WEEK, run_once=run_once, clock=clock, sleep=clock.sleep,
                    alerts=Recorder(), max_runs=2)
     assert ran == ["12:30", "13:30"]  # 12:50 is under 5 minutes after the last push: skipped
+
+
+def test_slate_timeout_leaves_its_push_young_enough_for_the_site():
+    # The site refuses a push generated over 15 minutes before its clock; generatedAt is the slate's
+    # start, so the slate plus the push (with its one retry) must finish well inside that.
+    assert schedule.SLATE_TIMEOUT + schedule.PUSH_TIMEOUT <= push.MAX_AGE

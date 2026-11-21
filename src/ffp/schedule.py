@@ -49,7 +49,7 @@ RELOAD_EVERY = timedelta(hours=6)  # the longest the loop goes without reloading
 SCHEDULE_RETRY = timedelta(hours=1)  # after the schedule failed to load
 MIN_SPACING = timedelta(minutes=5)  # the site's least time between accepted pushes (429 otherwise)
 MAX_SLEEP = timedelta(minutes=5)  # sleep in steps, so a machine that was suspended wakes on time
-SLATE_TIMEOUT = timedelta(minutes=45)
+SLATE_TIMEOUT = timedelta(minutes=10)  # a slate takes about 1 minute; its push must stay young (push.MAX_AGE)
 PUSH_TIMEOUT = timedelta(minutes=3)
 SLATE_FILE = "expected-points.json"  # what `ffp slate --output-dir DIR` writes in DIR
 
