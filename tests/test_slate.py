@@ -238,6 +238,24 @@ def test_without_now_generated_at_is_the_real_clock(tmp_path, monkeypatch):
     assert abs((datetime.now(timezone.utc) - generated).total_seconds()) < 60
 
 
+def test_generated_at_is_the_run_s_start_the_time_that_picked_the_games(tmp_path, monkeypatch):
+    import ffp.slate
+
+    start = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+    clock = iter([start, *(start.replace(hour=13 + i) for i in range(5))])  # each later call an hour on
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(clock)
+
+    monkeypatch.setattr(ffp.slate, "datetime", Clock)
+    monkeypatch.setattr(ffp.slate, "current_week", lambda schedule, now: ffp.slate.NflWeek(2026, 10, ()))
+    monkeypatch.setattr(ffp.slate.pipeline, "load_fixture_nflverse", lambda fixtures, season: ([], []))
+    assert main(["slate", "--fixtures", str(FIXTURES), "--output-dir", str(tmp_path)]) == 0
+    assert json.loads((tmp_path / "expected-points.json").read_text())["generatedAt"] == "2026-11-16T12:00:00Z"
+
+
 def test_an_unwritable_output_exits_1(tmp_path):
     blocker = tmp_path / "file"
     blocker.write_text("")

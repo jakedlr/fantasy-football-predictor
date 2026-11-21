@@ -408,9 +408,10 @@ def run(args: argparse.Namespace) -> int:
     )
     players, missing = push_players(results, targets, roster, ids)
     id_map = ids.id_map(week.teams, roster)
-    # The prices' time: the real clock, or --now when replaying (/api/expected-points refuses a
-    # generatedAt more than 5 minutes ahead, and freezes players whose kickoff is at or before it).
-    push = build_push(week, players, id_map, args.now or datetime.now(timezone.utc))
+    # generatedAt is the run's start, `now`: the time that picked the unstarted Games (the real clock,
+    # or --now when replaying), so no Game in the push kicked off before it. /api/expected-points
+    # refuses a generatedAt more than 5 minutes ahead, and freezes players whose kickoff is at or before it.
+    push = build_push(week, players, id_map, now)
     output = args.output or args.output_dir / DEFAULT_OUTPUT
     try:
         size = write_push(push, output)
